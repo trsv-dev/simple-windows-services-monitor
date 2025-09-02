@@ -1,0 +1,21 @@
+package models
+
+// Server Модель сервера.
+type Server struct {
+	Name     string    `json:"name"`
+	Address  string    `json:"address"`
+	Services []Service `json:"services"`
+}
+
+// Service Модель службы.
+type Service struct {
+	DisplayedName string `json:"displayedName"`
+	ServiceName   string `json:"serviceName"`
+	Status        string `json:"status"`
+}
+
+// User Модель пользователя.
+type User struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}

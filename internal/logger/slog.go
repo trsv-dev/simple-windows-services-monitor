@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -56,9 +57,26 @@ var (
 	once sync.Once
 )
 
-func InitLogger() {
+// InitLogger Синглтон инициализации логгера.
+func InitLogger(logLevel string) {
+
+	var programLevel slog.Level
+
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		programLevel = slog.LevelDebug
+	case "info":
+		programLevel = slog.LevelInfo
+	case "warn":
+		programLevel = slog.LevelWarn
+	case "error":
+		programLevel = slog.LevelError
+	default:
+		programLevel = slog.LevelDebug
+	}
+
 	once.Do(func() {
-		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
 		Log = &SlogAdapter{slog: logger}
 	})
 }

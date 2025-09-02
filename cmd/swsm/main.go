@@ -1,22 +1,26 @@
 package main
 
 import (
+	"os"
+
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/router"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/server"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres"
 )
 
 func main() {
-	logger.InitLogger()
-
 	srvConfig := config.InitConfig()
-	srvRouter := router.Router()
 
-	//ctx, cancel := context.WithCancel(context.Background())
-	//defer cancel()
+	logger.InitLogger(srvConfig.LogLevel)
 
-	err := server.RunServer(srvConfig.RunAddress, srvRouter)
+	storage, err := postgres.InitStorage(srvConfig.DatabaseURI)
+	if err != nil {
+		logger.Log.Error("Не удалось инициировать хранилище (БД)", logger.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	err = server.RunServer(srvConfig.RunAddress, storage)
 	if err != nil {
 		panic(err)
 	}
