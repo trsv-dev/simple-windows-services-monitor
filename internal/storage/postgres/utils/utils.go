@@ -1,42 +1,58 @@
 package utils
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
-	"path/filepath"
-	"strings"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/migrations"
 )
 
 // ApplyMigrations применяет все миграции из embed.FS
-func ApplyMigrations(db *sql.DB) error {
-	entries, err := migrations.Files.ReadDir(".")
+func ApplyMigrations(DatabaseURI string) error {
+	// создаем источник миграций с использованием встроенной файловой системы
+	// и указываем, что миграции находятся в папке "migrations" внутри этой системы.
+	// iofs.New() возвращает объект, который предоставляет доступ к этим миграциям.
+	d, err := iofs.New(migrations.Files, ".")
 	if err != nil {
-		logger.Log.Error("Ошибка при чтении списка миграций", logger.String("err", err.Error()))
-		return fmt.Errorf("не удалось прочитать список миграций: %w", err)
+		logger.Log.Error("Ошибка подготовки встраивания миграций", logger.String("err", err.Error()))
+		return fmt.Errorf("ошибка подготовки встраивания миграций: %w", err)
 	}
 
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".sql" || !strings.HasSuffix(e.Name(), ".up.sql") {
-			continue
-		}
-
-		sqlBytes, err := migrations.Files.ReadFile(e.Name())
-		if err != nil {
-			logger.Log.Error("Ошибка при чтении миграции", logger.String("err", err.Error()))
-			return fmt.Errorf("не удалось прочитать миграцию %s: %w", e.Name(), err)
-		}
-
-		if _, err := db.Exec(string(sqlBytes)); err != nil {
-			logger.Log.Error("Ошибка при выполнении миграции", logger.String("err", err.Error()))
-			return fmt.Errorf("не удалось выполнить миграцию %s: %w", e.Name(), err)
-		}
-
-		logger.Log.Info("Миграция успешно применена", logger.String("success", e.Name()))
+	// создаем новый экземпляр миграции (мигратор), используя источник "iofs" (встраиваемая файловая система),
+	// и передаем строку подключения к базе данных (dbCredentials).
+	// Этот объект будет использоваться для выполнения миграций в базе данных.
+	m, err := migrate.NewWithSourceInstance("iofs", d, DatabaseURI)
+	if err != nil {
+		logger.Log.Error("Ошибка подготовки миграций", logger.String("err", err.Error()))
+		return fmt.Errorf("ошибка подготовки миграций: %w", err)
 	}
 
-	logger.Log.Info("Все UP-миграции успешно применены")
+	defer func() {
+		srcErr, dbErr := m.Close()
+		if srcErr != nil {
+			logger.Log.Warn("Ошибка закрытия источника миграций", logger.String("err", srcErr.Error()))
+		}
+		if dbErr != nil {
+			logger.Log.Warn("Ошибка закрытия соединения мигратора", logger.String("err", dbErr.Error()))
+		}
+	}()
+
+	// применяем все миграции к базе данных. Если возникнут ошибки, они будут обработаны в следующем условии.
+	err = m.Up()
+	if err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			logger.Log.Info("Нет новых миграций", logger.String("info", err.Error()))
+			return nil
+		}
+		logger.Log.Error("ошибка миграции", logger.String("err", err.Error()))
+		return fmt.Errorf("ошибка применения миграции: %w", err)
+	}
+
+	logger.Log.Info("Миграции были применены")
 	return nil
 }

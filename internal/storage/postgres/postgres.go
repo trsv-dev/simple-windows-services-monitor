@@ -32,9 +32,10 @@ func InitStorage(DatabaseURI string) (*PgStorage, error) {
 	}
 
 	// применяем миграции
-	err = utils.ApplyMigrations(pg)
+	err = utils.ApplyMigrations(DatabaseURI)
 	if err != nil {
 		logger.Log.Error("Ошибка применения миграций к БД PostgreSQL", logger.String("err", err.Error()))
+		_ = pg.Close()
 		return nil, fmt.Errorf("ошибка применения миграций к БД PostgreSQL: %w", err)
 	}
 
