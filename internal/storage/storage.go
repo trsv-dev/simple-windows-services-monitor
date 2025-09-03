@@ -4,5 +4,6 @@ package storage
 type Storage interface {
 	ServerStorage
 	ServiceStorage
+	UserStorage
 	Close() error
 }

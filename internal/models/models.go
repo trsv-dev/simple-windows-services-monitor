@@ -4,6 +4,8 @@ package models
 type Server struct {
 	Name     string    `json:"name"`
 	Address  string    `json:"address"`
+	Username string    `json:"username"`
+	Password string    `json:"password"`
 	Services []Service `json:"services"`
 }
 
@@ -16,6 +18,7 @@ type Service struct {
 
 // User Модель пользователя.
 type User struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
+	Login    string   `json:"login"`
+	Password string   `json:"password"`
+	Servers  []Server `json:"servers"`
 }
