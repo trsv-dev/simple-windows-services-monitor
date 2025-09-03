@@ -4,36 +4,41 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/router"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
 // NewServer Создание нового сервера.
-func NewServer(runAddress string, router http.Handler) *http.Server {
+func NewServer(runAddress string, storage storage.Storage) *http.Server {
+	appHandler := api.NewAppHandler(storage)
+	mux := router.Router(appHandler)
+
 	server := &http.Server{
 		Addr:    runAddress,
-		Handler: router,
+		Handler: mux,
 	}
 
 	return server
 }
 
 // RunServer Запуск сервера.
-func RunServer(runAddress string, router http.Handler) error {
-	server := NewServer(runAddress, router)
+func RunServer(runAddress string, storage storage.Storage) error {
+	server := NewServer(runAddress, storage)
 
 	serverError := make(chan error, 1)
 
 	go func() {
 		logger.Log.Info("Сервер запущен", logger.String("address", server.Addr))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("Ошибка сервера", err)
+			logger.Log.Error("Ошибка сервера", logger.String("err", err.Error()))
 			// останавливаем сервер
 			serverError <- err
 		}
@@ -44,26 +49,21 @@ func RunServer(runAddress string, router http.Handler) error {
 
 	select {
 	case err := <-serverError:
-		//log.Printf("Ошибка сервера: %v", err)
-		slog.Error("Ошибка сервера", err)
+		logger.Log.Error("Ошибка сервера", logger.String("err", err.Error()))
 	case sig := <-stop:
-		//log.Printf("Получен сигнал становки сервера: %v", sig)
-		slog.Info("Получен сигнал становки сервера", sig)
+		logger.Log.Info("Получен сигнал остановки сервера", logger.String("sig", sig.String()))
 	}
 
-	//log.Println("Остановка сервера...")
-	slog.Info("Остановка сервера...")
+	logger.Log.Info("Остановка сервера...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		//log.Printf("Ошибка остановки сервера %v", err)
-		slog.Error("Получен сигнал становки сервера", err)
+		logger.Log.Error("Ошибка остановки сервера", logger.String("err", err.Error()))
 		return fmt.Errorf("Ошибка остановки сервера %v\n", err)
 	}
 
-	//log.Println("Сервер остановлен")
-	slog.Info("Сервер остановлен")
+	logger.Log.Info("Сервер остановлен")
 	return nil
 }

@@ -18,7 +18,7 @@ func InitConfig() *Config {
 
 	flag.StringVar(&config.RunAddress, "a", "127.0.0.1:8080", "HTTP server address and port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
-	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error, DPanic, Panic, Fatal)")
+	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error)")
 	flag.Parse()
 
 	if value, ok := os.LookupEnv("RUN_ADDRESS"); ok {
