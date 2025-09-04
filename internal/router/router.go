@@ -29,6 +29,13 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 		// middleware добавления логина зарегистрированного и авторизованного пользователя в контекст
 		r.Use(middleware.LoginToContextMiddleware)
+
+		// добавление пользователем нового сервера
+		r.Post("/servers/add", h.AddServer)
+		// удаление существующего сервера пользователя
+		r.Post("/servers/delete", h.DelServer)
+		// получение информации по серверу
+		r.Post("/servers/get", h.GetServer)
 	})
 
 	return router
