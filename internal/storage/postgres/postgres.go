@@ -77,11 +77,18 @@ func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID
 	return nil
 }
 
-func (pg *PgStorage) DelServer(ctx context.Context, srvAddr string, login string) error {
-	query := `DELETE FROM servers 
-       		  WHERE address = $1 AND user_id = (SELECT id FROM users WHERE login = $2)`
+// EditServer Редактирование сервера, принадлежащего пользователю.
+func (pg *PgStorage) EditServer(ctx context.Context, id int, login string, input models.Server) (*models.Server, error) {
+	//query := `UPDATE servers SET `
+	return nil, nil
+}
 
-	Result, err := pg.DB.ExecContext(ctx, query, srvAddr, login)
+// DelServer Удаление сервера, принадлежащего пользователю.
+func (pg *PgStorage) DelServer(ctx context.Context, id int, login string) error {
+	query := `DELETE FROM servers 
+       		  WHERE id = $1 AND user_id = (SELECT id FROM users WHERE login = $2)`
+
+	Result, err := pg.DB.ExecContext(ctx, query, id, login)
 
 	if err != nil {
 		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
@@ -94,25 +101,25 @@ func (pg *PgStorage) DelServer(ctx context.Context, srvAddr string, login string
 	}
 
 	if affectedRows == 0 {
-		return errs.NewErrServerNotFound(srvAddr, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
+		return errs.NewErrServerNotFound(id, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
 	}
 
 	return nil
 }
 
 // GetServer Получение информации о сервере, принадлежащем пользователю.
-func (pg *PgStorage) GetServer(ctx context.Context, srvAddr string, login string) (*models.Server, error) {
+func (pg *PgStorage) GetServer(ctx context.Context, id int, login string) (*models.Server, error) {
 	var server models.Server
 
 	query := `SELECT name, address, username, created_at FROM servers 
-              WHERE address = $1 
+              WHERE id = $1 
                 AND user_id = (SELECT id FROM users WHERE login = $2)`
 
-	err := pg.DB.QueryRowContext(ctx, query, srvAddr, login).Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+	err := pg.DB.QueryRowContext(ctx, query, id, login).Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return nil, errs.NewErrServerNotFound(srvAddr, login, err)
+			return nil, errs.NewErrServerNotFound(id, login, err)
 		default:
 			return nil, err
 		}

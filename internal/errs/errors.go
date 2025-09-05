@@ -84,27 +84,27 @@ func NewErrDuplicatedServer(serverAddr string, err error) *ErrDuplicatedServer {
 
 // ErrServerNotFound Кастомная ошибка, сообщающая о том, что сервер не найден (был удален или не принадлежит пользователю).
 type ErrServerNotFound struct {
-	Err     error
-	Address string
-	Login   string
+	Err   error
+	ID    int
+	Login string
 }
 
 func (no *ErrServerNotFound) Error() string {
-	return fmt.Sprintf("Сервер %s не найден %s", no.Address, no.Login)
+	return fmt.Sprintf("Сервер %s не найден %s", no.ID, no.Login)
 }
 
 func (no *ErrServerNotFound) Unwrap() error {
 	return no.Err
 }
 
-func NewErrServerNotFound(address, login string, err error) *ErrServerNotFound {
+func NewErrServerNotFound(id int, login string, err error) *ErrServerNotFound {
 	if err == nil {
 		err = fmt.Errorf("сервер не найден")
 	}
 
 	return &ErrServerNotFound{
-		Err:     err,
-		Address: address,
-		Login:   login,
+		Err:   err,
+		ID:    id,
+		Login: login,
 	}
 }

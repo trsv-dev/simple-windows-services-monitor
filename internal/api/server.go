@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
@@ -69,9 +71,8 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 	response.SuccessJSON(w, http.StatusOK, "Сервер успешно добавлен")
 }
 
-// DelServer Удаление сервера, добавленного пользователем.
-func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -85,27 +86,60 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		SrvAddr string `json:"address"`
-	}
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
 
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
+	var input models.Server
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
 		return
 	}
 
-	if req.SrvAddr == "" {
-		response.ErrorJSON(w, http.StatusBadRequest, "Адрес сервера не указан")
+	updatedServer, err := h.storage.EditServer(ctx, id, login, input)
+	//todo тут, видимо, надо описать какую-то еще ошибку
+	if err != nil {
+		logger.Log.Warn("Ошибка при обновлении сервера", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusBadRequest, "Ошибка при обновлении сервера")
 		return
 	}
 
-	if !utils.IsValidIP(req.SrvAddr) {
-		response.ErrorJSON(w, http.StatusBadRequest, "Невалидный IP адрес сервера")
+	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", login),
+		logger.Int("serverID", id))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err = json.NewEncoder(w).Encode(updatedServer); err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
+}
+
+// DelServer Удаление сервера, добавленного пользователем.
+func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	err = h.storage.DelServer(ctx, req.SrvAddr, login)
+	ctx := r.Context()
+
+	login, ok := ctx.Value(contextkeys.Login).(string)
+	if !ok || login == "" {
+		logger.Log.Error("Не удалось получить логин из контекста")
+		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id")
+		return
+	}
+
+	err = h.storage.DelServer(ctx, id, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
@@ -113,7 +147,7 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.String("address", ErrServerNotFound.Address), logger.String("err", ErrServerNotFound.Err.Error()))
+				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusBadRequest, "Сервер не найден")
 			return
 		case err != nil:
@@ -123,14 +157,15 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Warn("Сервер успешно удален пользователем", logger.String("login", login),
-		logger.String("address", req.SrvAddr))
-	response.SuccessJSON(w, http.StatusAccepted, "Сервер успешно удален")
+	logger.Log.Debug("Сервер успешно удален пользователем", logger.String("login", login),
+		logger.Int("serverID", id))
+	//response.SuccessJSON(w, http.StatusAccepted, "Сервер успешно удален")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetServer Получение информации о сервере.
 func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -144,22 +179,14 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		SrvAddr string `json:"address"`
-	}
-
-	err := json.NewDecoder(r.Body).Decode(&req)
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
+		response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id")
 		return
 	}
 
-	if !utils.IsValidIP(req.SrvAddr) {
-		response.ErrorJSON(w, http.StatusBadRequest, "Невалидный IP адрес сервера")
-		return
-	}
-
-	server, err := h.storage.GetServer(ctx, req.SrvAddr, login)
+	server, err := h.storage.GetServer(ctx, id, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
@@ -167,7 +194,7 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.String("address", ErrServerNotFound.Address), logger.String("err", ErrServerNotFound.Err.Error()))
+				logger.Int("address", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -207,6 +234,11 @@ func (h *AppHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
 		logger.Log.Warn("Ошибка при получении списка серверов пользователя", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении списка серверов")
 		return
+	}
+
+	// если серверов у пользователя нет - возвращаем пустой срез серверов
+	if len(servers) == 0 {
+		servers = []models.Server{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
