@@ -94,20 +94,64 @@ func (pg *PgStorage) DelServer(ctx context.Context, srvAddr string, login string
 	}
 
 	if affectedRows == 0 {
-		return errs.NewErrServerNotFound(srvAddr, login)
+		return errs.NewErrServerNotFound(srvAddr, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
 	}
 
 	return nil
 }
 
-func (pg *PgStorage) GetServer(ctx context.Context, srvAddr string) (models.Server, error) {
-	//TODO implement me
-	panic("implement me")
+// GetServer Получение информации о сервере, принадлежащем пользователю.
+func (pg *PgStorage) GetServer(ctx context.Context, srvAddr string, login string) (*models.Server, error) {
+	var server models.Server
+
+	query := `SELECT name, address, username, created_at FROM servers 
+              WHERE address = $1 
+                AND user_id = (SELECT id FROM users WHERE login = $2)`
+
+	err := pg.DB.QueryRowContext(ctx, query, srvAddr, login).Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, errs.NewErrServerNotFound(srvAddr, login, err)
+		default:
+			return nil, err
+		}
+	}
+
+	return &server, nil
 }
 
-func (pg *PgStorage) ListServers(ctx context.Context) ([]models.Server, error) {
-	//TODO implement me
-	panic("implement me")
+func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Server, error) {
+	query := `SELECT name, address, username, created_at 
+			  FROM servers WHERE user_id = (SELECT id FROM users WHERE login = $1)`
+
+	rows, err := pg.DB.QueryContext(ctx, query, login)
+	if err != nil {
+		logger.Log.Error("Ошибка при получении списка серверов пользователя", logger.String("err", err.Error()))
+		return nil, fmt.Errorf("ошибка при получении серверов пользователя: %w", err)
+	}
+	defer rows.Close()
+
+	var servers []models.Server
+
+	for rows.Next() {
+		var server models.Server
+		err = rows.Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+		if err != nil {
+			logger.Log.Error("ошибка парсинга запроса на получение серверов пользователя", logger.String("err", err.Error()))
+			return nil, err
+		}
+
+		servers = append(servers, server)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logger.Log.Error("Ошибка при обработке строк на получение информации о серверах пользователя", logger.String("err", err.Error()))
+		return nil, err
+	}
+
+	return servers, nil
 }
 
 func (pg *PgStorage) AddService(ctx context.Context, srvAddr string, service models.Service) error {
@@ -166,13 +210,15 @@ func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.Us
 	query := `SELECT login, password FROM users WHERE login = $1`
 	err := pg.DB.QueryRowContext(ctx, query, user.Login).Scan(&userFromDB.Login, &userFromDB.Password)
 
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		logger.Log.Error("Пользователь с таким логином не найден", logger.String("err", err.Error()))
-		return nil, errs.NewErrWrongLoginOrPassword(err)
-	case err != nil:
-		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
-		return nil, err
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			logger.Log.Error("Пользователь с таким логином не найден", logger.String("err", err.Error()))
+			return nil, errs.NewErrWrongLoginOrPassword(err)
+		default:
+			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+			return nil, err
+		}
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(userFromDB.Password), []byte(user.Password)); err != nil {
@@ -191,12 +237,14 @@ func (pg *PgStorage) GetUserIDByLogin(ctx context.Context, login string) (int, e
 
 	err := pg.DB.QueryRowContext(ctx, query, login).Scan(&userID)
 
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return 0, errs.NewErrLoginNotFound(err)
-	case err != nil:
-		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
-		return 0, err
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return 0, errs.NewErrLoginNotFound(err)
+		default:
+			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+			return 0, err
+		}
 	}
 
 	return userID, nil

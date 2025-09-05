@@ -32,10 +32,12 @@ func Router(h *api.AppHandler) chi.Router {
 
 		// добавление пользователем нового сервера
 		r.Post("/servers/add", h.AddServer)
-		// удаление существующего сервера пользователя
+		// удаление сервера, принадлежащему пользователю
 		r.Post("/servers/delete", h.DelServer)
-		// получение информации по серверу
+		// получение информации по серверу, принадлежащему пользователю
 		r.Post("/servers/get", h.GetServer)
+		// получение списка серверов пользователя
+		r.Get("/servers/list", h.GetServerList)
 	})
 
 	return router

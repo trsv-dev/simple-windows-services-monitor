@@ -1,12 +1,15 @@
 package models
 
+import "time"
+
 // Server Модель сервера.
 type Server struct {
-	Name     string    `json:"name"`
-	Address  string    `json:"address"`
-	Username string    `json:"username"`
-	Password string    `json:"password"`
-	Services []Service `json:"services"`
+	Name      string    `json:"name"`
+	Address   string    `json:"address"`
+	Username  string    `json:"username"`
+	Password  string    `json:"password"`
+	CreatedAt time.Time `json:"created_at"`
+	Services  []Service `json:"services"`
 }
 
 // Service Модель службы.
