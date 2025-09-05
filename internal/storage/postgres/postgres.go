@@ -51,41 +51,125 @@ func InitStorage(DatabaseURI string) (*PgStorage, error) {
 }
 
 // AddServer Добавление нового сервера в БД.
-func (p *PgStorage) AddServer(ctx context.Context, server models.Server) error {
+func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int) error {
+	// хэшируем пароль для передачи в БД
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(server.Password), bcrypt.DefaultCost)
+	if err != nil {
+		logger.Log.Error("Не удалось хэшировать пароль", logger.String("err", err.Error()))
+		return err
+	}
+
+	query := `INSERT INTO servers (user_id, name, address, username, password) VALUES ($1, $2, $3, $4, $5)`
+
+	_, err = pg.DB.ExecContext(ctx, query, userID, server.Name, server.Address, server.Username, hashedPassword)
+
+	var pgErr *pgconn.PgError
+	if err != nil {
+		switch {
+		// если ошибка говорит о дубликате сервера - выходим из функции и возвращаем ошибку
+		case errors.As(err, &pgErr) && pgErr.Code == "23505":
+			return errs.NewErrDuplicatedServer(server.Address, err)
+		default:
+			return fmt.Errorf("ошибка при добавлении сервера: %w", err)
+		}
+	}
+
 	return nil
 }
 
-func (p *PgStorage) DelServer(ctx context.Context, srvAddr string) error {
+func (pg *PgStorage) DelServer(ctx context.Context, srvAddr string, login string) error {
+	query := `DELETE FROM servers 
+       		  WHERE address = $1 AND user_id = (SELECT id FROM users WHERE login = $2)`
+
+	Result, err := pg.DB.ExecContext(ctx, query, srvAddr, login)
+
+	if err != nil {
+		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+		return err
+	}
+
+	affectedRows, err := Result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при выполнении запроса %w", err)
+	}
+
+	if affectedRows == 0 {
+		return errs.NewErrServerNotFound(srvAddr, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
+	}
+
+	return nil
+}
+
+// GetServer Получение информации о сервере, принадлежащем пользователю.
+func (pg *PgStorage) GetServer(ctx context.Context, srvAddr string, login string) (*models.Server, error) {
+	var server models.Server
+
+	query := `SELECT name, address, username, created_at FROM servers 
+              WHERE address = $1 
+                AND user_id = (SELECT id FROM users WHERE login = $2)`
+
+	err := pg.DB.QueryRowContext(ctx, query, srvAddr, login).Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, errs.NewErrServerNotFound(srvAddr, login, err)
+		default:
+			return nil, err
+		}
+	}
+
+	return &server, nil
+}
+
+func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Server, error) {
+	query := `SELECT name, address, username, created_at 
+			  FROM servers WHERE user_id = (SELECT id FROM users WHERE login = $1)`
+
+	rows, err := pg.DB.QueryContext(ctx, query, login)
+	if err != nil {
+		logger.Log.Error("Ошибка при получении списка серверов пользователя", logger.String("err", err.Error()))
+		return nil, fmt.Errorf("ошибка при получении серверов пользователя: %w", err)
+	}
+	defer rows.Close()
+
+	var servers []models.Server
+
+	for rows.Next() {
+		var server models.Server
+		err = rows.Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+		if err != nil {
+			logger.Log.Error("ошибка парсинга запроса на получение серверов пользователя", logger.String("err", err.Error()))
+			return nil, err
+		}
+
+		servers = append(servers, server)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logger.Log.Error("Ошибка при обработке строк на получение информации о серверах пользователя", logger.String("err", err.Error()))
+		return nil, err
+	}
+
+	return servers, nil
+}
+
+func (pg *PgStorage) AddService(ctx context.Context, srvAddr string, service models.Service) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (p *PgStorage) GetServer(ctx context.Context, srvAddr string) (models.Server, error) {
+func (pg *PgStorage) DelService(ctx context.Context, srvAddr string, service models.Service) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (p *PgStorage) ListServers(ctx context.Context) ([]models.Server, error) {
+func (pg *PgStorage) GetService(ctx context.Context, srvAddr string) (models.Service, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (p *PgStorage) AddService(ctx context.Context, srvAddr string, service models.Service) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (p *PgStorage) DelService(ctx context.Context, srvAddr string, service models.Service) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (p *PgStorage) GetService(ctx context.Context, srvAddr string) (models.Service, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (p *PgStorage) ListServices(ctx context.Context, srvAddr string) ([]models.Service, error) {
+func (pg *PgStorage) ListServices(ctx context.Context, srvAddr string) ([]models.Service, error) {
 	//TODO implement me
 	panic("implement me")
 }
@@ -126,13 +210,15 @@ func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.Us
 	query := `SELECT login, password FROM users WHERE login = $1`
 	err := pg.DB.QueryRowContext(ctx, query, user.Login).Scan(&userFromDB.Login, &userFromDB.Password)
 
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		logger.Log.Error("Пользователь с таким логином не найден", logger.String("err", err.Error()))
-		return nil, errs.NewErrWrongLoginOrPassword(err)
-	case err != nil:
-		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
-		return nil, err
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			logger.Log.Error("Пользователь с таким логином не найден", logger.String("err", err.Error()))
+			return nil, errs.NewErrWrongLoginOrPassword(err)
+		default:
+			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+			return nil, err
+		}
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(userFromDB.Password), []byte(user.Password)); err != nil {
@@ -143,8 +229,29 @@ func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.Us
 	return &userFromDB, nil
 }
 
-func (p *PgStorage) Close() error {
-	err := p.DB.Close()
+// GetUserIDByLogin Возвращает userID пользователя если он зарегистрирован.
+func (pg *PgStorage) GetUserIDByLogin(ctx context.Context, login string) (int, error) {
+	var userID int
+
+	query := `SELECT id FROM users WHERE login = $1`
+
+	err := pg.DB.QueryRowContext(ctx, query, login).Scan(&userID)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return 0, errs.NewErrLoginNotFound(err)
+		default:
+			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+			return 0, err
+		}
+	}
+
+	return userID, nil
+}
+
+func (pg *PgStorage) Close() error {
+	err := pg.DB.Close()
 	if err != nil {
 		logger.Log.Error("Ошибка закрытия соединения с БД PostgreSQL", logger.String("err", err.Error()))
 		return fmt.Errorf("ошибка закрытия БД PostgreSQL: %w", err)

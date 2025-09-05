@@ -8,8 +8,8 @@ import (
 
 // ServerStorage Интерфейс для серверов.
 type ServerStorage interface {
-	AddServer(ctx context.Context, server models.Server) error
-	DelServer(ctx context.Context, srvAddr string) error
-	GetServer(ctx context.Context, srvAddr string) (models.Server, error)
-	ListServers(ctx context.Context) ([]models.Server, error)
+	AddServer(ctx context.Context, server models.Server, userID int) error
+	DelServer(ctx context.Context, srvAddr string, login string) error
+	GetServer(ctx context.Context, srvAddr string, login string) (*models.Server, error)
+	ListServers(ctx context.Context, login string) ([]models.Server, error)
 }

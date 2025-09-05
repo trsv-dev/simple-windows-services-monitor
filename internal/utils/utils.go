@@ -1,5 +1,7 @@
 package utils
 
+import "net"
+
 // IsAlphaNumeric Проверяет что в строке только большие и маленькие буквы английского алфавита и цифры.
 func IsAlphaNumeric(s string) bool {
 	if len(s) == 0 {
@@ -30,4 +32,9 @@ func IsDigitsOnly(s string) bool {
 	}
 
 	return true
+}
+
+// IsValidIP Валидатор IP адресов серверов.
+func IsValidIP(ip string) bool {
+	return net.ParseIP(ip) != nil
 }

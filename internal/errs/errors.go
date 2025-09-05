@@ -9,7 +9,7 @@ type ErrLoginIsTaken struct {
 }
 
 func (lt *ErrLoginIsTaken) Error() string {
-	return fmt.Sprintf("пользователь с логином `%s` уже существует. Ошибка: %v", lt.Login, lt.Err)
+	return fmt.Sprintf("Пользователь с логином `%s` уже существует. Ошибка: %v", lt.Login, lt.Err)
 }
 
 func (lt *ErrLoginIsTaken) Unwrap() error {
@@ -29,7 +29,7 @@ type ErrWrongLoginOrPassword struct {
 }
 
 func (wl *ErrWrongLoginOrPassword) Error() string {
-	return fmt.Sprintf("неверная пара логин/пароль. Ошибка: %v", wl.Err)
+	return fmt.Sprintf("Неверная пара логин/пароль. Ошибка: %v", wl.Err)
 }
 
 func (wl *ErrWrongLoginOrPassword) Unwrap() error {
@@ -39,5 +39,72 @@ func (wl *ErrWrongLoginOrPassword) Unwrap() error {
 func NewErrWrongLoginOrPassword(err error) *ErrWrongLoginOrPassword {
 	return &ErrWrongLoginOrPassword{
 		Err: err,
+	}
+}
+
+// ErrLoginNotFound Кастомная ошибка, сообщающая о том, что логин не был найден.
+type ErrLoginNotFound struct {
+	Err error
+}
+
+func (nf *ErrLoginNotFound) Error() string {
+	return fmt.Sprintf("Такой логин не найден. Ошибка: %v", nf.Err)
+}
+
+func (nf *ErrLoginNotFound) Unwrap() error {
+	return nf.Err
+}
+
+func NewErrLoginNotFound(err error) *ErrLoginNotFound {
+	return &ErrLoginNotFound{
+		Err: err,
+	}
+}
+
+// ErrDuplicatedServer Кастомная ошибка, сообщающая о том, сервер уже был добавлен пользователем.
+type ErrDuplicatedServer struct {
+	Address string
+	Err     error
+}
+
+func (ds *ErrDuplicatedServer) Error() string {
+	return fmt.Sprintf("Сервер %s уже был добавлен. Ошибка: %v", ds.Address, ds.Err)
+}
+
+func (ds *ErrDuplicatedServer) Unwrap() error {
+	return ds.Err
+}
+
+func NewErrDuplicatedServer(serverAddr string, err error) *ErrDuplicatedServer {
+	return &ErrDuplicatedServer{
+		Address: serverAddr,
+		Err:     err,
+	}
+}
+
+// ErrServerNotFound Кастомная ошибка, сообщающая о том, что сервер не найден (был удален или не принадлежит пользователю).
+type ErrServerNotFound struct {
+	Err     error
+	Address string
+	Login   string
+}
+
+func (no *ErrServerNotFound) Error() string {
+	return fmt.Sprintf("Сервер %s не найден %s", no.Address, no.Login)
+}
+
+func (no *ErrServerNotFound) Unwrap() error {
+	return no.Err
+}
+
+func NewErrServerNotFound(address, login string, err error) *ErrServerNotFound {
+	if err == nil {
+		err = fmt.Errorf("сервер не найден")
+	}
+
+	return &ErrServerNotFound{
+		Err:     err,
+		Address: address,
+		Login:   login,
 	}
 }
