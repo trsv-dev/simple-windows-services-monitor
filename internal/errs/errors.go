@@ -90,7 +90,7 @@ type ErrServerNotFound struct {
 }
 
 func (no *ErrServerNotFound) Error() string {
-	return fmt.Sprintf("Сервер %s не найден %s", no.ID, no.Login)
+	return fmt.Sprintf("Сервер %d не найден %s", no.ID, no.Login)
 }
 
 func (no *ErrServerNotFound) Unwrap() error {
