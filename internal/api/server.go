@@ -71,6 +71,7 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 	response.SuccessJSON(w, http.StatusOK, "Сервер успешно добавлен")
 }
 
+// EditServer Редактирование пользовательского сервера.
 func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -89,31 +90,75 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(idStr)
 
+	// получаем текущие данные сервера
+	old, err := h.storage.GetServer(ctx, id, login)
+
+	var ErrServerNotFound *errs.ErrServerNotFound
+
+	if err != nil {
+		switch {
+		case errors.As(err, &ErrServerNotFound):
+			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
+				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
+			return
+		default:
+			logger.Log.Warn("Ошибка при получении информации о сервере", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о сервере")
+			return
+		}
+	}
+
+	// читаем данные из входящего JSON с обновленной информацией о сервере
 	var input models.Server
 
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err = json.NewDecoder(r.Body).Decode(&input); err != nil {
 		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
 		return
 	}
 
-	updatedServer, err := h.storage.EditServer(ctx, id, login, input)
-	//todo тут, видимо, надо описать какую-то еще ошибку
+	// обновляем полученными данными текущий сервер
+	if input.Name != "" {
+		old.Name = input.Name
+	}
+	if input.Username != "" {
+		old.Username = input.Username
+	}
+	if input.Password != "" {
+		old.Password = input.Password
+	}
+	if input.Address != "" {
+		if !utils.IsValidIP(input.Address) {
+			logger.Log.Error("При редактировании сервера передан невалидный IP-адрес",
+				logger.String("login", login),
+				logger.String("address", input.Address),
+			)
+			response.ErrorJSON(w, http.StatusBadRequest, "Невалидный IP адрес сервера")
+			return
+		}
+		old.Address = input.Address
+	}
+
+	// производим обновление сервера в БД
+	err = h.storage.EditServer(ctx, old, id, login)
 	if err != nil {
-		logger.Log.Warn("Ошибка при обновлении сервера", logger.String("err", err.Error()))
-		response.ErrorJSON(w, http.StatusBadRequest, "Ошибка при обновлении сервера")
-		return
+		switch {
+		case errors.As(err, &ErrServerNotFound):
+			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
+				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
+			return
+		default:
+			logger.Log.Warn("Ошибка при обновлении сервера", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, "Ошибка при обновлении сервера")
+			return
+		}
 	}
 
 	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", login),
 		logger.Int("serverID", id))
 
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err = json.NewEncoder(w).Encode(updatedServer); err != nil {
-		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
-		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
-		return
-	}
 }
 
 // DelServer Удаление сервера, добавленного пользователем.
@@ -194,7 +239,7 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("address", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:

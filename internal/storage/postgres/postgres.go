@@ -52,16 +52,25 @@ func InitStorage(DatabaseURI string) (*PgStorage, error) {
 
 // AddServer Добавление нового сервера в БД.
 func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int) error {
-	// хэшируем пароль для передачи в БД
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(server.Password), bcrypt.DefaultCost)
-	if err != nil {
-		logger.Log.Error("Не удалось хэшировать пароль", logger.String("err", err.Error()))
-		return err
+
+	var newPassword []byte
+
+	if server.Password != "" {
+		// хэшируем пароль для передачи в БД
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(server.Password), bcrypt.DefaultCost)
+		if err != nil {
+			logger.Log.Error("Не удалось хэшировать пароль", logger.String("err", err.Error()))
+			return err
+		}
+
+		newPassword = hashedPassword
+	} else {
+		newPassword = []byte(server.Password)
 	}
 
 	query := `INSERT INTO servers (user_id, name, address, username, password) VALUES ($1, $2, $3, $4, $5)`
 
-	_, err = pg.DB.ExecContext(ctx, query, userID, server.Name, server.Address, server.Username, hashedPassword)
+	_, err := pg.DB.ExecContext(ctx, query, userID, server.Name, server.Address, server.Username, newPassword)
 
 	var pgErr *pgconn.PgError
 	if err != nil {
@@ -78,9 +87,50 @@ func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID
 }
 
 // EditServer Редактирование сервера, принадлежащего пользователю.
-func (pg *PgStorage) EditServer(ctx context.Context, id int, login string, input models.Server) (*models.Server, error) {
-	//query := `UPDATE servers SET `
-	return nil, nil
+func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, id int, login string) error {
+	var password []byte
+
+	// если был передан новый пароль - хэшируем его для передачи в БД
+	if editedServer.Password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(editedServer.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("не удалось хэшировать пароль: %w", err)
+		}
+
+		password = hashedPassword
+	} else {
+		// Если пароль не был передан, получаем текущий из БД
+		var currentPassword []byte
+		getCurrentPasswordQuery := `SELECT password FROM servers WHERE id = $1 AND user_id = (SELECT id FROM users WHERE login = $2)`
+		err := pg.DB.QueryRowContext(ctx, getCurrentPasswordQuery, id, login).Scan(&currentPassword)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return errs.NewErrServerNotFound(id, login, err)
+			}
+			return fmt.Errorf("ошибка при получении текущего пароля: %w", err)
+		}
+		password = currentPassword
+	}
+
+	// обновляем сервер собранными данными
+	updateQuery := `UPDATE servers SET name = $1, username = $2, address = $3, password = $4 
+              WHERE id = $5 AND user_id = (SELECT id FROM users WHERE login = $6)`
+
+	Result, err := pg.DB.ExecContext(ctx, updateQuery, editedServer.Name, editedServer.Username, editedServer.Address, password, id, login)
+	if err != nil {
+		return fmt.Errorf("ошибка при обновлении информации о сервере: %w", err)
+	}
+
+	affectedRows, err := Result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при выполнении запроса %w", err)
+	}
+
+	if affectedRows == 0 {
+		return errs.NewErrServerNotFound(id, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
+	}
+
+	return nil
 }
 
 // DelServer Удаление сервера, принадлежащего пользователю.
@@ -128,6 +178,7 @@ func (pg *PgStorage) GetServer(ctx context.Context, id int, login string) (*mode
 	return &server, nil
 }
 
+// ListServers Отображение списка серверов, принадлежащих пользователю.
 func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Server, error) {
 	query := `SELECT name, address, username, created_at 
 			  FROM servers WHERE user_id = (SELECT id FROM users WHERE login = $1)`
