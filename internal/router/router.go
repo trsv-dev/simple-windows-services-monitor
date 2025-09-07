@@ -31,13 +31,15 @@ func Router(h *api.AppHandler) chi.Router {
 		r.Use(middleware.LoginToContextMiddleware)
 
 		// добавление пользователем нового сервера
-		r.Post("/servers/add", h.AddServer)
+		r.Post("/servers", h.AddServer)
+		// редактирование сервера, принадлежащего пользователю
+		r.Patch("/servers/{id}", h.EditServer)
 		// удаление сервера, принадлежащему пользователю
-		r.Post("/servers/delete", h.DelServer)
+		r.Delete("/servers/{id}", h.DelServer)
 		// получение информации по серверу, принадлежащему пользователю
-		r.Post("/servers/get", h.GetServer)
+		r.Get("/servers/{id}", h.GetServer)
 		// получение списка серверов пользователя
-		r.Get("/servers/list", h.GetServerList)
+		r.Get("/servers", h.GetServerList)
 	})
 
 	return router
