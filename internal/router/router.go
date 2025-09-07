@@ -1,8 +1,6 @@
 package router
 
 import (
-	"net/http"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/middleware"
@@ -15,31 +13,32 @@ func Router(h *api.AppHandler) chi.Router {
 	// middleware логгера всех запросов
 	router.Use(middleware.LogMiddleware)
 
-	// публичные маршруты:
-
-	// Hello, World!
-	router.Get("/", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("Hello, World!")) })
-
-	// регистрация нового пользователя
+	// публичные маршруты
 	router.Post("/api/user/register", h.UserRegistration)
-	// авторизация пользователя (логин)
 	router.Post("/api/user/login", h.UserAuthorization)
 
-	// маршруты, требующие авторизацию:
+	// маршруты, требующие авторизацию
 	router.Route("/api/user", func(r chi.Router) {
-		// middleware добавления логина зарегистрированного и авторизованного пользователя в контекст
-		r.Use(middleware.LoginToContextMiddleware)
 
-		// добавление пользователем нового сервера
-		r.Post("/servers", h.AddServer)
-		// редактирование сервера, принадлежащего пользователю
-		r.Patch("/servers/{id}", h.EditServer)
-		// удаление сервера, принадлежащему пользователю
-		r.Delete("/servers/{id}", h.DelServer)
-		// получение информации по серверу, принадлежащему пользователю
-		r.Get("/servers/{id}", h.GetServer)
-		// получение списка серверов пользователя
-		r.Get("/servers", h.GetServerList)
+		// middleware для всех приватных маршрутов
+		r.Use(middleware.LoginToContextMiddleware)
+		r.Use(middleware.RequireAuthMiddleware)
+
+		// маршруты БЕЗ ID параметра
+		r.Post("/servers", h.AddServer)    // создание сервера
+		r.Get("/servers", h.GetServerList) // список серверов пользователя
+
+		// маршруты С ID параметром
+		r.Route("/servers/{id}", func(r chi.Router) {
+
+			// извлекаем ID из параметров роутера
+			r.Use(middleware.ParseIDMiddleware)
+
+			r.Patch("/", h.EditServer)        // редактирование сервера
+			r.Delete("/", h.DelServer)        // удаление сервера
+			r.Get("/", h.GetServer)           // получение сервера
+			r.Post("/services", h.AddService) // добавление службы
+		})
 	})
 
 	return router

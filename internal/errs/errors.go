@@ -108,3 +108,51 @@ func NewErrServerNotFound(id int, login string, err error) *ErrServerNotFound {
 		Login: login,
 	}
 }
+
+// ErrDuplicatedService Кастомная ошибка, сообщающая о том, служба уже была добавлена пользователем на сервер.
+type ErrDuplicatedService struct {
+	ServiceName string
+	Err         error
+}
+
+func (ds *ErrDuplicatedService) Error() string {
+	return fmt.Sprintf("Служба %s уже была добавлена на сервер. Ошибка: %v", ds.ServiceName, ds.Err)
+}
+
+func (ds *ErrDuplicatedService) Unwrap() error {
+	return ds.Err
+}
+
+func NewErrDuplicatedService(ServiceName string, err error) *ErrDuplicatedService {
+	return &ErrDuplicatedService{
+		ServiceName: ServiceName,
+		Err:         err,
+	}
+}
+
+// ErrServiceNotFound Кастомная ошибка, сообщающая о том, что служба не найдена (была удалена или не принадлежит серверу).
+type ErrServiceNotFound struct {
+	Err         error
+	ServiceName string
+	ID          int
+}
+
+func (no *ErrServiceNotFound) Error() string {
+	return fmt.Sprintf("Сервер %d не найден %s", no.ID)
+}
+
+func (no *ErrServiceNotFound) Unwrap() error {
+	return no.Err
+}
+
+func NewErrServiceNotFound(id int, serviceName string, err error) *ErrServiceNotFound {
+	if err == nil {
+		err = fmt.Errorf("служба не найдена")
+	}
+
+	return &ErrServiceNotFound{
+		Err:         err,
+		ServiceName: serviceName,
+		ID:          id,
+	}
+}
