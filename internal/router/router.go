@@ -29,15 +29,28 @@ func Router(h *api.AppHandler) chi.Router {
 		r.Get("/servers", h.GetServerList) // список серверов пользователя
 
 		// маршруты С ID параметром
-		r.Route("/servers/{id}", func(r chi.Router) {
+		r.Route("/servers/{serverID}", func(r chi.Router) {
 
-			// извлекаем ID из параметров роутера
-			r.Use(middleware.ParseIDMiddleware)
+			// извлекаем serverID из параметров роутера
+			r.Use(middleware.ParseServerIDMiddleware)
 
-			r.Patch("/", h.EditServer)        // редактирование сервера
-			r.Delete("/", h.DelServer)        // удаление сервера
-			r.Get("/", h.GetServer)           // получение сервера
-			r.Post("/services", h.AddService) // добавление службы
+			r.Patch("/", h.EditServer) // редактирование сервера
+			r.Delete("/", h.DelServer) // удаление сервера
+			r.Get("/", h.GetServer)    // получение сервера
+
+			r.Route("/services", func(r chi.Router) {
+				r.Post("/", h.AddService)     // добавление службы
+				r.Get("/", h.GetServicesList) // список служб сервера
+
+				r.Route("/{serviceID}", func(r chi.Router) {
+
+					// извлекаем serviceID из параметров роутера
+					r.Use(middleware.ParseServiceIDMiddleware)
+
+					r.Delete("/", h.DelService) //удаление службы
+					r.Get("/", h.GetService)    // получение службы
+				})
+			})
 		})
 	})
 

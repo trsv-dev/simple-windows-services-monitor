@@ -15,20 +15,6 @@ import (
 
 // AddServer Добавление нового сервера.
 func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != http.MethodPost {
-	//	w.WriteHeader(http.StatusMethodNotAllowed)
-	//	return
-	//}
-	//
-	//ctx := r.Context()
-	//
-	//login, ok := ctx.Value(contextkeys.Login).(string)
-	//if !ok || login == "" {
-	//	logger.Log.Error("Не удалось получить логин из контекста")
-	//	response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
-	//	return
-	//}
-
 	ctx := r.Context()
 	login := ctx.Value(contextkeys.Login).(string)
 
@@ -60,7 +46,7 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrDuplicatedServer):
 			logger.Log.Error("Дубликат сервера", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер уже был добавлен")
+			response.ErrorJSON(w, http.StatusConflict, "Сервер уже был добавлен")
 			return
 		default:
 			logger.Log.Error("Ошибка добавления сервера в БД", logger.String("err", err.Error()))
@@ -75,30 +61,9 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 
 // EditServer Редактирование пользовательского сервера.
 func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != http.MethodPatch {
-	//	w.WriteHeader(http.StatusMethodNotAllowed)
-	//	return
-	//}
-	//
-	//ctx := r.Context()
-	//
-	//login, ok := ctx.Value(contextkeys.Login).(string)
-	//if !ok || login == "" {
-	//	logger.Log.Error("Не удалось получить логин из контекста")
-	//	response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
-	//	return
-	//}
-	//
-	//idStr := chi.URLParam(r, "id")
-	//id, err := strconv.Atoi(idStr)
-	//if err != nil {
-	//	response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id")
-	//	return
-	//}
-
 	ctx := r.Context()
 	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.IDKey).(int)
+	id := ctx.Value(contextkeys.ServerID).(int)
 
 	// получаем текущие данные сервера
 	old, err := h.storage.GetServer(ctx, id, login)
@@ -108,9 +73,8 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
-			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
+			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер не был найден")
 			return
 		default:
 			logger.Log.Warn("Ошибка при получении информации о сервере", logger.String("err", err.Error()))
@@ -174,30 +138,9 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 
 // DelServer Удаление сервера, добавленного пользователем.
 func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != http.MethodDelete {
-	//	w.WriteHeader(http.StatusMethodNotAllowed)
-	//	return
-	//}
-	//
-	//ctx := r.Context()
-	//
-	//login, ok := ctx.Value(contextkeys.Login).(string)
-	//if !ok || login == "" {
-	//	logger.Log.Error("Не удалось получить логин из контекста")
-	//	response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
-	//	return
-	//}
-	//
-	//idStr := chi.URLParam(r, "id")
-	//id, err := strconv.Atoi(idStr)
-	//if err != nil {
-	//	response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id")
-	//	return
-	//}
-
 	ctx := r.Context()
 	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.IDKey).(int)
+	id := ctx.Value(contextkeys.ServerID).(int)
 
 	err := h.storage.DelServer(ctx, id, login)
 
@@ -225,30 +168,9 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 
 // GetServer Получение информации о сервере.
 func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != http.MethodGet {
-	//	w.WriteHeader(http.StatusMethodNotAllowed)
-	//	return
-	//}
-	//
-	//ctx := r.Context()
-	//
-	//login, ok := ctx.Value(contextkeys.Login).(string)
-	//if !ok || login == "" {
-	//	logger.Log.Error("Не удалось получить логин из контекста")
-	//	response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
-	//	return
-	//}
-	//
-	//idStr := chi.URLParam(r, "id")
-	//id, err := strconv.Atoi(idStr)
-	//if err != nil {
-	//	response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id")
-	//	return
-	//}
-
 	ctx := r.Context()
 	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.IDKey).(int)
+	id := ctx.Value(contextkeys.ServerID).(int)
 
 	server, err := h.storage.GetServer(ctx, id, login)
 
@@ -279,20 +201,6 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 
 // GetServerList Получение списка серверов пользователя.
 func (h *AppHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != http.MethodGet {
-	//	w.WriteHeader(http.StatusMethodNotAllowed)
-	//	return
-	//}
-	//
-	//ctx := r.Context()
-	//
-	//login, ok := ctx.Value(contextkeys.Login).(string)
-	//if !ok || login == "" {
-	//	logger.Log.Error("Не удалось получить логин из контекста")
-	//	response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
-	//	return
-	//}
-
 	ctx := r.Context()
 	login := ctx.Value(contextkeys.Login).(string)
 

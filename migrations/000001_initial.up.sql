@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS servers (
     CONSTRAINT unique_user_server UNIQUE (user_id, address)
 );
 
+CREATE INDEX idx_servers_user_id ON servers(user_id);
+
 CREATE TABLE IF NOT EXISTS services (
     id SERIAL PRIMARY KEY,
     server_id INTEGER NOT NULL,
@@ -26,5 +28,6 @@ CREATE TABLE IF NOT EXISTS services (
     service_name VARCHAR(250) NOT NULL,
     status VARCHAR(250) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+    CONSTRAINT unique_service_server UNIQUE (server_id, service_name)
 );
