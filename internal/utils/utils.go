@@ -1,6 +1,8 @@
 package utils
 
-import "net"
+import (
+	"net"
+)
 
 // IsAlphaNumeric Проверяет что в строке только большие и маленькие буквы английского алфавита и цифры.
 func IsAlphaNumeric(s string) bool {
