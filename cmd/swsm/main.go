@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
+	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -10,11 +14,23 @@ import (
 )
 
 func main() {
+	errEnv := godotenv.Load("../../.env")
+	if errEnv != nil {
+		log.Println("Не удалось загрузить .env:", errEnv)
+	}
+
 	srvConfig := config.InitConfig()
 
 	logger.InitLogger(srvConfig.LogLevel)
 
-	storage, err := postgres.InitStorage(srvConfig.DatabaseURI)
+	AESKeyStr := srvConfig.AESKey
+	AESKeyBytes, err := base64.StdEncoding.DecodeString(AESKeyStr)
+	if err != nil {
+		logger.Log.Error("Не удалось декодировать AES-ключ из конфигурации", logger.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	storage, err := postgres.InitStorage(srvConfig.DatabaseURI, AESKeyBytes)
 	if err != nil {
 		logger.Log.Error("Не удалось инициировать хранилище (БД)", logger.String("err", err.Error()))
 		os.Exit(1)

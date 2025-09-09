@@ -24,11 +24,11 @@ func Router(h *api.AppHandler) chi.Router {
 		r.Use(middleware.LoginToContextMiddleware)
 		r.Use(middleware.RequireAuthMiddleware)
 
-		// маршруты БЕЗ ID параметра
+		// маршруты БЕЗ ServerID параметра
 		r.Post("/servers", h.AddServer)    // создание сервера
 		r.Get("/servers", h.GetServerList) // список серверов пользователя
 
-		// маршруты С ID параметром
+		// маршруты С serverID параметром
 		r.Route("/servers/{serverID}", func(r chi.Router) {
 
 			// извлекаем serverID из параметров роутера
@@ -42,6 +42,7 @@ func Router(h *api.AppHandler) chi.Router {
 				r.Post("/", h.AddService)     // добавление службы
 				r.Get("/", h.GetServicesList) // список служб сервера
 
+				// маршруты С serviceID параметром
 				r.Route("/{serviceID}", func(r chi.Router) {
 
 					// извлекаем serviceID из параметров роутера
@@ -49,6 +50,11 @@ func Router(h *api.AppHandler) chi.Router {
 
 					r.Delete("/", h.DelService) //удаление службы
 					r.Get("/", h.GetService)    // получение службы
+
+					// управление службами
+					//r.Post("/start", h.ServiceStart)     // запуск службы
+					//r.Post("/stop", h.ServiceStop)       // остановка службы
+					//r.Post("/restart", h.ServiceRestart) // перезапуск службы
 				})
 			})
 		})

@@ -18,11 +18,12 @@ import (
 
 // PgStorage Структура хранилища в PostgreSQL, удовлетворяющая интерфейсу Storage.
 type PgStorage struct {
-	DB *sql.DB
+	DB     *sql.DB
+	AESKey []byte
 }
 
 // InitStorage Инициализация хранилища.
-func InitStorage(DatabaseURI string) (*PgStorage, error) {
+func InitStorage(DatabaseURI string, AESKey []byte) (*PgStorage, error) {
 	// открываем соединение с БД
 	pg, err := sql.Open("pgx", DatabaseURI)
 	if err != nil {
@@ -44,7 +45,7 @@ func InitStorage(DatabaseURI string) (*PgStorage, error) {
 		return nil, fmt.Errorf("ошибка применения миграций к БД PostgreSQL: %w", err)
 	}
 
-	pgStorage := &PgStorage{DB: pg}
+	pgStorage := &PgStorage{DB: pg, AESKey: AESKey}
 
 	logger.Log.Info("В качестве хранилища используется БД PostgreSQL")
 	return pgStorage, nil
@@ -52,20 +53,18 @@ func InitStorage(DatabaseURI string) (*PgStorage, error) {
 
 // AddServer Добавление нового сервера в БД.
 func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int) error {
-
-	var newPassword []byte
+	var newPassword string
 
 	if server.Password != "" {
-		// хэшируем пароль для передачи в БД
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(server.Password), bcrypt.DefaultCost)
+		// шифруем пароль для хранения в БД
+		encryptedPassword, err := utils.EncryptAES([]byte(server.Password), pg.AESKey)
 		if err != nil {
-			logger.Log.Error("Не удалось хэшировать пароль", logger.String("err", err.Error()))
+			logger.Log.Error("Не удалось зашифровать пароль", logger.String("err", err.Error()))
 			return err
 		}
-
-		newPassword = hashedPassword
+		newPassword = encryptedPassword
 	} else {
-		newPassword = []byte(server.Password)
+		newPassword = server.Password
 	}
 
 	query := `INSERT INTO servers (user_id, name, address, username, password) VALUES ($1, $2, $3, $4, $5)`
@@ -88,19 +87,20 @@ func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID
 
 // EditServer Редактирование сервера, принадлежащего пользователю.
 func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, serverID int, login string) error {
-	var password []byte
+	var password string
 
-	// если был передан новый пароль - хэшируем его для передачи в БД
+	// если был передан новый пароль - шифруем его для передачи в БД
 	if editedServer.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(editedServer.Password), bcrypt.DefaultCost)
+		encryptedPassword, err := utils.EncryptAES([]byte(editedServer.Password), pg.AESKey)
 		if err != nil {
-			return fmt.Errorf("не удалось хэшировать пароль: %w", err)
+			logger.Log.Error("Не удалось зашифровать пароль", logger.String("err", err.Error()))
+			return err
 		}
 
-		password = hashedPassword
+		password = encryptedPassword
 	} else {
 		// Если пароль не был передан, получаем текущий из БД
-		var currentPassword []byte
+		var currentPassword string
 		getCurrentPasswordQuery := `SELECT password FROM servers WHERE id = $1 AND user_id = (SELECT id FROM users WHERE login = $2)`
 		err := pg.DB.QueryRowContext(ctx, getCurrentPasswordQuery, serverID, login).Scan(&currentPassword)
 		if err != nil {
@@ -428,6 +428,7 @@ func (pg *PgStorage) GetUserIDByLogin(ctx context.Context, login string) (int, e
 	return userID, nil
 }
 
+// Close Закрытие соединения с БД.
 func (pg *PgStorage) Close() error {
 	err := pg.DB.Close()
 	if err != nil {
@@ -436,4 +437,9 @@ func (pg *PgStorage) Close() error {
 	}
 
 	return nil
+}
+
+// GetAESKey Отдает AES-ключ.
+func (pg *PgStorage) GetAESKey() []byte {
+	return pg.AESKey
 }

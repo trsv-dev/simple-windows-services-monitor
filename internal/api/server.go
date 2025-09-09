@@ -133,7 +133,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", login),
 		logger.Int("serverID", id))
 
-	w.WriteHeader(http.StatusOK)
+	response.SuccessJSON(w, http.StatusAccepted, "Сервер успешно отредактирован")
 }
 
 // DelServer Удаление сервера, добавленного пользователем.

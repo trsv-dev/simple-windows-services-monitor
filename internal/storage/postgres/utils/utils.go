@@ -1,8 +1,13 @@
 package utils
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -55,4 +60,56 @@ func ApplyMigrations(DatabaseURI string) error {
 
 	logger.Log.Info("Миграции были применены")
 	return nil
+}
+
+// EncryptAES шифрует строку с помощью AES-256-GCM и возвращает base64 строку.
+func EncryptAES(plaintext, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("создание AES блока: %w", err)
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("создание GCM режима: %w", err)
+	}
+
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("генерация nonce: %w", err)
+	}
+
+	ciphertext := aesGCM.Seal(nonce, nonce, plaintext, nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// DecryptAES расшифровывает base64 строку с помощью AES-256-GCM и возвращает plaintext.
+func DecryptAES(encryptedText string, key []byte) (string, error) {
+	data, err := base64.StdEncoding.DecodeString(encryptedText)
+	if err != nil {
+		return "", fmt.Errorf("декодирование base64: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("создание AES блока: %w", err)
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("создание GCM режима: %w", err)
+	}
+
+	nonceSize := aesGCM.NonceSize()
+	if len(data) < nonceSize {
+		return "", fmt.Errorf("ciphertext слишком короткий")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("расшифровка не удалась: %w", err)
+	}
+
+	return string(plaintext), nil
 }
