@@ -17,8 +17,8 @@ import (
 )
 
 // NewServer Создание нового сервера.
-func NewServer(runAddress string, storage storage.Storage) *http.Server {
-	appHandler := api.NewAppHandler(storage)
+func NewServer(runAddress string, storage storage.Storage, JWTSecretKey string) *http.Server {
+	appHandler := api.NewAppHandler(storage, JWTSecretKey)
 	mux := router.Router(appHandler)
 
 	server := &http.Server{
@@ -30,10 +30,14 @@ func NewServer(runAddress string, storage storage.Storage) *http.Server {
 }
 
 // RunServer Запуск сервера.
-func RunServer(runAddress string, storage storage.Storage) error {
-	server := NewServer(runAddress, storage)
+func RunServer(runAddress string, storage storage.Storage, JWTSecretKey string) error {
+	server := NewServer(runAddress, storage, JWTSecretKey)
 
+	// канал ошибок сервера
 	serverError := make(chan error, 1)
+	// канал системных сигналов
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		logger.Log.Info("Сервер запущен", logger.String("address", server.Addr))
@@ -43,9 +47,6 @@ func RunServer(runAddress string, storage storage.Storage) error {
 			serverError <- err
 		}
 	}()
-
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case err := <-serverError:

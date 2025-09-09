@@ -21,7 +21,7 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.LoginToContextMiddleware)
+		r.Use(middleware.LoginToContextMiddleware(h.JWTSecretKey))
 		r.Use(middleware.RequireAuthMiddleware)
 
 		// маршруты БЕЗ ServerID параметра
