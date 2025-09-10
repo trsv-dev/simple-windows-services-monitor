@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = server.RunServer(srvConfig.RunAddress, storage)
+	err = server.RunServer(srvConfig.RunAddress, storage, srvConfig.JWTSecretKey)
 	if err != nil {
 		panic(err)
 	}

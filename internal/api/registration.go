@@ -68,7 +68,7 @@ func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tokenString, err := auth.BuildJWTToken(&user)
+	tokenString, err := auth.BuildJWTToken(&user, h.JWTSecretKey)
 	if err != nil {
 		logger.Log.Debug("Ошибка при создании JWT-токена", logger.String("jwt-token", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при создании JWT-токена")

@@ -161,11 +161,11 @@ func (pg *PgStorage) DelServer(ctx context.Context, serverID int, login string) 
 func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) (*models.Server, error) {
 	var server models.Server
 
-	query := `SELECT name, address, username, created_at FROM servers 
+	query := `SELECT name, address, username, password, created_at FROM servers 
               WHERE id = $1 
                 AND user_id = (SELECT id FROM users WHERE login = $2)`
 
-	err := pg.DB.QueryRowContext(ctx, query, serverID, login).Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+	err := pg.DB.QueryRowContext(ctx, query, serverID, login).Scan(&server.Name, &server.Address, &server.Username, &server.Password, &server.CreatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -173,6 +173,15 @@ func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) 
 		default:
 			return nil, err
 		}
+	}
+
+	// расшифровываем пароль
+	if server.Password != "" {
+		decrypted, err := utils.DecryptAES(server.Password, pg.AESKey)
+		if err != nil {
+			return nil, fmt.Errorf("не удалось расшифровать пароль: %w", err)
+		}
+		server.Password = decrypted
 	}
 
 	return &server, nil
@@ -439,7 +448,7 @@ func (pg *PgStorage) Close() error {
 	return nil
 }
 
-// GetAESKey Отдает AES-ключ.
-func (pg *PgStorage) GetAESKey() []byte {
-	return pg.AESKey
-}
+//// GetAESKey Отдает AES-ключ.
+//func (pg *PgStorage) GetAESKey() []byte {
+//	return pg.AESKey
+//}

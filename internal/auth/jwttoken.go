@@ -1,13 +1,11 @@
 package auth
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 )
 
@@ -17,10 +15,9 @@ type Claims struct {
 }
 
 const TokenExp = time.Hour * 24
-const SecretKey = "SuperSecretKey"
 
 // BuildJWTToken Создание JWT-токена.
-func BuildJWTToken(user *models.User) (string, error) {
+func BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
 	// создаем экземпляр структуры, которую будем записывать в токен
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -33,7 +30,7 @@ func BuildJWTToken(user *models.User) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// подписываем секретным ключом и возвращаем токен в виде строки
-	tokenString, err := token.SignedString([]byte(SecretKey))
+	tokenString, err := token.SignedString([]byte(JWTSecretKey))
 	if err != nil {
 		return "", fmt.Errorf("не удалось подписать токен: %w", err)
 	}
@@ -42,7 +39,7 @@ func BuildJWTToken(user *models.User) (string, error) {
 }
 
 // GetLogin Получение Login-а пользователя с помощью распарсивания JWT-токена.
-func GetLogin(tokenString string) (string, error) {
+func GetLogin(tokenString, JWTSecretKey string) (string, error) {
 	// создаем пустой экземпляр Claims, куда будем распарсивать токен
 	claims := &Claims{}
 
@@ -52,7 +49,7 @@ func GetLogin(tokenString string) (string, error) {
 			return "", fmt.Errorf("неверный метод подписи: %v", t.Header["alg"])
 		}
 
-		return []byte(SecretKey), nil
+		return []byte(JWTSecretKey), nil
 	})
 
 	if err != nil {
@@ -68,18 +65,18 @@ func GetLogin(tokenString string) (string, error) {
 	return claims.Login, nil
 }
 
-// SetLoginToContext Извлечение login из JWT-токена и добавление его в контекст запроса.
-// В случае ошибки устанавливает статус Unauthorized.
-func SetLoginToContext(tokenString string, w http.ResponseWriter, r *http.Request) (http.ResponseWriter, *http.Request) {
-	login, err := GetLogin(tokenString)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return w, r
-	}
-
-	r = r.WithContext(context.WithValue(r.Context(), contextkeys.Login, login))
-	return w, r
-}
+//// SetLoginToContext Извлечение login из JWT-токена и добавление его в контекст запроса.
+//// В случае ошибки устанавливает статус Unauthorized.
+//func SetLoginToContext(tokenString, JWTSecretKey string, w http.ResponseWriter, r *http.Request) (http.ResponseWriter, *http.Request) {
+//	login, err := GetLogin(tokenString, JWTSecretKey)
+//	if err != nil {
+//		w.WriteHeader(http.StatusUnauthorized)
+//		return w, r
+//	}
+//
+//	r = r.WithContext(context.WithValue(r.Context(), contextkeys.Login, login))
+//	return w, r
+//}
 
 // CreateCookie Создание и установка куки с JWT-токеном.
 func CreateCookie(w http.ResponseWriter, tokenString string) {

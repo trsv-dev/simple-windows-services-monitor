@@ -21,7 +21,7 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.LoginToContextMiddleware)
+		r.Use(middleware.LoginToContextMiddleware(h.JWTSecretKey))
 		r.Use(middleware.RequireAuthMiddleware)
 
 		// маршруты БЕЗ ServerID параметра
@@ -52,9 +52,9 @@ func Router(h *api.AppHandler) chi.Router {
 					r.Get("/", h.GetService)    // получение службы
 
 					// управление службами
-					//r.Post("/start", h.ServiceStart)     // запуск службы
-					//r.Post("/stop", h.ServiceStop)       // остановка службы
-					//r.Post("/restart", h.ServiceRestart) // перезапуск службы
+					r.Post("/start", h.ServiceStart)     // запуск службы
+					r.Post("/stop", h.ServiceStop)       // остановка службы
+					r.Post("/restart", h.ServiceRestart) // перезапуск службы
 				})
 			})
 		})
