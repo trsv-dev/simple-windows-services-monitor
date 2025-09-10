@@ -52,9 +52,9 @@ func Router(h *api.AppHandler) chi.Router {
 					r.Get("/", h.GetService)    // получение службы
 
 					// управление службами
-					//r.Post("/start", h.ServiceStart)     // запуск службы
-					//r.Post("/stop", h.ServiceStop)       // остановка службы
-					//r.Post("/restart", h.ServiceRestart) // перезапуск службы
+					r.Post("/start", h.ServiceStart)     // запуск службы
+					r.Post("/stop", h.ServiceStop)       // остановка службы
+					r.Post("/restart", h.ServiceRestart) // перезапуск службы
 				})
 			})
 		})
