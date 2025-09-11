@@ -68,10 +68,14 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// контекст для получения статуса
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
 	stopCmd := fmt.Sprintf("sc stop %s", service.ServiceName)
 
-	result, err := client.RunCommand(ctx, statusCmd)
+	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
 			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
@@ -85,7 +89,12 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	switch status {
 	case utils.ServiceRunning, utils.ServiceStartPending:
 		// пробуем остановить
-		if _, err = client.RunCommand(ctx, stopCmd); err != nil {
+
+		// контекст для остановки
+		stopCtx, cancelStop := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelStop()
+
+		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось остановить службу")
@@ -174,7 +183,11 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
 	startCmd := fmt.Sprintf("sc start %s", service.ServiceName)
 
-	result, err := client.RunCommand(ctx, statusCmd)
+	// контекст для получения статуса
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
 			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
@@ -188,7 +201,12 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	switch status {
 	case utils.ServiceStopped, utils.ServiceStopPending:
 		// пробуем запустить
-		if _, err = client.RunCommand(ctx, startCmd); err != nil {
+
+		// контекст для запуска
+		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelStart()
+
+		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось запустить службу")
@@ -277,7 +295,11 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	stopCmd := fmt.Sprintf("sc stop %s", service.ServiceName)
 	startCmd := fmt.Sprintf("sc start %s", service.ServiceName)
 
-	result, err := client.RunCommand(ctx, statusCmd)
+	// контекст для получения статуса
+	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
 			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
@@ -291,7 +313,12 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	switch status {
 	case utils.ServiceRunning:
 		// сначала пробуем остановить
-		if _, err = client.RunCommand(ctx, stopCmd); err != nil {
+
+		// контекст для остановки
+		stopCtx, cancelStop := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelStop()
+
+		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
@@ -299,14 +326,23 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// контекст для ожидания остановки
+		waitCtx, cancelWait := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWait()
+
 		// ждём остановки с контекстом и экспоненциальной задержкой
-		if err := h.waitForServiceStatus(ctx, client, service.ServiceName, utils.ServiceStopped); err != nil {
+		if err := h.waitForServiceStatus(waitCtx, client, service.ServiceName, utils.ServiceStopped); err != nil {
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Служба `%s` не остановилась в ожидаемое время", service.DisplayedName))
 			return
 		}
 		// теперь запускаем
-		if _, err = client.RunCommand(ctx, startCmd); err != nil {
+
+		// контекст для запуска
+		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelStart()
+
+		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось запустить службу `%s`", service.DisplayedName))
 			return
@@ -317,7 +353,12 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 
 	case utils.ServiceStopped:
 		// просто запускаем
-		if _, err = client.RunCommand(ctx, startCmd); err != nil {
+
+		// контекст для запуска
+		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelStart()
+
+		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
