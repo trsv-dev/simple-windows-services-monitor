@@ -1,15 +1,17 @@
 package service_control
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/masterzen/winrm"
 )
 
+// WinRMClient Структура WinRM клиента.
 type WinRMClient struct {
+	client   *winrm.Client
 	endpoint *winrm.Endpoint
 	user     string
 	password string
@@ -24,36 +26,27 @@ func NewWinRMClient(addr, user, password string) (*WinRMClient, error) {
 		Insecure: true,
 		Timeout:  60 * time.Second,
 	}
+
+	newClient, err := winrm.NewClient(endpoint, user, password)
+	if err != nil {
+		return nil, fmt.Errorf("невозможно создать клиент WinRM: %w", err)
+	}
+
 	return &WinRMClient{
+		client:   newClient,
 		endpoint: endpoint,
 		user:     user,
 		password: password,
 	}, nil
 }
 
-// RunCommand Функция запуска переданной команды на удаленном сервере.
+// RunCommand Выполнение команды на удаленном сервере.
 func (c *WinRMClient) RunCommand(ctx context.Context, cmd string) (string, error) {
-	client, err := winrm.NewClient(c.endpoint, c.user, c.password)
+	var stdout, stderr bytes.Buffer
+	_, err := c.client.RunWithContext(ctx, cmd, &stdout, &stderr)
 	if err != nil {
-		return "", fmt.Errorf("cannot create client: %w", err)
+		return "", fmt.Errorf("ошибка выполнения команды: %w; stderr: %s", err, stderr.String())
 	}
 
-	shell, err := client.CreateShell()
-	if err != nil {
-		return "", fmt.Errorf("cannot create shell: %w", err)
-	}
-	defer shell.Close()
-
-	command, err := shell.ExecuteWithContext(ctx, cmd)
-	if err != nil {
-		return "", fmt.Errorf("cannot execute command: %w", err)
-	}
-
-	// command.Stdout — это *commandReader, читаем содержимое через ReadAll
-	outputBytes, err := io.ReadAll(command.Stdout)
-	if err != nil {
-		return "", fmt.Errorf("cannot read stdout: %w", err)
-	}
-
-	return string(outputBytes), nil
+	return stdout.String(), nil
 }
