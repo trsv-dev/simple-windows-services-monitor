@@ -100,11 +100,24 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось остановить службу")
 			return
 		}
+
+		// обновляем статус службы в БД для всех пользователей после успешной остановки
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+			// не возвращаем ошибку пользователю, т.к. служба реально остановлена
+		}
+
 		response.SuccessJSON(w, http.StatusOK,
 			fmt.Sprintf("Служба `%s` остановлена", service.DisplayedName))
 
 	case utils.ServiceStopped:
 		// уже остановлена
+
+		// обновляем статус в БД на всякий случай для синхронизации
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+		}
+
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d уже остановлена",
 			service.DisplayedName, serviceID, server.Name, serverID))
 		response.SuccessJSON(w, http.StatusOK,
@@ -212,11 +225,23 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось запустить службу")
 			return
 		}
+
+		// обновляем статус службы в БД для всех пользователей после успешного запуска
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+		}
+
 		response.SuccessJSON(w, http.StatusOK,
 			fmt.Sprintf("Служба `%s` запущена", service.DisplayedName))
 
 	case utils.ServiceRunning:
 		// уже запущена
+
+		// обновляем статус в БД на всякий случай для синхронизации
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+		}
+
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d уже запущена",
 			service.DisplayedName, serviceID, server.Name, serverID))
 		response.SuccessJSON(w, http.StatusOK,
@@ -336,6 +361,12 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("Служба `%s` не остановилась в ожидаемое время", service.DisplayedName))
 			return
 		}
+
+		// обновляем статус службы в БД для всех пользователей после успешной остановки
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+		}
+
 		// теперь запускаем
 
 		// контекст для запуска
@@ -346,6 +377,11 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось запустить службу `%s`", service.DisplayedName))
 			return
+		}
+
+		// обновляем статус службы в БД для всех пользователей после успешного запуска
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
 		response.SuccessJSON(w, http.StatusOK,
@@ -366,8 +402,13 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// обновляем статус в БД на всякий случай для синхронизации
+		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+		}
+
 		response.SuccessJSON(w, http.StatusOK,
-			fmt.Sprintf("Служба `%s` запущена", service.DisplayedName))
+			fmt.Sprintf("Служба `%s` перезапущена", service.DisplayedName))
 
 	case utils.ServiceStartPending, utils.ServiceStopPending:
 		// уже в процессе

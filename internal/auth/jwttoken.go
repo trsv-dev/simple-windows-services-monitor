@@ -65,19 +65,6 @@ func GetLogin(tokenString, JWTSecretKey string) (string, error) {
 	return claims.Login, nil
 }
 
-//// SetLoginToContext Извлечение login из JWT-токена и добавление его в контекст запроса.
-//// В случае ошибки устанавливает статус Unauthorized.
-//func SetLoginToContext(tokenString, JWTSecretKey string, w http.ResponseWriter, r *http.Request) (http.ResponseWriter, *http.Request) {
-//	login, err := GetLogin(tokenString, JWTSecretKey)
-//	if err != nil {
-//		w.WriteHeader(http.StatusUnauthorized)
-//		return w, r
-//	}
-//
-//	r = r.WithContext(context.WithValue(r.Context(), contextkeys.Login, login))
-//	return w, r
-//}
-
 // CreateCookie Создание и установка куки с JWT-токеном.
 func CreateCookie(w http.ResponseWriter, tokenString string) {
 	cookie := http.Cookie{

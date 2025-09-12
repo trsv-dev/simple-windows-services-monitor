@@ -13,6 +13,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres"
 )
 
+// "Сборка" и запуск проекта.
 func main() {
 	errEnv := godotenv.Load("../../.env")
 	if errEnv != nil {

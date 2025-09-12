@@ -1,8 +1,6 @@
 package utils
 
-import (
-	"strings"
-)
+import "strings"
 
 const (
 	Unknown                = 0
