@@ -280,9 +280,33 @@ func (pg *PgStorage) DelService(ctx context.Context, serverID int, serviceID int
 	return nil
 }
 
+// ChangeServiceStatus Изменение статуса службы.
+func (pg *PgStorage) ChangeServiceStatus(ctx context.Context, serverID int, serviceName string, status string) error {
+	query := `UPDATE services SET status = $1, updated_at = CURRENT_TIMESTAMP
+              WHERE service_name = $2 AND server_id = $3`
+
+	Result, err := pg.DB.ExecContext(ctx, query, status, serviceName, serverID)
+
+	if err != nil {
+		logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+		return err
+	}
+
+	affectedRows, err := Result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при выполнении запроса %w", err)
+	}
+
+	if affectedRows == 0 {
+		return fmt.Errorf("ошибка изменения статуса службы `%s` на сервере %d", serviceName, serverID)
+	}
+
+	return nil
+}
+
 // GetService Получение службы с сервера пользователя.
 func (pg *PgStorage) GetService(ctx context.Context, serverID int, serviceID int, login string) (*models.Service, error) {
-	query := `SELECT displayed_name, service_name, status 
+	query := `SELECT displayed_name, service_name, status, updated_at 
 			  FROM services 
 			  WHERE id = $1 
 			    AND server_id = $2 
@@ -293,7 +317,7 @@ func (pg *PgStorage) GetService(ctx context.Context, serverID int, serviceID int
 
 	var service models.Service
 
-	err := pg.DB.QueryRowContext(ctx, query, serviceID, serverID, login).Scan(&service.DisplayedName, &service.ServiceName, &service.Status)
+	err := pg.DB.QueryRowContext(ctx, query, serviceID, serverID, login).Scan(&service.DisplayedName, &service.ServiceName, &service.Status, &service.UpdatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -327,7 +351,7 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login strin
 	}
 
 	// Теперь получаем службы
-	query := `SELECT displayed_name, service_name, status 
+	query := `SELECT displayed_name, service_name, status, updated_at
 			  FROM services 
 			  WHERE server_id = $1`
 
@@ -343,7 +367,7 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login strin
 	for rows.Next() {
 		var service models.Service
 
-		err = rows.Scan(&service.DisplayedName, &service.ServiceName, &service.Status)
+		err = rows.Scan(&service.DisplayedName, &service.ServiceName, &service.Status, &service.UpdatedAt)
 		if err != nil {
 			logger.Log.Error("ошибка парсинга запроса на получение серверов пользователя", logger.String("err", err.Error()))
 			return nil, err
@@ -447,8 +471,3 @@ func (pg *PgStorage) Close() error {
 
 	return nil
 }
-
-//// GetAESKey Отдает AES-ключ.
-//func (pg *PgStorage) GetAESKey() []byte {
-//	return pg.AESKey
-//}

@@ -13,9 +13,10 @@ type Server struct {
 
 // Service Модель службы.
 type Service struct {
-	DisplayedName string `json:"displayed_name"`
-	ServiceName   string `json:"service_name"`
-	Status        string `json:"status"`
+	DisplayedName string    `json:"displayed_name"`
+	ServiceName   string    `json:"service_name"`
+	Status        string    `json:"status"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // User Модель пользователя.
