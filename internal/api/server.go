@@ -10,7 +10,6 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/utils"
 )
 
 // AddServer Добавление нового сервера.
@@ -34,8 +33,8 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !utils.IsValidIP(server.Address) {
-		response.ErrorJSON(w, http.StatusBadRequest, "Невалидный IP адрес сервера")
+	if err := server.CreateValidation(); err != nil {
+		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -74,7 +73,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер не был найден")
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
 			logger.Log.Warn("Ошибка при получении информации о сервере", logger.String("err", err.Error()))
@@ -92,25 +91,25 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err = input.UpdateValidation(); err != nil {
+		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	// обновляем полученными данными текущий сервер
 	if input.Name != "" {
 		old.Name = input.Name
 	}
+
 	if input.Username != "" {
 		old.Username = input.Username
 	}
+
 	if input.Password != "" {
 		old.Password = input.Password
 	}
+
 	if input.Address != "" {
-		if !utils.IsValidIP(input.Address) {
-			logger.Log.Error("При редактировании сервера передан невалидный IP-адрес",
-				logger.String("login", login),
-				logger.String("address", input.Address),
-			)
-			response.ErrorJSON(w, http.StatusBadRequest, "Невалидный IP адрес сервера")
-			return
-		}
 		old.Address = input.Address
 	}
 
@@ -151,7 +150,7 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
 				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
-			response.ErrorJSON(w, http.StatusBadRequest, "Сервер не найден")
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		case err != nil:
 			logger.Log.Warn("Ошибка при удалении сервера", logger.String("err", err.Error()))

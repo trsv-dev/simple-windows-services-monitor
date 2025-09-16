@@ -22,6 +22,9 @@
 
 ---
 
+## Документация по API
+[Коллекция Postman](https://documenter.getpostman.com/view/26097853/2sB3HqHdhN)
+
 ## Настройка WinRM на удалённом сервере
 
 На удалённом Windows-хосте необходимо включить и настроить WinRM.  
