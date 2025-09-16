@@ -36,13 +36,13 @@ func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(body, &user)
 	if err != nil {
 		logger.Log.Error("Ошибка анмаршаллинга данных в модель User", logger.String("error", err.Error()))
-		response.ErrorJSON(w, http.StatusBadRequest, "Ошибка анмаршаллинга данных в модель User")
+		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
 		return
 	}
 
-	if user.Login == "" || user.Password == "" {
-		logger.Log.Error("Пустой логин или пароль")
-		response.ErrorJSON(w, http.StatusBadRequest, "Пустой логин или пароль")
+	if err := user.Validate(); err != nil {
+		logger.Log.Error("Ошибка при валидации данных пользователя", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

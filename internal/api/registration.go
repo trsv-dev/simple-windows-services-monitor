@@ -11,14 +11,11 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/utils"
 )
 
 // UserRegistration Регистрация пользователей.
 func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	loginLen := 4
-	passwordLen := 5
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -37,20 +34,13 @@ func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(data, &user)
 	if err != nil {
 		logger.Log.Error("Ошибка анмаршаллинга данных в модель User", logger.String("error", err.Error()))
-		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка анмаршаллинга данных в модель User")
+		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
 		return
 	}
 
-	switch {
-	case len(user.Login) < loginLen || len(user.Password) < passwordLen:
-		logger.Log.Error("Передан слишком короткий логин или пароль " +
-			"(рекомендуется не менее 4 символов для логина и 5 символов для пароля)")
-		response.ErrorJSON(w, http.StatusBadRequest, "Передан слишком короткий логин или пароль "+
-			"(рекомендуется не менее 4 символов для логина и 5 символов для пароля)")
-		return
-	case !utils.IsAlphaNumeric(user.Login) || !utils.IsAlphaNumeric(user.Password):
-		logger.Log.Error("Недопустимые символы в логине или пароле")
-		response.ErrorJSON(w, http.StatusBadRequest, "Недопустимые символы в логине или пароле")
+	if err := user.Validate(); err != nil {
+		logger.Log.Error("Ошибка при валидации регистрационных данных", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

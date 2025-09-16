@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
@@ -22,8 +21,12 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	var service models.Service
 
 	if err := json.NewDecoder(r.Body).Decode(&service); err != nil {
-		fmt.Println(err)
 		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
+		return
+	}
+
+	if err := service.Validate(); err != nil {
+		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -38,7 +41,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 			return
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер не был найден")
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
 			logger.Log.Error("Ошибка добавления службы в БД", logger.String("err", err.Error()))
@@ -60,12 +63,12 @@ func (h *AppHandler) DelService(w http.ResponseWriter, r *http.Request) {
 
 	err := h.storage.DelService(ctx, serverID, serviceID, login)
 
-	var ErrServerNotFound *errs.ErrServerNotFound
+	var ErrServiceNotFound *errs.ErrServiceNotFound
 	if err != nil {
 		switch {
-		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер не был найден")
+		case errors.As(err, &ErrServiceNotFound):
+			logger.Log.Error("Служба не найдена", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
 			logger.Log.Error("Ошибка удаления службы", logger.String("err", err.Error()))
@@ -125,7 +128,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
 			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Сервер не был найден")
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
 			logger.Log.Warn("Ошибка при получении списка служб сервера", logger.String("err", err.Error()))
