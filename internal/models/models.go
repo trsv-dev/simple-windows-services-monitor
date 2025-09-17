@@ -110,8 +110,9 @@ type Service struct {
 	ID            int64     `json:"id,omitempty"`
 	DisplayedName string    `json:"displayed_name"`
 	ServiceName   string    `json:"service_name"`
-	Status        string    `json:"status"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Status        string    `json:"status,omitempty"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
 }
 
 // Validate Базовая валидация данных.

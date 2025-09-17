@@ -68,5 +68,17 @@ func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 	auth.CreateCookie(w, tokenString)
 
 	logger.Log.Debug("Успешная регистрация пользователя", logger.String("login", user.Login))
-	response.SuccessJSON(w, http.StatusOK, "Пользователь зарегистрирован")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	err = json.NewEncoder(w).Encode(response.AuthResponse{
+		Message: "Пользователь зарегистрирован",
+		Login:   user.Login,
+		Token:   tokenString,
+	})
+	if err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 }

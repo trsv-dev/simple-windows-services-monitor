@@ -30,7 +30,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.storage.AddService(ctx, serverID, login, service)
+	createdService, err := h.storage.AddService(ctx, serverID, login, service)
 	var ErrDuplicatedService *errs.ErrDuplicatedService
 	var ErrServerNotFound *errs.ErrServerNotFound
 	if err != nil {
@@ -51,7 +51,15 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Log.Debug("Служба успешно добавлена на сервер", logger.String("serviceName", service.ServiceName), logger.Int("serverID", serverID))
-	response.SuccessJSON(w, http.StatusOK, "Служба успешно добавлена")
+	//response.SuccessJSON(w, http.StatusOK, "Служба успешно добавлена")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	if err = json.NewEncoder(w).Encode(createdService); err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 }
 
 // DelService Удаление службы.
@@ -139,7 +147,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 
 	// если служб у сервера нет - возвращаем пустой срез служб
 	if len(services) == 0 {
-		services = []models.Service{}
+		services = []*models.Service{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

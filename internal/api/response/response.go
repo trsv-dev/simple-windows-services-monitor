@@ -5,6 +5,13 @@ import (
 	"net/http"
 )
 
+// AuthResponse Успешный ответ при регистрации или авторизации пользователя.
+type AuthResponse struct {
+	Message string `json:"message"`
+	Login   string `json:"login"`
+	Token   string `json:"token"`
+}
+
 // APIError Модель возвращаемых ответов при ошибках.
 type APIError struct {
 	Code    int    `json:"code"`

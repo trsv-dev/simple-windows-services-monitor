@@ -38,7 +38,7 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.storage.AddServer(ctx, server, userID)
+	createdServer, err := h.storage.AddServer(ctx, server, userID)
 
 	var ErrDuplicatedServer *errs.ErrDuplicatedServer
 	if err != nil {
@@ -55,7 +55,14 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Log.Debug("Сервер успешно добавлен пользователем", logger.String("login", login), logger.String("address", server.Address))
-	response.SuccessJSON(w, http.StatusOK, "Сервер успешно добавлен")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err = json.NewEncoder(w).Encode(createdServer); err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 }
 
 // EditServer Редактирование пользовательского сервера.
@@ -114,7 +121,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// производим обновление сервера в БД
-	err = h.storage.EditServer(ctx, old, id, login)
+	editedServer, err := h.storage.EditServer(ctx, old, id, login)
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
@@ -132,7 +139,13 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", login),
 		logger.Int("serverID", id))
 
-	response.SuccessJSON(w, http.StatusAccepted, "Сервер успешно отредактирован")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err = json.NewEncoder(w).Encode(editedServer); err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 }
 
 // DelServer Удаление сервера, добавленного пользователем.
@@ -212,7 +225,7 @@ func (h *AppHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
 
 	// если серверов у пользователя нет - возвращаем пустой срез серверов
 	if len(servers) == 0 {
-		servers = []models.Server{}
+		servers = []*models.Server{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
