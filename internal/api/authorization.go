@@ -69,5 +69,16 @@ func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 	auth.CreateCookie(w, tokenString)
 
 	logger.Log.Debug("Успешная авторизация пользователя", logger.String("login", verifiedUser.Login))
-	response.SuccessJSON(w, http.StatusOK, "Пользователь авторизован")
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(w).Encode(response.AuthResponse{
+		Message: "Пользователь авторизован",
+		Login:   user.Login,
+		Token:   tokenString,
+	})
+	if err != nil {
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 }

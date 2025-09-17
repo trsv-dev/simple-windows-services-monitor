@@ -52,7 +52,7 @@ func InitStorage(DatabaseURI string, AESKey []byte) (*PgStorage, error) {
 }
 
 // AddServer Добавление нового сервера в БД.
-func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int) error {
+func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int) (*models.Server, error) {
 	var newPassword string
 
 	if server.Password != "" {
@@ -60,33 +60,38 @@ func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID
 		encryptedPassword, err := utils.EncryptAES([]byte(server.Password), pg.AESKey)
 		if err != nil {
 			logger.Log.Error("Не удалось зашифровать пароль", logger.String("err", err.Error()))
-			return err
+			return nil, err
 		}
 		newPassword = encryptedPassword
 	} else {
 		newPassword = server.Password
 	}
 
-	query := `INSERT INTO servers (user_id, name, address, username, password) VALUES ($1, $2, $3, $4, $5)`
+	query := `INSERT INTO servers (user_id, name, address, username, password) VALUES ($1, $2, $3, $4, $5)
+			  RETURNING id, created_at`
 
-	_, err := pg.DB.ExecContext(ctx, query, userID, server.Name, server.Address, server.Username, newPassword)
+	// обновляем значение id, created_at у уже переданной модели сервера
+	err := pg.DB.QueryRowContext(ctx, query, userID, server.Name, server.Address, server.Username, newPassword).Scan(&server.ID, &server.CreatedAt)
 
 	var pgErr *pgconn.PgError
 	if err != nil {
 		switch {
 		// если ошибка говорит о дубликате сервера - выходим из функции и возвращаем ошибку
 		case errors.As(err, &pgErr) && pgErr.Code == "23505":
-			return errs.NewErrDuplicatedServer(server.Address, err)
+			return nil, errs.NewErrDuplicatedServer(server.Address, err)
 		default:
-			return fmt.Errorf("ошибка при добавлении сервера: %w", err)
+			return nil, fmt.Errorf("ошибка при добавлении сервера: %w", err)
 		}
 	}
 
-	return nil
+	// не показываем пароль в возвращаемом "наружу" сервере
+	server.Password = ""
+
+	return &server, nil
 }
 
 // EditServer Редактирование сервера, принадлежащего пользователю.
-func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, serverID int, login string) error {
+func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, serverID int, login string) (*models.Server, error) {
 	var password string
 
 	// если был передан новый пароль - шифруем его для передачи в БД
@@ -94,7 +99,7 @@ func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server
 		encryptedPassword, err := utils.EncryptAES([]byte(editedServer.Password), pg.AESKey)
 		if err != nil {
 			logger.Log.Error("Не удалось зашифровать пароль", logger.String("err", err.Error()))
-			return err
+			return nil, err
 		}
 
 		password = encryptedPassword
@@ -105,32 +110,31 @@ func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server
 		err := pg.DB.QueryRowContext(ctx, getCurrentPasswordQuery, serverID, login).Scan(&currentPassword)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return errs.NewErrServerNotFound(serverID, login, err)
+				return nil, errs.NewErrServerNotFound(serverID, login, err)
 			}
-			return fmt.Errorf("ошибка при получении текущего пароля: %w", err)
+			return nil, fmt.Errorf("ошибка при получении текущего пароля: %w", err)
 		}
 		password = currentPassword
 	}
 
-	// обновляем сервер собранными данными
+	// обновляем сервер собранными данными и сразу возвращаем данные для создания возвращаемого "наружу" сервера
 	updateQuery := `UPDATE servers SET name = $1, username = $2, address = $3, password = $4 
-              WHERE id = $5 AND user_id = (SELECT id FROM users WHERE login = $6)`
+              WHERE id = $5 AND user_id = (SELECT id FROM users WHERE login = $6) RETURNING id, name, username, address, created_at`
 
-	Result, err := pg.DB.ExecContext(ctx, updateQuery, editedServer.Name, editedServer.Username, editedServer.Address, password, serverID, login)
+	var returnedServer models.Server
+
+	// не показываем пароль в возвращаемом "наружу" сервере
+	err := pg.DB.QueryRowContext(ctx, updateQuery, editedServer.Name, editedServer.Username, editedServer.Address, password, serverID, login).
+		Scan(&returnedServer.ID, &returnedServer.Name, &returnedServer.Username, &returnedServer.Address, &returnedServer.CreatedAt)
+
 	if err != nil {
-		return fmt.Errorf("ошибка при обновлении информации о сервере: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errs.NewErrServerNotFound(serverID, login, err)
+		}
+		return nil, fmt.Errorf("ошибка при обновлении информации о сервере: %w", err)
 	}
 
-	affectedRows, err := Result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("ошибка при выполнении запроса %w", err)
-	}
-
-	if affectedRows == 0 {
-		return errs.NewErrServerNotFound(serverID, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
-	}
-
-	return nil
+	return &returnedServer, nil
 }
 
 // DelServer Удаление сервера, принадлежащего пользователю.
@@ -161,11 +165,11 @@ func (pg *PgStorage) DelServer(ctx context.Context, serverID int, login string) 
 func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) (*models.Server, error) {
 	var server models.Server
 
-	query := `SELECT name, address, username, password, created_at FROM servers 
+	query := `SELECT id, name, address, username, created_at FROM servers 
               WHERE id = $1 
                 AND user_id = (SELECT id FROM users WHERE login = $2)`
 
-	err := pg.DB.QueryRowContext(ctx, query, serverID, login).Scan(&server.Name, &server.Address, &server.Username, &server.Password, &server.CreatedAt)
+	err := pg.DB.QueryRowContext(ctx, query, serverID, login).Scan(&server.ID, &server.Name, &server.Address, &server.Username, &server.CreatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -188,8 +192,8 @@ func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) 
 }
 
 // ListServers Отображение списка серверов, принадлежащих пользователю.
-func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Server, error) {
-	query := `SELECT name, address, username, created_at 
+func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]*models.Server, error) {
+	query := `SELECT id, name, address, username, created_at 
 			  FROM servers WHERE user_id = (SELECT id FROM users WHERE login = $1)`
 
 	rows, err := pg.DB.QueryContext(ctx, query, login)
@@ -199,17 +203,17 @@ func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Se
 	}
 	defer rows.Close()
 
-	var servers []models.Server
+	var servers []*models.Server
 
 	for rows.Next() {
 		var server models.Server
-		err = rows.Scan(&server.Name, &server.Address, &server.Username, &server.CreatedAt)
+		err = rows.Scan(&server.ID, &server.Name, &server.Address, &server.Username, &server.CreatedAt)
 		if err != nil {
 			logger.Log.Error("ошибка парсинга запроса на получение серверов пользователя", logger.String("err", err.Error()))
 			return nil, err
 		}
 
-		servers = append(servers, server)
+		servers = append(servers, &server)
 	}
 
 	err = rows.Err()
@@ -222,35 +226,31 @@ func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]models.Se
 }
 
 // AddService Добавление службы на сервер пользователя.
-func (pg *PgStorage) AddService(ctx context.Context, serverID int, login string, service models.Service) error {
+func (pg *PgStorage) AddService(ctx context.Context, serverID int, login string, service models.Service) (*models.Service, error) {
 	query := `INSERT INTO services (server_id, displayed_name, service_name, status)
 			  SELECT s.id, $2, $3, $4
 			  FROM servers s
-			  WHERE s.id = $1 AND user_id = (SELECT id FROM users WHERE login = $5)`
+			  WHERE s.id = $1 AND user_id = (SELECT id FROM users WHERE login = $5)
+			  RETURNING id, created_at, updated_at`
 
-	Result, err := pg.DB.ExecContext(ctx, query, serverID, service.DisplayedName, service.ServiceName, service.Status, login)
+	// обновляем значение id, created_at, updated_at у уже переданной модели службы
+	err := pg.DB.QueryRowContext(ctx, query, serverID, service.DisplayedName, service.ServiceName, service.Status, login).
+		Scan(&service.ID, &service.CreatedAt, &service.UpdatedAt)
 
 	var pgErr *pgconn.PgError
 	if err != nil {
 		switch {
 		// если ошибка говорит о дубликате службы - выходим из функции и возвращаем ошибку
 		case errors.As(err, &pgErr) && pgErr.Code == "23505":
-			return errs.NewErrDuplicatedService(service.ServiceName, err)
+			return nil, errs.NewErrDuplicatedService(service.ServiceName, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, errs.NewErrServerNotFound(serverID, login, err)
 		default:
-			return fmt.Errorf("ошибка при добавлении службы: %w", err)
+			return nil, fmt.Errorf("ошибка при добавлении службы: %w", err)
 		}
 	}
 
-	affectedRows, err := Result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("ошибка при выполнении запроса %w", err)
-	}
-
-	if affectedRows == 0 {
-		return errs.NewErrServerNotFound(serverID, login, fmt.Errorf("%w: затронутых строк %d", sql.ErrNoRows, affectedRows))
-	}
-
-	return nil
+	return &service, nil
 }
 
 // DelService Удаление службы с сервера пользователя.
@@ -306,7 +306,7 @@ func (pg *PgStorage) ChangeServiceStatus(ctx context.Context, serverID int, serv
 
 // GetService Получение службы с сервера пользователя.
 func (pg *PgStorage) GetService(ctx context.Context, serverID int, serviceID int, login string) (*models.Service, error) {
-	query := `SELECT displayed_name, service_name, status, updated_at 
+	query := `SELECT id, displayed_name, service_name, status, created_at, updated_at 
 			  FROM services 
 			  WHERE id = $1 
 			    AND server_id = $2 
@@ -317,7 +317,8 @@ func (pg *PgStorage) GetService(ctx context.Context, serverID int, serviceID int
 
 	var service models.Service
 
-	err := pg.DB.QueryRowContext(ctx, query, serviceID, serverID, login).Scan(&service.DisplayedName, &service.ServiceName, &service.Status, &service.UpdatedAt)
+	err := pg.DB.QueryRowContext(ctx, query, serviceID, serverID, login).
+		Scan(&service.ID, &service.DisplayedName, &service.ServiceName, &service.Status, &service.CreatedAt, &service.UpdatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -331,7 +332,7 @@ func (pg *PgStorage) GetService(ctx context.Context, serverID int, serviceID int
 }
 
 // ListServices Получение списка служб сервера, принадлежащего пользователю.
-func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login string) ([]models.Service, error) {
+func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login string) ([]*models.Service, error) {
 
 	// Сначала проверяем, принадлежит ли сервер пользователю
 	var exists bool
@@ -351,11 +352,11 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login strin
 	}
 
 	// Теперь получаем службы
-	query := `SELECT displayed_name, service_name, status, updated_at
+	query := `SELECT id, displayed_name, service_name, status, created_at, updated_at
 			  FROM services 
 			  WHERE server_id = $1`
 
-	var services []models.Service
+	var services []*models.Service
 
 	rows, err := pg.DB.QueryContext(ctx, query, serverID)
 	if err != nil {
@@ -367,13 +368,13 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login strin
 	for rows.Next() {
 		var service models.Service
 
-		err = rows.Scan(&service.DisplayedName, &service.ServiceName, &service.Status, &service.UpdatedAt)
+		err = rows.Scan(&service.ID, &service.DisplayedName, &service.ServiceName, &service.Status, &service.CreatedAt, &service.UpdatedAt)
 		if err != nil {
 			logger.Log.Error("ошибка парсинга запроса на получение серверов пользователя", logger.String("err", err.Error()))
 			return nil, err
 		}
 
-		services = append(services, service)
+		services = append(services, &service)
 	}
 
 	err = rows.Err()
