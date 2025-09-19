@@ -162,6 +162,7 @@ func (pg *PgStorage) DelServer(ctx context.Context, serverID int, login string) 
 }
 
 // GetServer Получение информации о сервере, принадлежащем пользователю.
+// Вызывается когда нужно отдать наружу инфо о сервере через API.
 func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) (*models.Server, error) {
 	var server models.Server
 
@@ -170,6 +171,30 @@ func (pg *PgStorage) GetServer(ctx context.Context, serverID int, login string) 
                 AND user_id = (SELECT id FROM users WHERE login = $2)`
 
 	err := pg.DB.QueryRowContext(ctx, query, serverID, login).Scan(&server.ID, &server.Name, &server.Address, &server.Username, &server.CreatedAt)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, errs.NewErrServerNotFound(serverID, login, err)
+		default:
+			return nil, err
+		}
+	}
+
+	return &server, nil
+}
+
+// GetServerWithPassword Получение информации о сервере (с ПАРОЛЕМ), принадлежащем пользователю.
+// Использовать ТОЛЬКО внутри бизнес-логики (WinRM).
+// Никогда не отдавать наружу через API!
+func (pg *PgStorage) GetServerWithPassword(ctx context.Context, serverID int, login string) (*models.Server, error) {
+	var server models.Server
+
+	query := `SELECT id, name, address, username, password, created_at FROM servers 
+              WHERE id = $1 
+                AND user_id = (SELECT id FROM users WHERE login = $2)`
+
+	err := pg.DB.QueryRowContext(ctx, query, serverID, login).
+		Scan(&server.ID, &server.Name, &server.Address, &server.Username, &server.Password, &server.CreatedAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -283,7 +308,11 @@ func (pg *PgStorage) DelService(ctx context.Context, serverID int, serviceID int
 // ChangeServiceStatus Изменение статуса службы.
 func (pg *PgStorage) ChangeServiceStatus(ctx context.Context, serverID int, serviceName string, status string) error {
 	query := `UPDATE services SET status = $1, updated_at = CURRENT_TIMESTAMP
-              WHERE service_name = $2 AND server_id = $3`
+              WHERE service_name = $2 
+                AND server_id IN (
+                	SELECT id FROM servers 
+                	WHERE address = (SELECT address FROM servers WHERE id = $3)
+                )`
 
 	Result, err := pg.DB.ExecContext(ctx, query, status, serviceName, serverID)
 

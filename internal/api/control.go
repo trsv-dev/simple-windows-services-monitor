@@ -22,8 +22,8 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	serverID := ctx.Value(contextkeys.ServerID).(int)
 	serviceID := ctx.Value(contextkeys.ServiceID).(int)
 
-	// получаем сервер
-	server, err := h.storage.GetServer(ctx, serverID, login)
+	// получаем сервер с паролем
+	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
@@ -147,8 +147,8 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	serverID := ctx.Value(contextkeys.ServerID).(int)
 	serviceID := ctx.Value(contextkeys.ServiceID).(int)
 
-	// получаем сервер
-	server, err := h.storage.GetServer(ctx, serverID, login)
+	// получаем сервер с паролем
+	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
@@ -270,8 +270,8 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	serverID := ctx.Value(contextkeys.ServerID).(int)
 	serviceID := ctx.Value(contextkeys.ServiceID).(int)
 
-	// получаем сервер
-	server, err := h.storage.GetServer(ctx, serverID, login)
+	// получаем сервер с паролем
+	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 

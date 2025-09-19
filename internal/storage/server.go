@@ -12,5 +12,6 @@ type ServerStorage interface {
 	EditServer(ctx context.Context, input *models.Server, id int, login string) (*models.Server, error)
 	DelServer(ctx context.Context, serverID int, login string) error
 	GetServer(ctx context.Context, serverID int, login string) (*models.Server, error)
+	GetServerWithPassword(ctx context.Context, serverID int, login string) (*models.Server, error)
 	ListServers(ctx context.Context, login string) ([]*models.Server, error)
 }
