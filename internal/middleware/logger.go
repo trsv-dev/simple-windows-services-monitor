@@ -39,6 +39,13 @@ func (l *LoggingResponseWriter) WriteHeader(statusCode int) {
 	l.responseData.status = statusCode
 }
 
+// Flush Переопределение этого метода необходимо для работы SSE (github.com/r3labs/sse/v2)
+func (l *LoggingResponseWriter) Flush() {
+	if f, ok := l.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // LogMiddleware Middleware для логирования всех запросов.
 func LogMiddleware(h http.Handler) http.Handler {
 	f := func(w http.ResponseWriter, r *http.Request) {

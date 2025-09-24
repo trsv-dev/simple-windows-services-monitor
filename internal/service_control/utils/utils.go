@@ -1,6 +1,8 @@
 package utils
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	Unknown                = 0
@@ -13,6 +15,7 @@ const (
 	ServicePaused          = 7
 )
 
+// GetStatus Получение цифрового статуса службы по ее строковому описанию.
 func GetStatus(query string) int {
 	status := Unknown
 
@@ -34,4 +37,26 @@ func GetStatus(query string) int {
 	}
 
 	return status
+}
+
+// GetStatusByINT Получение строкового описания службы по ее цифровому идентификатору.
+func GetStatusByINT(status int) string {
+	switch {
+	case status == ServiceRunning:
+		return "Запущена"
+	case status == ServiceStopped:
+		return "Остановлена"
+	case status == ServiceStartPending:
+		return "Запускается"
+	case status == ServiceStopPending:
+		return "Останавливается"
+	case status == ServicePausePending:
+		return "Приостанавливается"
+	case status == ServiceContinuePending:
+		return "Возобновляется"
+	case status == ServicePaused:
+		return "Приостановлена"
+	default:
+		return "Неизвестно"
+	}
 }

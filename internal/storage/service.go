@@ -13,4 +13,5 @@ type ServiceStorage interface {
 	ChangeServiceStatus(ctx context.Context, serverID int, serviceName string, status string) error
 	GetService(ctx context.Context, serverID int, serviceID int, login string) (*models.Service, error)
 	ListServices(ctx context.Context, serverID int, login string) ([]*models.Service, error)
+	GetAllServiceStatuses(ctx context.Context) ([]*models.ServiceStatus, error)
 }

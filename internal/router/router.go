@@ -10,8 +10,14 @@ import (
 func Router(h *api.AppHandler) chi.Router {
 	router := chi.NewRouter()
 
+	//router.Use(middleware.CorsMiddleware)
+
 	// middleware логгера всех запросов
 	router.Use(middleware.LogMiddleware)
+
+	// SSE: подписка на события служб
+	// h.Broadcaster.HTTPHandler() — это http.Handler для всех топиков
+	router.Handle("/api/events", h.Broadcaster.HTTPHandler())
 
 	// публичные маршруты
 	router.Post("/api/user/register", h.UserRegistration)

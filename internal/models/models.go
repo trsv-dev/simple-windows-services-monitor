@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/utils"
 )
 
@@ -18,12 +19,13 @@ const (
 
 // Server Модель сервера.
 type Server struct {
-	ID        int64     `json:"id,omitempty"`
-	Name      string    `json:"name"`
-	Address   string    `json:"address"`
-	Username  string    `json:"username"`
-	Password  string    `json:"password,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id,omitempty"`
+	Name        string    `json:"name"`
+	Address     string    `json:"address"`
+	Username    string    `json:"username"`
+	Password    string    `json:"password,omitempty"`
+	Fingerprint uuid.UUID `json:"fingerprint"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // CreateValidation Базовая валидация данных при создании сервера.
@@ -126,6 +128,14 @@ func (s Service) Validate() error {
 	}
 
 	return nil
+}
+
+// ServiceStatus Модель статуса службы.
+type ServiceStatus struct {
+	ID        int64     `json:"id"`
+	ServerID  int64     `json:"server_id"`
+	Status    string    `json:"status,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 // User Модель пользователя.
