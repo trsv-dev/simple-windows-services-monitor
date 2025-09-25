@@ -43,7 +43,7 @@ func GetStatus(query string) int {
 func GetStatusByINT(status int) string {
 	switch {
 	case status == ServiceRunning:
-		return "Запущена"
+		return "Работает"
 	case status == ServiceStopped:
 		return "Остановлена"
 	case status == ServiceStartPending:

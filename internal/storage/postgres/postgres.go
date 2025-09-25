@@ -470,40 +470,6 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int, login strin
 	return services, nil
 }
 
-// GetAllServiceStatuses Получение статусов и времени изменения статусов всех служб.
-func (pg *PgStorage) GetAllServiceStatuses(ctx context.Context) ([]*models.ServiceStatus, error) {
-	query := `SELECT id, server_id, status, updated_at FROM services`
-
-	var statuses []*models.ServiceStatus
-
-	rows, err := pg.DB.QueryContext(ctx, query)
-	if err != nil {
-		logger.Log.Error("Ошибка при выполнении запроса статусов служб", logger.String("err", err.Error()))
-		return nil, fmt.Errorf("ошибка при выполнении запроса статусов служб: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var status models.ServiceStatus
-
-		err = rows.Scan(&status.ID, &status.ServerID, &status.Status, &status.UpdatedAt)
-		if err != nil {
-			logger.Log.Error("Ошибка сканирования строки статусов служб", logger.String("err", err.Error()))
-			return nil, err
-		}
-
-		statuses = append(statuses, &status)
-	}
-
-	err = rows.Err()
-	if err != nil {
-		logger.Log.Error("Ошибка при обработке строк статусов служб", logger.String("err", err.Error()))
-		return nil, err
-	}
-
-	return statuses, nil
-}
-
 // CreateUser Создание пользователя.
 func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
 	// хэшируем пароль для передачи в БД
@@ -578,6 +544,76 @@ func (pg *PgStorage) GetUserIDByLogin(ctx context.Context, login string) (int, e
 	}
 
 	return userID, nil
+}
+
+// ListUsers Получение списка всех пользователей.
+func (pg *PgStorage) ListUsers(ctx context.Context) ([]*models.User, error) {
+	var users []*models.User
+
+	query := `SELECT id, login FROM users`
+
+	rows, err := pg.DB.QueryContext(ctx, query)
+	if err != nil {
+		logger.Log.Error("Ошибка при выполнении запроса на получение списка пользователей", logger.String("err", err.Error()))
+		return nil, fmt.Errorf("ошибка при выполнении запроса на получение списка пользователей: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user models.User
+
+		err = rows.Scan(&user.ID, &user.Login)
+		if err != nil {
+			logger.Log.Error("Ошибка сканирования строки списка пользователей", logger.String("err", err.Error()))
+			return nil, err
+		}
+
+		users = append(users, &user)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logger.Log.Error("Ошибка при обработке строк списка пользователей", logger.String("err", err.Error()))
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// GetUserServiceStatuses возвращает все службы со статусами, которые принадлежат указанному пользователю.
+func (pg *PgStorage) GetUserServiceStatuses(ctx context.Context, userID int64) ([]*models.ServiceStatus, error) {
+	query := `SELECT id, server_id, status, updated_at 
+			  FROM services
+			  WHERE server_id IN (SELECT id FROM servers WHERE user_id = $1)`
+
+	var statuses []*models.ServiceStatus
+
+	rows, err := pg.DB.QueryContext(ctx, query, userID)
+	if err != nil {
+		logger.Log.Error("Ошибка при выполнении запроса статусов служб пользователя", logger.String("err", err.Error()))
+		return nil, fmt.Errorf("ошибка при выполнении запроса статусов служб пользователя: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status models.ServiceStatus
+
+		err = rows.Scan(&status.ID, &status.ServerID, &status.Status, &status.UpdatedAt)
+		if err != nil {
+			logger.Log.Error("Ошибка сканирования строки статусов служб пользователя", logger.String("err", err.Error()))
+			return nil, err
+		}
+
+		statuses = append(statuses, &status)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logger.Log.Error("Ошибка при обработке строк статусов служб пользователя", logger.String("err", err.Error()))
+		return nil, err
+	}
+
+	return statuses, nil
 }
 
 // Close Закрытие соединения с БД.

@@ -2,6 +2,7 @@ package broadcast
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/r3labs/sse/v2"
@@ -17,14 +18,13 @@ type R3labsSSEAdapter struct {
 func NewR3labsSSEAdapter() *R3labsSSEAdapter {
 	srv := sse.New()
 
-	srv.CreateStream("services")
-
 	return &R3labsSSEAdapter{srv: srv}
 }
 
 // Publish реализует интерфейс Publisher.
-// Публикует событие в указанный топик (stream). Данные передаются в поле Event.Data.
+// Создает топик и публикует событие в указанный топик (stream). Данные передаются в поле Event.Data.
 func (a *R3labsSSEAdapter) Publish(topic string, data []byte) error {
+	a.srv.CreateStream(topic)
 	a.srv.Publish(topic, &sse.Event{Data: data})
 	return nil
 }
@@ -45,5 +45,6 @@ func (a *R3labsSSEAdapter) Subscribe(ctx context.Context, topic string) (<-chan 
 // HTTPHandler возвращает http.Handler, который можно примонтировать в маршруты (например, на /events/).
 // r3labs.Server сам обрабатывает URL вида /<stream> и управляет подписками/реплеем.
 func (a *R3labsSSEAdapter) HTTPHandler() http.Handler {
+	fmt.Println()
 	return a.srv
 }

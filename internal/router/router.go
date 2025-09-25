@@ -10,7 +10,7 @@ import (
 func Router(h *api.AppHandler) chi.Router {
 	router := chi.NewRouter()
 
-	//router.Use(middleware.CorsMiddleware)
+	router.Use(middleware.CorsMiddleware)
 
 	// middleware логгера всех запросов
 	router.Use(middleware.LogMiddleware)
