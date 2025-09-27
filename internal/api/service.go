@@ -102,7 +102,6 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Log.Debug("Служба успешно добавлена на сервер", logger.String("serviceName", service.ServiceName), logger.Int("serverID", serverID))
-	//response.SuccessJSON(w, http.StatusOK, "Служба успешно добавлена")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
@@ -209,32 +208,3 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
-//func (h *AppHandler) ServicesSSEHandler(w http.ResponseWriter, r *http.Request) {
-//	serverID := r.URL.Query().Get("server_id")
-//	if serverID == "" {
-//		http.Error(w, "server_id required", http.StatusBadRequest)
-//		return
-//	}
-//
-//	w.Header().Set("Content-Type", "text/event-stream")
-//	w.Header().Set("Cache-Control", "no-cache")
-//	w.Header().Set("Connection", "keep-alive")
-//
-//	ticker := time.NewTicker(5 * time.Second)
-//	defer ticker.Stop()
-//
-//	for {
-//		select {
-//		case <-r.Context().Done():
-//			return
-//		case <-ticker.C:
-//			// Здесь формируем JSON с обновлением статусов
-//			status := `[{"id":1,"status":"running","updated_at":"` + time.Now().Format(time.RFC3339) + `"}]`
-//			fmt.Fprintf(w, "data: %s\n\n", status)
-//			if f, ok := w.(http.Flusher); ok {
-//				f.Flush()
-//			}
-//		}
-//	}
-//}

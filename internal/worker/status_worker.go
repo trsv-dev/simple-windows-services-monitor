@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
@@ -22,7 +23,7 @@ func StatusWorker(ctx context.Context, storage storage.Storage, broadcaster broa
 
 		select {
 		case <-ctx.Done():
-			logger.Log.Info("завершение работы воркера по контексту", logger.String("info", ctx.Err().Error()))
+			logger.Log.Info("Завершение работы воркера по контексту", logger.String("info", ctx.Err().Error()))
 			return
 		case <-ticker.C: // следующий цикл по таймеру
 		}
@@ -47,7 +48,6 @@ func fetchAndPublish(ctx context.Context, storage storage.Storage, publisher bro
 				logger.String("login", user.Login),
 				logger.String("err", err.Error()))
 			continue
-			//return err
 		}
 
 		b, err := json.Marshal(statuses)
@@ -55,8 +55,9 @@ func fetchAndPublish(ctx context.Context, storage storage.Storage, publisher bro
 			return err
 		}
 
-		// топик для конкретного пользователя создается в методе Publish
-		if err = publisher.Publish(user.Login, b); err != nil {
+		// топик для конкретного пользователя создается в методе HTTPHandler()
+		topic := fmt.Sprintf("user-%d", user.ID)
+		if err = publisher.Publish(topic, b); err != nil {
 			return err
 		}
 	}

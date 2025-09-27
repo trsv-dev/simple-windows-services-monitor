@@ -6,25 +6,30 @@ import (
 	"net/http"
 
 	"github.com/r3labs/sse/v2"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 )
+
+// TopicResolver Из запроса возвращает разрешённый топик (например "user-123")
+type TopicResolver func(r *http.Request) (string, error)
 
 // R3labsSSEAdapter — адаптер для библиотеки r3labs/sse.
 // Обёртка предоставляет Publisher (Publish/Close) и http.Handler для монтирования.
 type R3labsSSEAdapter struct {
-	srv *sse.Server
+	srv     *sse.Server
+	resolve TopicResolver
 }
 
-// NewR3labsSSEAdapter создаёт новый экземпляр адаптера (и internal sse.Server).
-func NewR3labsSSEAdapter() *R3labsSSEAdapter {
+// NewR3labsSSEAdapter Создаёт новый экземпляр адаптера (и internal sse.Server).
+func NewR3labsSSEAdapter(resolve TopicResolver) *R3labsSSEAdapter {
 	srv := sse.New()
+	//srv.AutoStream = true // автоматическое создание стримов при коннекте клиента
 
-	return &R3labsSSEAdapter{srv: srv}
+	return &R3labsSSEAdapter{srv: srv, resolve: resolve}
 }
 
 // Publish реализует интерфейс Publisher.
-// Создает топик и публикует событие в указанный топик (stream). Данные передаются в поле Event.Data.
+// Публикует событие в указанный топик (stream). Данные передаются в поле Event.Data.
 func (a *R3labsSSEAdapter) Publish(topic string, data []byte) error {
-	a.srv.CreateStream(topic)
 	a.srv.Publish(topic, &sse.Event{Data: data})
 	return nil
 }
@@ -45,6 +50,38 @@ func (a *R3labsSSEAdapter) Subscribe(ctx context.Context, topic string) (<-chan 
 // HTTPHandler возвращает http.Handler, который можно примонтировать в маршруты (например, на /events/).
 // r3labs.Server сам обрабатывает URL вида /<stream> и управляет подписками/реплеем.
 func (a *R3labsSSEAdapter) HTTPHandler() http.Handler {
-	fmt.Println()
-	return a.srv
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// аутентификация и получение топика
+		topic, err := a.resolve(r)
+		if err != nil {
+			logger.Log.Error("SSE: топик не разрешён", logger.String("err", err.Error()))
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// создаём stream заранее (устраняет возможные ошибки при подключении)
+		a.srv.CreateStream(topic)
+
+		// защитный recover вокруг ServeHTTP, чтобы не падать в случае паники внутри библиотеки
+		defer func() {
+			if rec := recover(); rec != nil {
+				logger.Log.Error("SSE: panic recovered in handler", logger.String("panic", fmt.Sprintf("%v", rec)))
+				// не перезагружаем процесс здесь — просто корректно вернём 500
+			}
+		}()
+
+		// клонируем запрос
+		r2 := r.Clone(r.Context())
+
+		// формируем корректный URL с параметром stream
+		q := r2.URL.Query()
+		q.Set("stream", topic)
+		r2.URL.RawQuery = q.Encode()
+
+		// сбрасываем путь на корень для r3labs
+		r2.URL.Path = "/"
+
+		// передаём в r3labs/sse
+		a.srv.ServeHTTP(w, r2)
+	})
 }

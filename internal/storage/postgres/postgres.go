@@ -122,13 +122,14 @@ func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server
 
 	// обновляем сервер собранными данными и сразу возвращаем данные для создания возвращаемого "наружу" сервера
 	updateQuery := `UPDATE servers SET name = $1, username = $2, address = $3, password = $4 
-              WHERE id = $5 AND user_id = (SELECT id FROM users WHERE login = $6) RETURNING id, name, username, address, created_at`
+              WHERE id = $5 AND user_id = (SELECT id FROM users WHERE login = $6) 
+              RETURNING id, name, username, address, fingerprint, created_at`
 
 	var returnedServer models.Server
 
 	// не показываем пароль в возвращаемом "наружу" сервере
 	err := pg.DB.QueryRowContext(ctx, updateQuery, editedServer.Name, editedServer.Username, editedServer.Address, password, serverID, login).
-		Scan(&returnedServer.ID, &returnedServer.Name, &returnedServer.Username, &returnedServer.Address, &returnedServer.CreatedAt)
+		Scan(&returnedServer.ID, &returnedServer.Name, &returnedServer.Username, &returnedServer.Address, &returnedServer.Fingerprint, &returnedServer.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -256,7 +257,7 @@ func (pg *PgStorage) ListServers(ctx context.Context, login string) ([]*models.S
 
 // AddService Добавление службы на сервер, принадлежащий пользователю.
 func (pg *PgStorage) AddService(ctx context.Context, serverID int, login string, service models.Service) (*models.Service, error) {
-	// создаем транзакцию при добавлении службы, чтобы получить гарантированно получить из базы актуальный
+	// создаем транзакцию при добавлении службы, чтобы гарантированно получить из базы актуальный
 	// статус службы и время его изменения и не попасть в ситуацию, когда кто-то параллельно изменил ее статус
 	// и время изменения (например, сделав какую-то операцию над службой)
 	tx, err := pg.DB.BeginTx(ctx, nil)
@@ -300,6 +301,9 @@ func (pg *PgStorage) AddService(ctx context.Context, serverID int, login string,
 
 	switch {
 	case err == nil:
+		// если такая служба на других серверах с тем же fingerprint уже существует -
+		// берем значение status и updated_at у нее
+		// (сортировка в queryStatusUpdatedAt выведет службу с самыми последними изменениями)
 		service.Status = lastStatus
 		service.UpdatedAt = lastUpdated
 	case errors.Is(err, sql.ErrNoRows):
@@ -481,7 +485,7 @@ func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
 
 	query := `INSERT INTO users (login, password) VALUES ($1, $2)`
 
-	_, err = pg.DB.Exec(query, user.Login, string(hashedPassword))
+	_, err = pg.DB.ExecContext(ctx, query, user.Login, string(hashedPassword))
 	var pgErr *pgconn.PgError
 	if err != nil {
 		switch {
@@ -503,8 +507,8 @@ func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
 func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.User, error) {
 	var userFromDB models.User
 
-	query := `SELECT login, password FROM users WHERE login = $1`
-	err := pg.DB.QueryRowContext(ctx, query, user.Login).Scan(&userFromDB.Login, &userFromDB.Password)
+	query := `SELECT id, login, password FROM users WHERE login = $1`
+	err := pg.DB.QueryRowContext(ctx, query, user.Login).Scan(&userFromDB.ID, &userFromDB.Login, &userFromDB.Password)
 
 	if err != nil {
 		switch {
