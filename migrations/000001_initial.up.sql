@@ -12,12 +12,14 @@ CREATE TABLE IF NOT EXISTS servers (
     address VARCHAR(250) NOT NULL,
     username VARCHAR(250) NOT NULL,
     password TEXT NOT NULL,
+    fingerprint UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT unique_user_server UNIQUE (user_id, address)
+    CONSTRAINT unique_user_fingerprint UNIQUE (user_id, fingerprint)
 );
 
 CREATE INDEX idx_servers_user_id ON servers(user_id);
+CREATE INDEX idx_servers_fingerprint ON servers(fingerprint);
 
 CREATE TABLE IF NOT EXISTS services (
     id BIGSERIAL PRIMARY KEY,

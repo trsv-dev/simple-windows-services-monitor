@@ -6,9 +6,11 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/golang-migrate/migrate/v4 v4.19.0
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/joho/godotenv v1.5.1
 	github.com/masterzen/winrm v0.0.0-20250819055755-20c0798bc988
+	github.com/r3labs/sse/v2 v2.10.0
 	golang.org/x/crypto v0.36.0
 )
 
@@ -39,4 +41,5 @@ require (
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
+	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 )

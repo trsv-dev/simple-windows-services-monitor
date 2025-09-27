@@ -12,6 +12,7 @@ import (
 type Claims struct {
 	jwt.RegisteredClaims
 	Login string
+	ID    int64
 }
 
 const TokenExp = time.Hour * 24
@@ -24,6 +25,7 @@ func BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 		},
 		Login: user.Login,
+		ID:    user.ID,
 	}
 
 	// создаем токен с claims
@@ -38,8 +40,8 @@ func BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
 	return tokenString, nil
 }
 
-// GetLogin Получение Login-а пользователя с помощью распарсивания JWT-токена.
-func GetLogin(tokenString, JWTSecretKey string) (string, error) {
+// GetClaims Получение Claims (login и id) пользователя с помощью распарсивания JWT-токена.
+func GetClaims(tokenString, JWTSecretKey string) (*Claims, error) {
 	// создаем пустой экземпляр Claims, куда будем распарсивать токен
 	claims := &Claims{}
 
@@ -53,16 +55,16 @@ func GetLogin(tokenString, JWTSecretKey string) (string, error) {
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("ошибка парсинга токена: %w", err)
+		return nil, fmt.Errorf("ошибка парсинга токена: %w", err)
 	}
 
 	// проверяем токен на валидность
 	if !token.Valid {
-		return "", fmt.Errorf("токен недействителен")
+		return nil, fmt.Errorf("токен недействителен")
 	}
 
-	// возвращаем значение UserID из экземпляра структуры
-	return claims.Login, nil
+	// возвращаем значение экземпляра структуры Claims
+	return claims, nil
 }
 
 // CreateCookie Создание и установка куки с JWT-токеном.

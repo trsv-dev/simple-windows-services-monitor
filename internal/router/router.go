@@ -10,6 +10,8 @@ import (
 func Router(h *api.AppHandler) chi.Router {
 	router := chi.NewRouter()
 
+	router.Use(middleware.CorsMiddleware)
+
 	// middleware логгера всех запросов
 	router.Use(middleware.LogMiddleware)
 
@@ -21,8 +23,12 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.LoginToContextMiddleware(h.JWTSecretKey))
+		r.Use(middleware.LoginIdToContextMiddleware(h.JWTSecretKey))
 		r.Use(middleware.RequireAuthMiddleware)
+
+		// SSE: подписка на события служб
+		// h.Broadcaster.HTTPHandler() — это http.Handler для всех топиков
+		r.Handle("/broadcasting", h.Broadcaster.HTTPHandler())
 
 		// маршруты БЕЗ ServerID параметра
 		r.Post("/servers", h.AddServer)    // создание сервера

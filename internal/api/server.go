@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
@@ -10,6 +11,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 )
 
 // AddServer Добавление нового сервера.
@@ -37,6 +39,15 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	fingerprint, err := service_control.GetFingerprint(ctx, server.Address, server.Username, server.Password)
+	if err != nil {
+		logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+		return
+	}
+
+	server.Fingerprint = fingerprint
 
 	createdServer, err := h.storage.AddServer(ctx, server, userID)
 
@@ -72,7 +83,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	id := ctx.Value(contextkeys.ServerID).(int)
 
 	// получаем текущие данные сервера
-	old, err := h.storage.GetServer(ctx, id, login)
+	old, err := h.storage.GetServerWithPassword(ctx, id, login)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
@@ -117,6 +128,23 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if input.Address != "" {
+		password := old.Password
+		if input.Password != "" {
+			password = input.Password
+		}
+
+		fingerprint, err := service_control.GetFingerprint(ctx, input.Address, input.Username, password)
+		if err != nil {
+			logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+			return
+		}
+		if old.Fingerprint != fingerprint {
+			logger.Log.Error("Невозможно изменить адрес: UUID сервера не совпадает с ранее зарегистрированным UUID", logger.String("newAddress", input.Address), logger.String("oldAddress", old.Address))
+			response.ErrorJSON(w, http.StatusBadRequest, fmt.Sprintf("Невозможно изменить адрес: UUID сервера `%s` не совпадает с ранее зарегистрированным UUID `%s`", input.Address, old.Address))
+			return
+		}
+
 		old.Address = input.Address
 	}
 
