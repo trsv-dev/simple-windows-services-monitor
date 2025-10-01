@@ -50,7 +50,8 @@ func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 	var ErrWrongLoginOrPassword *errs.ErrWrongLoginOrPassword
 	switch {
 	case errors.As(err, &ErrWrongLoginOrPassword):
-		logger.Log.Error("Неверная пара логин/пароль")
+		logger.Log.Error("Неверная пара логин/пароль",
+			logger.String("err", ErrWrongLoginOrPassword.Err.Error()))
 		response.ErrorJSON(w, http.StatusUnauthorized, "Неверная пара логин/пароль")
 		return
 	case err != nil:

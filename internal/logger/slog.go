@@ -10,7 +10,17 @@ import (
 
 // SlogAdapter Адаптер для логгера slog.
 type SlogAdapter struct {
-	slog *slog.Logger
+	slog   *slog.Logger
+	output *os.File
+}
+
+// Close Если пишем лог в файл, этот метод позволяет его закрыть после работы
+func (s *SlogAdapter) Close() error {
+	if s.output != nil {
+		return s.output.Close()
+	}
+
+	return nil
 }
 
 func (s *SlogAdapter) Debug(msg string, fields ...Field) {
@@ -43,6 +53,13 @@ func Int(key string, val int) Field {
 	}
 }
 
+func Int64(key string, val int64) Field {
+	return Field{
+		Key:   key,
+		Value: strconv.FormatInt(val, 10),
+	}
+}
+
 // Конвертация Fields в any[].
 func convertFields(fields []Field) []any {
 	args := make([]any, 0, len(fields)*2)
@@ -58,7 +75,7 @@ var (
 )
 
 // InitLogger Синглтон инициализации логгера.
-func InitLogger(logLevel string) {
+func InitLogger(logLevel string, output string) {
 
 	var programLevel slog.Level
 
@@ -75,8 +92,21 @@ func InitLogger(logLevel string) {
 		programLevel = slog.LevelDebug
 	}
 
-	once.Do(func() {
-		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
-		Log = &SlogAdapter{slog: logger}
-	})
+	switch output {
+	case "stdout":
+		once.Do(func() {
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
+			Log = &SlogAdapter{slog: logger}
+		})
+	default:
+		output, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		once.Do(func() {
+			logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: programLevel}))
+			Log = &SlogAdapter{slog: logger}
+		})
+	}
 }

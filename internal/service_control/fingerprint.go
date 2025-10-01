@@ -29,8 +29,8 @@ func GetFingerprint(ctx context.Context, address, username, password string) (uu
 	// получение fingerprint сервера
 	fingerprintStr, err := client.RunCommand(fingerprintCtx, fingerprintCmd)
 	if err != nil {
-		logger.Log.Warn(fmt.Sprintf("Не удалось получить уникальный идентификатор `%s` от сервера `%s`",
-			username, address), logger.String("err", err.Error()))
+		//logger.Log.Warn(fmt.Sprintf("Не удалось получить уникальный идентификатор `%s` от сервера `%s`",
+		//	username, address), logger.String("err", err.Error()))
 
 		return uuid.Nil, fmt.Errorf("не удалось получить уникальный идентификатор сервера: %w", err)
 	}

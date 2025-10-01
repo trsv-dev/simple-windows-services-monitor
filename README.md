@@ -58,12 +58,13 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    alter database swsm owner to swsm;
    ```
 
-3. Создайте в корне файл `.env` и заполните своими данными:
+3. Создайте в корне файл `.env` и заполните своими данными (пример дан в env_example):
 
    ```env
    DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
    RUN_ADDRESS=127.0.0.1:8080
    LOG_LEVEL=debug
+   LOG_OUTPUT=file
    AES_KEY=your-base64-key
    SECRET_KEY=your-jwt-secret
    ```

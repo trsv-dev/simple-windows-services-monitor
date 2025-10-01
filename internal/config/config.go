@@ -9,6 +9,7 @@ type Config struct {
 	RunAddress   string
 	DatabaseURI  string
 	LogLevel     string
+	LogOutput    string
 	JWTSecretKey string
 	AESKey       string
 }
@@ -20,7 +21,8 @@ func InitConfig() *Config {
 
 	flag.StringVar(&config.RunAddress, "a", "127.0.0.1:8080", "HTTP server address and port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
-	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error)")
+	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error). Default level: Debug")
+	flag.StringVar(&config.LogOutput, "lo", "file", "Log output destination: 'stdout' for console or `/path/to/file.log` for log file. Default: 'swsm.log'")
 	flag.StringVar(&config.JWTSecretKey, "s", "", "Secret key used for signing and verifying JWT tokens (example: UIfuBqY1crEUgzIem9)")
 	flag.StringVar(&config.AESKey, "k", "", "AES key for encrypting server passwords (hex-encoded, 32 bytes, for example: DjffxQxRnhvkB0CkxEiGbrFIoN8PTJc3TZqf/YNSVRI=)")
 	flag.Parse()
@@ -35,6 +37,10 @@ func InitConfig() *Config {
 
 	if value, ok := os.LookupEnv("LOG_LEVEL"); ok {
 		config.LogLevel = value
+	}
+
+	if value, ok := os.LookupEnv("LOG_OUTPUT"); ok {
+		config.LogOutput = value
 	}
 
 	if value, ok := os.LookupEnv("JWT_SECRET_KEY"); ok {

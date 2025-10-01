@@ -22,7 +22,8 @@ func ParseServerIDMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		id, err := strconv.Atoi(idStr)
+		// Парсим строку в int64
+		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
 			logger.Log.Error("Некорректный id")
 			response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id сервера")
@@ -45,7 +46,8 @@ func ParseServiceIDMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		id, err := strconv.Atoi(idStr)
+		// Парсим строку в int64
+		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
 			logger.Log.Error("Некорректный id")
 			response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id службы")
