@@ -366,6 +366,8 @@ func (pg *PgStorage) DelService(ctx context.Context, serverID int64, serviceID i
 
 // ChangeServiceStatus Изменение статуса службы.
 func (pg *PgStorage) ChangeServiceStatus(ctx context.Context, serverID int64, serviceName string, status string) error {
+	// если один пользователь обновляет статус и время службы на сервере,
+	// то эти изменения применяются для всех пользователей, у которых добавлен данный сервер.
 	query := `UPDATE services SET status = $1, updated_at = CURRENT_TIMESTAMP
               WHERE service_name = $2 
                 AND server_id IN (
@@ -387,6 +389,59 @@ func (pg *PgStorage) ChangeServiceStatus(ctx context.Context, serverID int64, se
 
 	if affectedRows == 0 {
 		return fmt.Errorf("ошибка изменения статуса службы `%s` на сервере %d", serviceName, serverID)
+	}
+
+	return nil
+}
+
+// BatchChangeServiceStatus Изменение статуса служб батчем.
+func (pg *PgStorage) BatchChangeServiceStatus(ctx context.Context, serverID int64, servicesBatch []*models.Service) error {
+	// если один пользователь обновляет статус и время службы на сервере,
+	// то эти изменения применяются для всех пользователей, у которых добавлен данный сервер.
+	query := `UPDATE services SET status = $1, updated_at = $2
+              WHERE service_name = $3 
+                AND server_id IN (
+                	SELECT id FROM servers 
+                	WHERE fingerprint = (SELECT fingerprint FROM servers WHERE id = $4)
+                )`
+
+	// создаем транзакцию
+	tx, err := pg.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ошибка создания транзакции %w ", err)
+	}
+
+	defer tx.Rollback()
+
+	// создаем подготовленный запрос
+	stmt, err := tx.PrepareContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("ошибка подготовки запроса %w ", err)
+	}
+
+	defer stmt.Close()
+
+	for _, service := range servicesBatch {
+		Result, err := stmt.ExecContext(ctx, service.Status, service.UpdatedAt, service.ServiceName, serverID)
+
+		if err != nil {
+			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
+			return err
+		}
+
+		affectedRows, err := Result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("ошибка при выполнении запроса %w", err)
+		}
+
+		if affectedRows == 0 {
+			return fmt.Errorf("ошибка изменения статуса службы `%s` на сервере %d", service.ServiceName, serverID)
+		}
+	}
+
+	// коммитим транзакцию
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ошибка при коммите транзакции: %v", err)
 	}
 
 	return nil
