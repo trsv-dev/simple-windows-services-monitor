@@ -10,10 +10,10 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 )
 
-// LoginIdToContextMiddleware Middleware, который извлекает логин пользователя из JWT-токена,
+// UserLoginUserIdToContextMiddleware Middleware, который извлекает логин пользователя из JWT-токена,
 // проверяет его и добавляет логин в контекст запроса.
 // Это позволяет в дальнейшем получить логин из контекста (request.Context) в других обработчиках.
-func LoginIdToContextMiddleware(JWTSecretKey string) func(http.Handler) http.Handler {
+func UserLoginUserIdToContextMiddleware(JWTSecretKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenCookie, err := r.Cookie("JWT")
@@ -36,7 +36,7 @@ func LoginIdToContextMiddleware(JWTSecretKey string) func(http.Handler) http.Han
 				return
 			}
 
-			// добавляем login и id в контекст запроса под ключом `contextkeys.Login` и `contextkeys.ID` соответственно
+			// добавляем login и id в контекст запроса под ключом `contextkeys.UserID` и `contextkeys.ServerID` соответственно
 			ctxWithLogin := context.WithValue(r.Context(), contextkeys.Login, claims.Login)
 			ctxWithId := context.WithValue(ctxWithLogin, contextkeys.ID, claims.ID)
 			r = r.WithContext(ctxWithId)

@@ -26,27 +26,27 @@ func NewErrDuplicatedService(ServiceName string, err error) *ErrDuplicatedServic
 // ErrServiceNotFound Кастомная ошибка, сообщающая о том, что служба не найдена (была удалена или не принадлежит серверу).
 type ErrServiceNotFound struct {
 	Err       error
-	Login     string
-	ServerID  int
-	ServiceID int
+	UserID    int64
+	ServerID  int64
+	ServiceID int64
 }
 
 func (no *ErrServiceNotFound) Error() string {
-	return fmt.Sprintf("Служба id=%d не найдена среди служб сервера id=%d. Пользователь - `%s`. Ошибка: %s", no.ServiceID, no.ServerID, no.Login, no.Err)
+	return fmt.Sprintf("Служба id=%d не найдена среди служб сервера id=%d. Пользователь - id=`%d`. Ошибка: %s", no.ServiceID, no.ServerID, no.UserID, no.Err)
 }
 
 func (no *ErrServiceNotFound) Unwrap() error {
 	return no.Err
 }
 
-func NewErrServiceNotFound(login string, serverID int, serviceID int, err error) *ErrServiceNotFound {
+func NewErrServiceNotFound(userID int64, serverID int64, serviceID int64, err error) *ErrServiceNotFound {
 	if err == nil {
 		err = fmt.Errorf("служба не найдена")
 	}
 
 	return &ErrServiceNotFound{
 		Err:       err,
-		Login:     login,
+		UserID:    userID,
 		ServerID:  serverID,
 		ServiceID: serviceID,
 	}

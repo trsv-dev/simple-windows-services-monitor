@@ -9,19 +9,19 @@ import (
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
 // AddService Добавление службы.
 func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
+	creds := models.GetContextCreds(ctx)
 
 	var service models.Service
 
@@ -35,15 +35,18 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -51,6 +54,15 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о сервере")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
+
+		w.Header().Set("Content-Type", "application/json")
+		response.ErrorJSON(w, http.StatusBadGateway, "Сервер недоступен")
+		return
 	}
 
 	// создаём WinRM клиент
@@ -71,7 +83,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s` на сервере `%s`, id=%d",
-			service.DisplayedName, server.Name, serverID), logger.String("err", err.Error()))
+			service.DisplayedName, server.Name, creds.ServerID), logger.String("err", err.Error()))
 
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Не удалось получить статус службы `%s`", service.DisplayedName))
 		return
@@ -81,17 +93,20 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	service.Status = statusFromServer
 	service.UpdatedAt = time.Now()
 
-	createdService, err := h.storage.AddService(ctx, serverID, login, service)
+	createdService, err := h.storage.AddService(ctx, creds.ServerID, creds.UserID, service)
 	var ErrDuplicatedService *errs.ErrDuplicatedService
 	var ErrServerNotFound2 *errs.ErrServerNotFound
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrDuplicatedService):
-			logger.Log.Error("Дубликат службы", logger.String("err", err.Error()))
+			logger.Log.Error("Дубликат службы",
+				logger.Int64("serverID", creds.ServerID),
+				logger.String("serviceName", service.ServiceName),
+				logger.String("err", ErrDuplicatedService.Err.Error()))
 			response.ErrorJSON(w, http.StatusConflict, "Служба уже была добавлена")
 			return
 		case errors.As(err, &ErrServerNotFound2):
-			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
+			logger.Log.Error("Сервер не был найден", logger.String("err", ErrServerNotFound2.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
@@ -101,7 +116,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Debug("Служба успешно добавлена на сервер", logger.String("serviceName", service.ServiceName), logger.Int("serverID", serverID))
+	logger.Log.Debug("Служба успешно добавлена на сервер", logger.String("serviceName", service.ServiceName), logger.Int64("serverID", creds.ServerID))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
@@ -115,17 +130,19 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 // DelService Удаление службы.
 func (h *AppHandler) DelService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
-	serviceID := ctx.Value(contextkeys.ServiceID).(int)
+	creds := models.GetContextCreds(ctx)
 
-	err := h.storage.DelService(ctx, serverID, serviceID, login)
+	err := h.storage.DelService(ctx, creds.ServerID, creds.ServiceID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Error("Служба не найдена", logger.String("err", err.Error()))
+			logger.Log.Error("Служба не найдена",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServiceNotFound.UserID),
+				logger.Int64("serverID", ErrServiceNotFound.ServerID),
+				logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
@@ -135,25 +152,28 @@ func (h *AppHandler) DelService(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Debug("Служба успешно удалена", logger.Int("serverID", serverID), logger.Int("serviceID", serviceID))
+	logger.Log.Debug("Служба успешно удалена", logger.Int64("serverID", creds.ServerID), logger.Int64("serviceID", creds.ServiceID))
 	response.SuccessJSON(w, http.StatusOK, "Служба успешно удалена")
 }
 
 // GetService Получение информации о службе.
 func (h *AppHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
-	serviceID := ctx.Value(contextkeys.ServiceID).(int)
+	creds := models.GetContextCreds(ctx)
 
-	service, err := h.storage.GetService(ctx, serverID, serviceID, login)
+	service, err := h.storage.GetService(ctx, creds.ServerID, creds.ServiceID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Warn("Служба не найдена", logger.String("err", err.Error()))
+			logger.Log.Warn("Служба не найдена",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServiceNotFound.UserID),
+				logger.Int64("serverID", ErrServiceNotFound.ServerID),
+				logger.Int64("serviceID", ErrServiceNotFound.ServiceID),
+				logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
@@ -164,7 +184,7 @@ func (h *AppHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
 	if err = json.NewEncoder(w).Encode(service); err != nil {
 		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
@@ -175,33 +195,118 @@ func (h *AppHandler) GetService(w http.ResponseWriter, r *http.Request) {
 // GetServicesList Получение списка служб сервера, принадлежащего пользователю.
 func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
+	creds := models.GetContextCreds(ctx)
 
-	services, err := h.storage.ListServices(ctx, serverID, login)
+	services, err := h.storage.ListServices(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
+			logger.Log.Error("Сервер не был найден",
+				logger.String("login", creds.Login),
+				logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
-			logger.Log.Warn("Ошибка при получении списка служб сервера", logger.String("err", err.Error()))
+			logger.Log.Warn("Ошибка при получении списка служб сервера",
+				logger.String("login", creds.Login),
+				logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении списка служб")
 			return
 		}
 	}
 
-	// если служб у сервера нет - возвращаем пустой срез служб
 	if len(services) == 0 {
 		services = []*models.Service{}
 	}
 
+	// если запрос пришел без параметра ?actual=true - просто временем каждую службу в списке
+	// если служб у сервера нет - возвращаем пустой срез служб
+	// если запрос пришел с параметром ?actual=true, но служб нет - вернем пустой массив
+	if r.URL.Query().Get("actual") != "true" || len(services) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
+		if err = json.NewEncoder(w).Encode(services); err != nil {
+			logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			return
+		}
+		return
+	}
+
+	// если запрос пришел с параметром ?actual=true - сначала получаем актуальные статусы служб с сервера
+	// и обновляем новым статусом и временем каждую службу в списке
+
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
+
+	var ErrServerNotFound *errs.ErrServerNotFound
+
+	if err != nil {
+		switch {
+		case errors.As(err, &ErrServerNotFound):
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
+			return
+		default:
+			logger.Log.Warn("Ошибка при получении информации о сервере", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о сервере")
+			return
+		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Is-Updated", "false")
+		// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
+		if err = json.NewEncoder(w).Encode(services); err != nil {
+			logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			return
+		}
+		return
+	}
+
+	// опрашиваем службы через воркер, получаем слайс служб с обновленными данными и булево значение об успехе
+	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+
+	if !success {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Is-Updated", "false")
+		// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
+		if err = json.NewEncoder(w).Encode(services); err != nil {
+			logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			return
+		}
+		return
+	}
+
+	err = h.storage.BatchChangeServiceStatus(ctx, creds.ServerID, updates)
+	if err != nil {
+		logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
+
+		w.Header().Set("X-Is-Updated", "false")
+		// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
+		if err = json.NewEncoder(w).Encode(services); err != nil {
+			logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			return
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("X-Is-Updated", "true")
+	// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
 	if err = json.NewEncoder(w).Encode(services); err != nil {
 		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")

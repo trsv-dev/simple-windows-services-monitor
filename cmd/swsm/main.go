@@ -23,10 +23,10 @@ import (
 
 // "Сборка" и запуск проекта.
 func main() {
-	// recover для логирования паник
+	// recover для логирования паник в main
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Log.Error("Паника в main", logger.String("panic", fmt.Sprintf("%v", r)))
+			log.Println("Паника в main:", fmt.Sprintf("%v", r))
 		}
 	}()
 
@@ -40,7 +40,9 @@ func main() {
 	srvConfig := config.InitConfig()
 
 	// инициализация логгера с уровнем логирования из конфигурации
-	logger.InitLogger(srvConfig.LogLevel)
+	logger.InitLogger(srvConfig.LogLevel, srvConfig.LogOutput)
+	// отложенное закрытие ресурса (актуально если используется файл для логирования)
+	defer logger.Log.(*logger.SlogAdapter).Close()
 
 	// декодируем AES-ключ, используемый для шифрования данных в БД
 	AESKeyStr := srvConfig.AESKey

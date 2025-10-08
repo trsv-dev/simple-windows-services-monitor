@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
 )
@@ -18,20 +19,21 @@ import (
 // ServiceStop Остановка службы.
 func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
-	serviceID := ctx.Value(contextkeys.ServiceID).(int)
+	creds := models.GetContextCreds(ctx)
 
 	// получаем сервер с паролем
-	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -42,14 +44,14 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// получаем службу
-	service, err := h.storage.GetService(ctx, serverID, serviceID, login)
+	service, err := h.storage.GetService(ctx, creds.ServerID, creds.ServiceID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Warn("Служба не найдена", logger.String("err", err.Error()))
+			logger.Log.Warn("Служба не найдена", logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
@@ -57,6 +59,13 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о службе")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно остановить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
 	}
 
 	// создаём WinRM клиент
@@ -78,7 +87,7 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Не удалось получить статус службы `%s`", service.DisplayedName))
 		return
@@ -96,13 +105,13 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 
 		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
-				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось остановить службу")
 			return
 		}
 
 		// обновляем статус службы в БД для всех пользователей после успешной остановки
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Остановлена"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 			// не возвращаем ошибку пользователю, т.к. служба реально остановлена
 		}
@@ -114,26 +123,26 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 		// уже остановлена
 
 		// обновляем статус в БД на всякий случай для синхронизации
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Остановлена"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d уже остановлена",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.SuccessJSON(w, http.StatusOK,
 			fmt.Sprintf("Служба `%s` уже остановлена", service.DisplayedName))
 
 	case utils.ServiceStopPending, utils.ServicePausePending:
 		// уже выполняется остановка/пауза
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d уже останавливается на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusConflict,
 			fmt.Sprintf("Служба `%s` уже останавливается", service.DisplayedName))
 
 	default:
 		// неожиданный статус
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d находится в состоянии, не позволяющем остановку",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusBadRequest,
 			fmt.Sprintf("Служба `%s` находится в состоянии, не позволяющем остановку", service.DisplayedName))
 
@@ -143,20 +152,21 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 // ServiceStart Запуск службы.
 func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
-	serviceID := ctx.Value(contextkeys.ServiceID).(int)
+	creds := models.GetContextCreds(ctx)
 
 	// получаем сервер с паролем
-	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -167,14 +177,14 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// получаем службу
-	service, err := h.storage.GetService(ctx, serverID, serviceID, login)
+	service, err := h.storage.GetService(ctx, creds.ServerID, creds.ServiceID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Warn("Служба не найдена", logger.String("err", err.Error()))
+			logger.Log.Warn("Служба не найдена", logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
@@ -182,6 +192,13 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о службе")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
 	}
 
 	// создаём WinRM клиент
@@ -203,7 +220,7 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Не удалось получить статус службы `%s`", service.DisplayedName))
 		return
@@ -221,13 +238,13 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 
 		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
-				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось запустить службу")
 			return
 		}
 
 		// обновляем статус службы в БД для всех пользователей после успешного запуска
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Работает"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
@@ -238,26 +255,26 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 		// уже запущена
 
 		// обновляем статус в БД на всякий случай для синхронизации
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Работает"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d уже запущена",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.SuccessJSON(w, http.StatusOK,
 			fmt.Sprintf("Служба `%s` уже запущена", service.DisplayedName))
 
 	case utils.ServiceStartPending, utils.ServicePausePending:
 		// уже выполняется запуск/пауза
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d уже запускается на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusConflict,
 			fmt.Sprintf("Служба `%s` уже запускается", service.DisplayedName))
 
 	default:
 		// неожиданный статус
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d находится в состоянии, не позволяющем запуск",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusBadRequest,
 			fmt.Sprintf("Служба `%s` находится в состоянии, не позволяющем запуск", service.DisplayedName))
 	}
@@ -266,20 +283,21 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 // ServiceRestart Перезапуск службы.
 func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	serverID := ctx.Value(contextkeys.ServerID).(int)
-	serviceID := ctx.Value(contextkeys.ServiceID).(int)
+	creds := models.GetContextCreds(ctx)
 
 	// получаем сервер с паролем
-	server, err := h.storage.GetServerWithPassword(ctx, serverID, login)
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -290,14 +308,14 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// получаем службу
-	service, err := h.storage.GetService(ctx, serverID, serviceID, login)
+	service, err := h.storage.GetService(ctx, creds.ServerID, creds.ServiceID, creds.UserID)
 
 	var ErrServiceNotFound *errs.ErrServiceNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServiceNotFound):
-			logger.Log.Warn("Служба не найдена", logger.String("err", err.Error()))
+			logger.Log.Warn("Служба не найдена", logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
 			return
 		default:
@@ -305,6 +323,13 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о службе")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно перезапустить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
 	}
 
 	// создаём WinRM клиент
@@ -327,7 +352,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s`, id=%d на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Не удалось получить статус службы `%s`", service.DisplayedName))
 		return
@@ -345,7 +370,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 
 		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
-				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServiceID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось остановить службу `%s`", service.DisplayedName))
 			return
@@ -363,7 +388,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// обновляем статус службы в БД для всех пользователей после успешной остановки
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Остановлена"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Остановлена"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
@@ -380,7 +405,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// обновляем статус службы в БД для всех пользователей после успешного запуска
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Работает"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
@@ -396,14 +421,14 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 
 		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
-				service.DisplayedName, serviceID, server.Name, serverID), logger.String("err", err.Error()))
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось запустить службу `%s`", service.DisplayedName))
 			return
 		}
 
 		// обновляем статус в БД на всякий случай для синхронизации
-		if err = h.storage.ChangeServiceStatus(ctx, serverID, service.ServiceName, "Работает"); err != nil {
+		if err = h.storage.ChangeServiceStatus(ctx, creds.ServerID, service.ServiceName, "Работает"); err != nil {
 			logger.Log.Error("Не удалось обновить статус службы в БД", logger.String("err", err.Error()))
 		}
 
@@ -413,13 +438,13 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	case utils.ServiceStartPending, utils.ServiceStopPending:
 		// уже в процессе
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d уже изменяет состояние на сервере `%s`, id=%d",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusConflict,
 			fmt.Sprintf("Служба `%s` уже изменяет состояние, попробуйте позже", service.DisplayedName))
 
 	default:
 		logger.Log.Warn(fmt.Sprintf("Служба `%s`, id=%d на сервере `%s`, id=%d находится в состоянии, не позволяющем перезапуск",
-			service.DisplayedName, serviceID, server.Name, serverID))
+			service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID))
 		response.ErrorJSON(w, http.StatusBadRequest,
 			fmt.Sprintf("Служба `%s` находится в состоянии, не позволяющем перезапуск", service.DisplayedName))
 	}

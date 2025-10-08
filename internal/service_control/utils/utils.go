@@ -17,6 +17,8 @@ const (
 
 // GetStatus Получение цифрового статуса службы по ее строковому описанию.
 func GetStatus(query string) int {
+	query = strings.ToUpper(query)
+
 	status := Unknown
 
 	switch {

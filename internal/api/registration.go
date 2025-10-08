@@ -49,7 +49,9 @@ func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrLoginIsTaken):
-			logger.Log.Info("Такой пользователь уже существует", logger.String("login", ErrLoginIsTaken.Login))
+			logger.Log.Info("Такой пользователь уже существует",
+				logger.String("login", ErrLoginIsTaken.Login),
+				logger.String("err", ErrLoginIsTaken.Err.Error()))
 			response.ErrorJSON(w, http.StatusConflict, "Пользователь уже существует")
 			return
 		default:

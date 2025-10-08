@@ -24,7 +24,7 @@ func NewWinRMClient(addr, user, password string) (*WinRMClient, error) {
 		Port:     5985,
 		HTTPS:    false,
 		Insecure: true,
-		Timeout:  60 * time.Second,
+		Timeout:  10 * time.Second,
 	}
 
 	newClient, err := winrm.NewClient(endpoint, user, password)

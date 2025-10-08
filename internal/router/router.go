@@ -23,7 +23,7 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.LoginIdToContextMiddleware(h.JWTSecretKey))
+		r.Use(middleware.UserLoginUserIdToContextMiddleware(h.JWTSecretKey))
 		r.Use(middleware.RequireAuthMiddleware)
 
 		// SSE: подписка на события служб

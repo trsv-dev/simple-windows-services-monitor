@@ -17,18 +17,11 @@ import (
 // AddServer Добавление нового сервера.
 func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-
-	userID, err := h.storage.GetUserIDByLogin(ctx, login)
-	if err != nil {
-		logger.Log.Error("Пользователь не найден", logger.String("err", err.Error()))
-		response.ErrorJSON(w, http.StatusUnauthorized, "Пользователь не найден")
-		return
-	}
+	creds := models.GetContextCreds(ctx)
 
 	var server models.Server
 
-	err = json.NewDecoder(r.Body).Decode(&server)
+	err := json.NewDecoder(r.Body).Decode(&server)
 	if err != nil {
 		logger.Log.Debug("Неверный формат запроса для добавления сервера", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
@@ -42,20 +35,20 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 
 	fingerprint, err := service_control.GetFingerprint(ctx, server.Address, server.Username, server.Password)
 	if err != nil {
-		logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
-		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+		logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
 		return
 	}
 
 	server.Fingerprint = fingerprint
 
-	createdServer, err := h.storage.AddServer(ctx, server, userID)
+	createdServer, err := h.storage.AddServer(ctx, server, creds.UserID)
 
 	var ErrDuplicatedServer *errs.ErrDuplicatedServer
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrDuplicatedServer):
-			logger.Log.Error("Дубликат сервера", logger.String("err", err.Error()))
+			logger.Log.Error("Дубликат сервера", logger.String("err", ErrDuplicatedServer.Err.Error()))
 			response.ErrorJSON(w, http.StatusConflict, "Сервер уже был добавлен")
 			return
 		default:
@@ -65,7 +58,8 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Debug("Сервер успешно добавлен пользователем", logger.String("login", login), logger.String("address", server.Address))
+	logger.Log.Debug("Сервер успешно добавлен пользователем",
+		logger.String("login", creds.Login), logger.String("address", server.Address))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -79,18 +73,21 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 // EditServer Редактирование пользовательского сервера.
 func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.ServerID).(int)
+	creds := models.GetContextCreds(ctx)
 
 	// получаем текущие данные сервера
-	old, err := h.storage.GetServerWithPassword(ctx, id, login)
+	old, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Error("Сервер не был найден", logger.String("err", err.Error()))
+			logger.Log.Error("Сервер не был найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
 			return
 		default:
@@ -135,8 +132,8 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 
 		fingerprint, err := service_control.GetFingerprint(ctx, input.Address, input.Username, password)
 		if err != nil {
-			logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+			logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
 			return
 		}
 		if old.Fingerprint != fingerprint {
@@ -149,12 +146,15 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// производим обновление сервера в БД
-	editedServer, err := h.storage.EditServer(ctx, old, id, login)
+	editedServer, err := h.storage.EditServer(ctx, old, creds.ServerID, creds.UserID)
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -164,8 +164,8 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", login),
-		logger.Int("serverID", id))
+	logger.Log.Debug("Сервер успешно отредактирован пользователем", logger.String("login", creds.Login),
+		logger.Int64("serverID", creds.ServerID))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -179,18 +179,20 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 // DelServer Удаление сервера, добавленного пользователем.
 func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.ServerID).(int)
+	creds := models.GetContextCreds(ctx)
 
-	err := h.storage.DelServer(ctx, id, login)
+	err := h.storage.DelServer(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		case err != nil:
@@ -200,8 +202,8 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Log.Debug("Сервер успешно удален пользователем", logger.String("login", login),
-		logger.Int("serverID", id))
+	logger.Log.Debug("Сервер успешно удален пользователем", logger.String("login", creds.Login),
+		logger.Int64("serverID", creds.ServerID))
 	//response.SuccessJSON(w, http.StatusAccepted, "Сервер успешно удален")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -209,18 +211,20 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 // GetServer Получение информации о сервере.
 func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
-	id := ctx.Value(contextkeys.ServerID).(int)
+	creds := models.GetContextCreds(ctx)
 
-	server, err := h.storage.GetServer(ctx, id, login)
+	server, err := h.storage.GetServer(ctx, creds.ServerID, creds.UserID)
 
 	var ErrServerNotFound *errs.ErrServerNotFound
 
 	if err != nil {
 		switch {
 		case errors.As(err, &ErrServerNotFound):
-			logger.Log.Warn("Сервер не найден", logger.String("login", ErrServerNotFound.Login),
-				logger.Int("serverID", ErrServerNotFound.ID), logger.String("err", ErrServerNotFound.Err.Error()))
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
 			return
 		default:
@@ -242,9 +246,9 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 // GetServerList Получение списка серверов пользователя.
 func (h *AppHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	login := ctx.Value(contextkeys.Login).(string)
+	userID := ctx.Value(contextkeys.ID).(int64)
 
-	servers, err := h.storage.ListServers(ctx, login)
+	servers, err := h.storage.ListServers(ctx, userID)
 	if err != nil {
 		logger.Log.Warn("Ошибка при получении списка серверов пользователя", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении списка серверов")
