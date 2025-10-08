@@ -11,6 +11,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
 )
@@ -58,6 +59,13 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о службе")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно остановить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
 	}
 
 	// создаём WinRM клиент
@@ -186,6 +194,13 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
+	}
+
 	// создаём WinRM клиент
 	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
 
@@ -308,6 +323,13 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о службе")
 			return
 		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно перезапустить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
 	}
 
 	// создаём WinRM клиент

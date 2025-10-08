@@ -56,6 +56,15 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
+
+		w.Header().Set("Content-Type", "application/json")
+		response.ErrorJSON(w, http.StatusBadGateway, "Сервер недоступен")
+		return
+	}
+
 	// создаём WinRM клиент
 	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
 
@@ -216,8 +225,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	// если запрос пришел без параметра ?actual=true - просто временем каждую службу в списке
 	// если служб у сервера нет - возвращаем пустой срез служб
 	// если запрос пришел с параметром ?actual=true, но служб нет - вернем пустой массив
-	//if r.URL.Query().Get("actual") != "true" || len(services) == 0 {
-	if r.URL.Query().Get("actual") != "true" && len(services) == 0 {
+	if r.URL.Query().Get("actual") != "true" || len(services) == 0 {
 		w.Header().Set("Content-Type", "application/json")
 		// не выставляем w.WriteHeader(http.StatusOK), т.к. NewEncoder(w).Encode() сам вернет http.StatusOK
 		if err = json.NewEncoder(w).Encode(services); err != nil {
@@ -253,7 +261,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !netutils.IsHostReachable(server.Address, 5985, 2*time.Second) {
+	if !netutils.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")

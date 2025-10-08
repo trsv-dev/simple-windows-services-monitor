@@ -35,8 +35,8 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 
 	fingerprint, err := service_control.GetFingerprint(ctx, server.Address, server.Username, server.Password)
 	if err != nil {
-		logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
-		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+		logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
 		return
 	}
 
@@ -132,8 +132,8 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 
 		fingerprint, err := service_control.GetFingerprint(ctx, input.Address, input.Username, password)
 		if err != nil {
-			logger.Log.Error("Ошибка получения уникального идентификатора сервера", logger.String("err", err.Error()))
-			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения уникального идентификатора сервера"))
+			logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
 			return
 		}
 		if old.Fingerprint != fingerprint {

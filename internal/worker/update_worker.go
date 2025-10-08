@@ -28,13 +28,13 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 	winRMCtx, winRMCtxCancel := context.WithTimeout(ctx, timeout)
 	defer winRMCtxCancel()
 
-	// формируем слайс имён служб для PowerShell
+	// формируем слайс имён служб для PowerShell,
+	// PowerShell ожидает название службы в виде `service`
 	serviceNames := make([]string, len(services))
 	for i, svc := range services {
 		// экранируем на всякий случай
 		escaped := strings.ReplaceAll(svc.ServiceName, "'", "''")
 		serviceNames[i] = fmt.Sprintf("'%s'", escaped)
-		//serviceNames[i] = fmt.Sprintf(`'%s'`, svc.ServiceName)
 	}
 
 	// PowerShell-запрос для получения всех служб одним запросом
@@ -50,10 +50,17 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 		return nil, false
 	}
 
+	// на всякий случай убираем лишние пробелы
+	trimmed := strings.TrimSpace(result)
+
+	if trimmed == "" || trimmed == "[]" {
+		logger.Log.Warn("PowerShell вернул пустой вывод", logger.String("server", server.Address), logger.Int64("serverID", server.ID))
+		return []*models.Service{}, true
+	}
+
 	// парсим JSON результат и обновляем службы
 	type powerShellService struct {
-		Name string `json:"Name"`
-		//Status int    `json:"Status"`
+		Name   string `json:"Name"`
 		Status string `json:"Status"`
 	}
 
@@ -61,8 +68,8 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 	var psServices []powerShellService
 
 	// если вернулся один объект - PowerShell возвращает его не как массив, а как `{}`
-	if strings.HasPrefix(strings.TrimSpace(result), "{") {
-		if err := json.Unmarshal([]byte(result), &psService); err != nil {
+	if strings.HasPrefix(trimmed, "{") {
+		if err := json.Unmarshal([]byte(trimmed), &psService); err != nil {
 			logger.Log.Error("Ошибка анмаршаллинга данных PowerShell-команды на получение статусов служб", logger.String("err", err.Error()))
 			return nil, false
 		}
@@ -70,8 +77,8 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 		psServices = append(psServices, psService)
 
 		// если вернулся массив объектов `[{}]`
-	} else if strings.HasPrefix(strings.TrimSpace(result), "[") {
-		if err := json.Unmarshal([]byte(result), &psServices); err != nil {
+	} else if strings.HasPrefix(trimmed, "[") {
+		if err := json.Unmarshal([]byte(trimmed), &psServices); err != nil {
 			logger.Log.Error("Ошибка анмаршаллинга данных PowerShell-команды на получение статусов служб", logger.String("err", err.Error()))
 			return nil, false
 		}

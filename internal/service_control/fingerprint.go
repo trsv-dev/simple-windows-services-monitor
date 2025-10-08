@@ -7,10 +7,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 )
 
 // GetFingerprint Получение fingerprint (MachineGuid) с Windows сервера.
 func GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !netutils.IsHostReachable(address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s недоступен", address))
+		return uuid.Nil, fmt.Errorf(fmt.Sprintf("Сервер %s недоступен", address))
+	}
+
 	// создаём WinRM клиент для получения fingerprint (MachineGuid) с Windows сервера
 	client, err := NewWinRMClient(address, username, password)
 
