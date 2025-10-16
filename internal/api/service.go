@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
@@ -34,6 +35,9 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		response.ErrorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	rawServiceName := service.ServiceName
+	service.ServiceName = strings.ToLower(strings.TrimSpace(strings.Trim(service.ServiceName, "\"'`«»“”‘’")))
 
 	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
 
@@ -74,7 +78,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
+	statusCmd := fmt.Sprintf("sc query \"%s\"", service.ServiceName)
 
 	// контекст для получения статуса
 	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -86,6 +90,15 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 			service.DisplayedName, server.Name, creds.ServerID), logger.String("err", err.Error()))
 
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Не удалось получить статус службы `%s`", service.DisplayedName))
+		return
+	}
+
+	// проверяем, существует ли вообще такая служба на сервере
+	if !isServiceExists(result) {
+		logger.Log.Warn(fmt.Sprintf("Не удалось получить статус службы `%s` на сервере `%s`, address=%s, id=%d",
+			service.DisplayedName, server.Name, server.Address, creds.ServerID))
+
+		response.ErrorJSON(w, http.StatusNotFound, fmt.Sprintf("Служба `%s` не найдена на сервере", rawServiceName))
 		return
 	}
 
@@ -312,4 +325,18 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
 		return
 	}
+}
+
+// Вспомогательная функция проверки результата запроса на получение статуса службы
+func isServiceExists(result string) bool {
+	// если явно присутствует код 1060 - служба отсутствует
+	if strings.Contains(result, "1060") {
+		return false
+		// искомые маркеры наличия службы
+	} else if strings.Contains(result, "STATE") || strings.Contains(result, "SERVICE_NAME:") {
+		return true
+	}
+
+	// если ничего не понятно - считаем что такой службы нет на сервере
+	return false
 }

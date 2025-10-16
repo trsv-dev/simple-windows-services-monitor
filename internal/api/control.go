@@ -81,8 +81,8 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
-	stopCmd := fmt.Sprintf("sc stop %s", service.ServiceName)
+	statusCmd := fmt.Sprintf("sc query \"%s\"", service.ServiceName)
+	stopCmd := fmt.Sprintf("sc stop \"%s\"", service.ServiceName)
 
 	result, err := client.RunCommand(statusCtx, statusCmd)
 	if err != nil {
@@ -210,8 +210,8 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
-	startCmd := fmt.Sprintf("sc start %s", service.ServiceName)
+	statusCmd := fmt.Sprintf("sc query \"%s\"", service.ServiceName)
+	startCmd := fmt.Sprintf("sc start \"%s\"", service.ServiceName)
 
 	// контекст для получения статуса
 	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -341,9 +341,9 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusCmd := fmt.Sprintf("sc query %s", service.ServiceName)
-	stopCmd := fmt.Sprintf("sc stop %s", service.ServiceName)
-	startCmd := fmt.Sprintf("sc start %s", service.ServiceName)
+	statusCmd := fmt.Sprintf("sc query \"%s\"", service.ServiceName)
+	stopCmd := fmt.Sprintf("sc stop \"%s\"", service.ServiceName)
+	startCmd := fmt.Sprintf("sc start \"%s\"", service.ServiceName)
 
 	// контекст для получения статуса
 	statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -452,7 +452,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 
 // Вспомогательный метод для ожидания статуса
 func (h *AppHandler) waitForServiceStatus(ctx context.Context, client *service_control.WinRMClient, serviceName string, expectedStatus int) error {
-	statusCmd := fmt.Sprintf("sc query %s", serviceName)
+	statusCmd := fmt.Sprintf("sc query \"%s\"", serviceName)
 
 	// Экспоненциальная задержка: 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s
 	backoff := 100 * time.Millisecond

@@ -1,11 +1,14 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // SlogAdapter Адаптер для логгера slog.
@@ -92,21 +95,30 @@ func InitLogger(logLevel string, output string) {
 		programLevel = slog.LevelDebug
 	}
 
-	switch output {
-	case "stdout":
-		once.Do(func() {
-			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
-			Log = &SlogAdapter{slog: logger}
-		})
-	default:
-		output, err := os.OpenFile(output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			os.Exit(1)
+	once.Do(func() {
+		var logOutput io.Writer
+
+		switch output {
+		case "stdout":
+			logOutput = os.Stderr
+		default:
+			// используем lumberjack для ротации логов
+			logOutput = &lumberjack.Logger{
+				Filename:   output, // путь к файлу логов, например "swsm.log"
+				MaxSize:    10,     // мегабайты
+				MaxBackups: 10,     // сколько файлов хранить
+				MaxAge:     30,     // дней
+				Compress:   true,   // сжимать старые логи
+			}
 		}
 
-		once.Do(func() {
-			logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: programLevel}))
-			Log = &SlogAdapter{slog: logger}
-		})
-	}
+		logger := slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{
+			Level: programLevel,
+		}))
+
+		Log = &SlogAdapter{
+			slog:   logger,
+			output: nil,
+		}
+	})
 }
