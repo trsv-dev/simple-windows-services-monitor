@@ -12,6 +12,7 @@ require (
 	github.com/masterzen/winrm v0.0.0-20250819055755-20c0798bc988
 	github.com/r3labs/sse/v2 v2.10.0
 	golang.org/x/crypto v0.36.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

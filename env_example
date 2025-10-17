@@ -1,6 +1,21 @@
+# SWSM init vars
+####################################################################################
+# Раскомментировать для локальной разработки
 DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
+# Раскомментировать на продакшене
+#DATABASE_URI=postgres://swsm:userpassword@db:5432/swsm?sslmode=disable
 RUN_ADDRESS=127.0.0.1:8080
 LOG_LEVEL=debug
-LOG_OUTPUT=file
+LOG_OUTPUT=./logs/swsm.log
 AES_KEY=your-base64-key
 SECRET_KEY=your-jwt-secret
+WEB_INTERFACE=true
+
+# Postgres init vars (для образа postgres)
+####################################################################################
+# тот же логин, что в URI
+POSTGRES_USER=swsm
+# тот же пароль, что в URI
+POSTGRES_PASSWORD=userpassword
+# то же имя БД, что в URI
+POSTGRES_DB=swsm

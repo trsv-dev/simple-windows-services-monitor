@@ -86,7 +86,11 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 
 	psMap := make(map[string]string, len(psServices))
 	for _, ps := range psServices {
-		psMap[ps.Name] = ps.Status
+		// Get-Service может вернуть Name в любом регистре, зависящем от внутреннего регистра в Windows,
+		// поэтому лучше привести возвращаемое имя службы к нижнему регистру, т.к. в БД у нас названия служб в нижнем регистре.
+		// Если этого не сделать, то возможно перестанет обновляться статус и время у некоторых служб,
+		// названия которых были возвращены Get-Service в смешанном регистре
+		psMap[strings.ToLower(ps.Name)] = ps.Status
 	}
 
 	updates := make([]*models.Service, 0, len(psServices))
@@ -94,7 +98,9 @@ func CheckServicesStatuses(ctx context.Context, server *models.Server, services 
 	// обновляем статусы в исходном слайсе
 	updateTime := time.Now()
 	for _, svc := range services {
-		if status, ok := psMap[svc.ServiceName]; ok {
+		// хотя serviceName возвращается из базы в нижнем регистре, чтобы избежать неожиданного поведения,
+		// тут тоже переведем serviceName в нижний регистр
+		if status, ok := psMap[strings.ToLower(svc.ServiceName)]; ok {
 			// статус конвертируется для перевода на русский следующим образом:
 			// `Running -> ServiceRunning (в int-представлении, 1) -> Работает`
 			svc.Status = utils.GetStatusByINT(utils.GetStatus(status))

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -30,7 +31,7 @@ func main() {
 		}
 	}()
 
-	// загружаем переменные окружения из .env
+	// загружаем переменные окружения из .env для локальной разработки
 	errEnv := godotenv.Load("../../.env")
 	if errEnv != nil {
 		log.Println("Не удалось загрузить .env:", errEnv)
@@ -59,12 +60,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// создание SSE Publisher/Subscriber,
-	// используем r3labs/sse через адаптер, реализующий интерфейс SubscriberManager
-	//broadcaster := broadcast.NewR3labsSSEAdapter()
-	broadcaster := broadcast.NewR3labsSSEAdapter(
-		broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey),
-	)
+	var broadcaster broadcast.Broadcaster
+
+	if srvConfig.WebInterface {
+		// создание SSE Publisher/Subscriber,
+		// используем r3labs/sse через адаптер, реализующий интерфейс SubscriberManager
+		// Используется для передачи событий во фронтенд.
+		// Если планируется использовать только API без фронтенда - broadcaster можно убрать из зависимостей AppHandler.
+		// Инициализировав broadcaster в main далее он используется в status_worker.
+		broadcaster = broadcast.NewR3labsSSEAdapter(
+			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey),
+		)
+	} else {
+		broadcaster = broadcast.NewNoopAdapter(func(r *http.Request) (string, error) { return "noop", nil })
+	}
 
 	// создаём AppHandler — контейнер зависимостей для всех хендлеров,
 	// передаём в него хранилище, JWT ключ и SSE адаптер
@@ -83,12 +92,16 @@ func main() {
 
 	var interval time.Duration = 5 * time.Second
 
-	// Запуск status worker
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		worker.StatusWorker(workerCtx, storage, broadcaster, interval)
-	}()
+	// если работаем с web-интерфейсом - запускаем status worker
+	if srvConfig.WebInterface {
+		// запуск status worker
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker.StatusWorker(workerCtx, storage, broadcaster, interval)
+		}()
+	}
 
 	// канал системных сигналов
 	stop := make(chan os.Signal, 1)
@@ -112,22 +125,24 @@ func main() {
 	// если произошло какое-то событие из select выше, считаем что сервер остановлен
 	// и останавливаем остальные части приложения:
 
-	// останавливаем status worker
-	logger.Log.Info("Остановка status worker...")
-	workerCtxCancel()
+	// если работаем с web-интерфейсом - ждем завершения worker с таймаутом
+	if srvConfig.WebInterface {
+		// останавливаем status worker (если был запущен)
+		logger.Log.Info("Остановка status worker...")
+		workerCtxCancel()
 
-	// ждем завершения worker с таймаутом
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
 
-	select {
-	case <-done:
-		logger.Log.Info("Status worker остановлен")
-	case <-time.After(5 * time.Second):
-		logger.Log.Warn("Таймаут остановки status worker")
+		select {
+		case <-done:
+			logger.Log.Info("Status worker остановлен")
+		case <-time.After(5 * time.Second):
+			logger.Log.Warn("Таймаут остановки status worker")
+		}
 	}
 
 	// безопасно закрываем broadcaster
