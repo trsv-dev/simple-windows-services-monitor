@@ -1,12 +1,15 @@
 # simple-windows-services-monitor
 
-**Simple Windows Services Monitor** — это простой многопользовательский сервис, 
-который позволяет управлять службами (остановка, запуск, перезапуск, получение текущего статуса) 
-на удалённых серверах Windows. 
+**Simple Windows Services Monitor** — это простой многопользовательский сервис,
+который позволяет управлять службами (остановка, запуск, перезапуск, получение текущего статуса)
+на удалённых серверах Windows.
 
 Для взаимодействия используется [WinRM](https://github.com/masterzen/winrm).
 
----
+| [<img src="screenshots/screenshot_1.png" width="250"/>](screenshots/screenshot_1.png) | [<img src="screenshots/screenshot_2.png" width="250"/>](screenshots/screenshot_2.png) | [<img src="screenshots/screenshot_3.png" width="250"/>](screenshots/screenshot_3.png) |
+|---------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| Экран входа                                                                           | Список серверов                                                                       | Детали сервера                                                                        |
+
 
 ## Возможности
 
@@ -102,6 +105,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    go build -o static-server
    ./static-server -port=3000 -dir=./
    ```
+6. Проект доступен по адресу http://127.0.0.1:3000
 ---
 
 ## Запуск в docker-контейнерах
@@ -146,4 +150,4 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    ```bash
    docker compose up -d --build
    ```
-4. 
+4. Проект доступен по адресу http://127.0.0.1
