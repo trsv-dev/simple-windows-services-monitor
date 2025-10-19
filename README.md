@@ -105,7 +105,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    go build -o static-server
    ./static-server -port=3000 -dir=./
    ```
-6. Веб-интерфейс будет доступен по адресу: http://127.0.0.1:3000, бэкенд API: http://127.0.0.1:8080/api
+6. Веб-интерфейс будет доступен по адресу: http://127.0.0.1:3000, API: http://127.0.0.1:8080/api
 ---
 
 ## Запуск в docker-контейнерах
@@ -148,4 +148,4 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    ```bash
    docker compose --env-file .env.production up -d --build
    ```
-4. Фронтенд (если поднят): http://127.0.0.1/ (порт 80 по умолчанию), бэкенд API: http://127.0.0.1:8080/api
+4. Фронтенд (если поднят): http://127.0.0.1/ (порт 80 по умолчанию), API: http://127.0.0.1:8080/api
