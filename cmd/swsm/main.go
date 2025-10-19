@@ -32,7 +32,7 @@ func main() {
 	}()
 
 	// загружаем переменные окружения из .env для локальной разработки
-	errEnv := godotenv.Load("../../.env")
+	errEnv := godotenv.Load("../../.env.development")
 	if errEnv != nil {
 		log.Println("Не удалось загрузить .env:", errEnv)
 	}

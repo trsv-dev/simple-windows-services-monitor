@@ -66,20 +66,18 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    alter database swsm owner to swsm;
    ```
 
-3. Создайте в корне файл `.env` и заполните своими данными (пример дан в env_example):
+3. Создайте в корне файл `.env.development` и заполните своими данными (пример дан в env_example):
     ```env
     # SWSM init vars
     ####################################################################################
-    # Раскомментировать для локальной разработки
     DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
-    # Раскомментировать на продакшене
-    #DATABASE_URI=postgres://swsm:userpassword@db:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key
     SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
+    API_BASE_URL=http://localhost:8080/api
     
     # Postgres init vars (для образа postgres)
     ####################################################################################
@@ -97,15 +95,17 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    go build -o "swsm"
    ./swsm
    ```
-   
-5. Если в `env` вы оставили `WEB_INTERFACE=true` то нужно запустить сервер статики. 
+   Бэкенд будет доступен по адресу, который вы указали в `RUN_ADDRESS`, например: http://127.0.0.1:8080
+
+
+5. Если в `env` вы оставили `WEB_INTERFACE=true` (веб-интерфейс включен) то нужно запустить сервер статики. 
 Для запуска сервера статики:
    ```bash
    cd ../../static
    go build -o static-server
    ./static-server -port=3000 -dir=./
    ```
-6. Проект доступен по адресу http://127.0.0.1:3000
+6. Веб-интерфейс будет доступен по адресу: http://127.0.0.1:3000, бэкенд API: http://127.0.0.1:8080/api
 ---
 
 ## Запуск в docker-контейнерах
@@ -116,13 +116,10 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    cd simple-windows-services-monitor
    ```
 
-2. Создайте в корне файл `.env` и заполните своими данными (пример дан в env_example):
+2. Создайте в корне файл `.env.production` и заполните своими данными (пример дан в env_example):
     ```env
     # SWSM init vars
     ####################################################################################
-    # Раскомментировать для локальной разработки
-    #DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
-    # Раскомментировать на продакшене
     DATABASE_URI=postgres://swsm:userpassword@db:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
     LOG_LEVEL=debug
@@ -130,6 +127,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     AES_KEY=your-base64-key
     SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
+    API_BASE_URL=/api
     
     # Postgres init vars (для образа postgres)
     ####################################################################################
@@ -143,11 +141,11 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
 3. Если вы хотите собрать проект с веб-интерфейсом (в `env` вы оставили `WEB_INTERFACE=true`), 
 то из корня проекта (где расположен `docker-compose.yml`) выполните:
    ```bash
-   docker compose --profile frontend up -d --build
+   docker compose --env-file .env.production --profile frontend up -d --build
    ```
    Если вы хотите использовать только API (в `env` вы оставили `WEB_INTERFACE=false`),
    то из корня проекта (где расположен `docker-compose.yml`) выполните:
    ```bash
-   docker compose up -d --build
+   docker compose --env-file .env.production up -d --build
    ```
-4. Проект доступен по адресу http://127.0.0.1
+4. Фронтенд (если поднят): http://127.0.0.1/ (порт 80 по умолчанию), бэкенд API: http://127.0.0.1:8080/api

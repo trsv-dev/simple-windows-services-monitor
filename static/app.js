@@ -1,6 +1,12 @@
 // API Configuration
 // const API_BASE = 'http://127.0.0.1:8080/api';
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/api`;
+// const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/api`;
+// const API_BASE = "${API_BASE_URL}";
+
+async function fetchServices() {
+    const response = await fetch(`${API_BASE}/services`);
+}
+
 let currentUser = localStorage.getItem('swsm_user');
 let currentServerId = localStorage.getItem('swsm_current_server_id'); // Сохраняем ID сервера
 let currentServerData = null;
@@ -61,15 +67,6 @@ document.addEventListener('DOMContentLoaded', function() {
         })
     );
 
-
-    // Исправление проблемы с зависшими backdrop
-    // document.querySelectorAll('.modal').forEach(modalEl => {
-    //     modalEl.addEventListener('hidden.bs.modal', () => {
-    //         const backdrops = document.querySelectorAll('.modal-backdrop');
-    //         backdrops.forEach(b => b.remove());
-    //     });
-    // });
-
     // Pagination handlers
     const prevPageBtn = document.getElementById('prevPageBtn');
     const nextPageBtn = document.getElementById('nextPageBtn');
@@ -91,7 +88,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-
 
     // Pagination handlers for servers
     const serversPrevPageBtn = document.getElementById('serversPrevPageBtn');
@@ -121,80 +117,6 @@ document.addEventListener('DOMContentLoaded', function() {
 function getPageSize() {
     return window.innerWidth < 768 ? 6 : 9;
 }
-
-// function renderCurrentPage() {
-//     if (!allServices || allServices.length === 0) {
-//         renderServicesList([]);
-//         const pageIndicator = document.getElementById('pageIndicator');
-//         const prevPageBtn = document.getElementById('prevPageBtn');
-//         const nextPageBtn = document.getElementById('nextPageBtn');
-//         if (pageIndicator) pageIndicator.textContent = 'Страница 0 из 0';
-//         if (prevPageBtn) prevPageBtn.disabled = true;
-//         if (nextPageBtn) nextPageBtn.disabled = true;
-//         return;
-//     }
-//
-//     const pageSize = getPageSize();
-//     totalPages = Math.max(1, Math.ceil(allServices.length / pageSize));
-//     if (currentPage > totalPages) currentPage = totalPages;
-//
-//     const start = (currentPage - 1) * pageSize;
-//     const end = start + pageSize;
-//     const pageServices = allServices.slice(start, end);
-//
-//     renderServicesList(pageServices);
-//
-//     const pageIndicator = document.getElementById('pageIndicator');
-//     const prevPageBtn = document.getElementById('prevPageBtn');
-//     const nextPageBtn = document.getElementById('nextPageBtn');
-//
-//     if (pageIndicator) pageIndicator.textContent = `Страница ${currentPage} из ${totalPages}`;
-//     if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
-//     if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
-// }
-//
-// function renderServersCurrentPage() {
-//     const paginationControls = document.querySelector('.servers-pagination-controls');
-//
-//     if (!allServers || allServers.length === 0) {
-//         renderServersList([]);
-//         const pageIndicator = document.getElementById('serversPageIndicator');
-//         const prevPageBtn = document.getElementById('serversPrevPageBtn');
-//         const nextPageBtn = document.getElementById('serversNextPageBtn');
-//         if (pageIndicator) pageIndicator.textContent = 'Страница 0 из 0';
-//         if (prevPageBtn) prevPageBtn.disabled = true;
-//         if (nextPageBtn) nextPageBtn.disabled = true;
-//         if (paginationControls) paginationControls.style.display = 'none';
-//         return;
-//     }
-//
-//     const pageSize = getPageSize();
-//     serversTotalPages = Math.max(1, Math.ceil(allServers.length / pageSize));
-//     if (serversCurrentPage > serversTotalPages) serversCurrentPage = serversTotalPages;
-//
-//     const start = (serversCurrentPage - 1) * pageSize;
-//     const end = start + pageSize;
-//     const pageServers = allServers.slice(start, end);
-//
-//     renderServersList(pageServers);
-//
-//     const pageIndicator = document.getElementById('serversPageIndicator');
-//     const prevPageBtn = document.getElementById('serversPrevPageBtn');
-//     const nextPageBtn = document.getElementById('serversNextPageBtn');
-//
-//     if (pageIndicator) pageIndicator.textContent = `Страница ${serversCurrentPage} из ${serversTotalPages}`;
-//     if (prevPageBtn) prevPageBtn.disabled = serversCurrentPage === 1;
-//     if (nextPageBtn) nextPageBtn.disabled = serversCurrentPage === serversTotalPages;
-//
-//     // Показываем пагинацию только если страниц больше одной
-//     if (paginationControls) {
-//         if (serversTotalPages > 1) {
-//             paginationControls.style.display = 'flex';
-//         } else {
-//             paginationControls.style.display = 'none';
-//         }
-//     }
-// }
 
 // === Заменить существующую функцию renderCurrentPage ===
 function renderCurrentPage() {
@@ -258,7 +180,6 @@ function renderCurrentPage() {
         nextPageBtn.disabled = currentPage === totalPages;
     }
 }
-
 
 // === Заменить существующую функцию renderServersCurrentPage ===
 function renderServersCurrentPage() {
@@ -330,8 +251,6 @@ function renderServersCurrentPage() {
         paginationControls.style.display = shouldPaginate ? 'flex' : 'none';
     }
 }
-
-
 
 // Event Listeners
 function setupEventListeners() {
@@ -494,7 +413,7 @@ function updateServicesStatus(statuses) {
 }
 
 // ----------------------
-// Остальной код — авторизация, регистрация, CRUD серверов и служб
+// Авторизация, регистрация, CRUD серверов и служб
 // ----------------------
 
 // API Helper Function
@@ -1035,53 +954,6 @@ function renderServicesList(services) {
         refreshBtn.style.display = 'inline-block';
     }
 }
-
-
-
-// function renderServicesList(services) {
-//     console.log('Rendering services list:', services);
-//     servicesList.innerHTML = '';
-//
-//     if (!services || services.length === 0) {
-//         servicesList.innerHTML = `
-//             <div class="col-12">
-//                 <div class="alert alert-warning text-center">
-//                     <i class="bi bi-exclamation-triangle me-2"></i>
-//                     Службы не найдены. Добавьте службы для управления.
-//                 </div>
-//             </div>
-//         `;
-//         return;
-//     }
-//
-//     services.forEach(service => {
-//         const template = document.getElementById('serviceCardTemplate');
-//         const serviceCard = template.content.cloneNode(true);
-//
-//         // Заполняем данные службы
-//         serviceCard.querySelector('.service-displayed-name').textContent = service.displayed_name;
-//         serviceCard.querySelector('.service-name').textContent = service.service_name;
-//         serviceCard.querySelector('.service-status').textContent = service.status || '—';
-//         serviceCard.querySelector('.service-updated').textContent = service.updated_at ?
-//             new Date(service.updated_at).toLocaleString('ru-RU') : '—';
-//
-//         // Устанавливаем data-service-id
-//         serviceCard.querySelector('.service-card').setAttribute('data-service-id', service.id);
-//
-//         // Привязываем обработчики событий
-//         serviceCard.querySelector('.service-start-btn').addEventListener('click', () =>
-//             controlService(service.id, 'start', service.displayed_name));
-//         serviceCard.querySelector('.service-stop-btn').addEventListener('click', () =>
-//             controlService(service.id, 'stop', service.displayed_name));
-//         serviceCard.querySelector('.service-restart-btn').addEventListener('click', () =>
-//             controlService(service.id, 'restart', service.displayed_name));
-//         serviceCard.querySelector('.service-delete-btn').addEventListener('click', () =>
-//             handleDeleteService(service.id, service.displayed_name));
-//
-//         servicesList.appendChild(serviceCard);
-//     });
-// }
-
 
 // Service Addition - используем API AddService
 async function handleAddService(event) {
