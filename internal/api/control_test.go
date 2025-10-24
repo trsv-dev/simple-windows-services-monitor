@@ -36,7 +36,7 @@ func createContextWithCreds(login string, userID, serverID, serviceID int64) con
 }
 
 // TestServiceStop Проверяет остановку службы.
-// Тестирует только часть функционала.
+// Тестирует только часть функционала (до начала работы с WinRM клиентом).
 func TestServiceStop(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -186,7 +186,7 @@ func TestServiceStop(t *testing.T) {
 }
 
 // TestServiceStart Проверяет запуск службы.
-// Тестирует только часть функционала.
+// Тестирует только часть функционала (до начала работы с WinRM клиентом).
 func TestServiceStart(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -336,7 +336,7 @@ func TestServiceStart(t *testing.T) {
 }
 
 // TestServiceRestart Проверяет перезапуск службы.
-// Тестирует только часть функционала.
+// Тестирует только часть функционала (до начала работы с WinRM клиентом).
 func TestServiceRestart(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
