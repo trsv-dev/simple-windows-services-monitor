@@ -15,7 +15,7 @@ func GetFingerprint(ctx context.Context, address, username, password string) (uu
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
 	if !netutils.IsHostReachable(address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s недоступен", address))
-		return uuid.Nil, fmt.Errorf(fmt.Sprintf("Сервер %s недоступен", address))
+		return uuid.Nil, fmt.Errorf("сервер %s недоступен", address)
 	}
 
 	// создаём WinRM клиент для получения fingerprint (MachineGuid) с Windows сервера

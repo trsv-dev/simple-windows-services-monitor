@@ -155,11 +155,13 @@ func (u User) Validate() error {
 		return errors.New("передан слишком короткий пароль (менее 5 символов)")
 	}
 
-	if !utils.IsAlphaNumeric(u.Login) {
+	fmt.Println("utils.IsAlphaNumericOrSpecial(u.Login)", utils.IsAlphaNumericOrSpecial(u.Login))
+
+	if !utils.IsAlphaNumericOrSpecial(u.Login) {
 		return errors.New("недопустимые символы в логине")
 	}
 
-	if !utils.IsAlphaNumeric(u.Password) {
+	if !utils.IsAlphaNumericOrSpecial(u.Password) {
 		return errors.New("недопустимые символы в пароле")
 	}
 
