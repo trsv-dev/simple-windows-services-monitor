@@ -1,4 +1,4 @@
-package api
+package registration_handler
 
 import (
 	"encoding/json"
@@ -11,10 +11,25 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
+// RegistrationHandler Обработчик регистрации.
+type RegistrationHandler struct {
+	storage      storage.Storage
+	JWTSecretKey string
+}
+
+// NewRegistrationHandler Конструктор RegistrationHandler.
+func NewRegistrationHandler(storage storage.Storage, JWTSecretKey string) *RegistrationHandler {
+	return &RegistrationHandler{
+		storage:      storage,
+		JWTSecretKey: JWTSecretKey,
+	}
+}
+
 // UserRegistration Регистрация пользователей.
-func (h *AppHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
+func (h *RegistrationHandler) UserRegistration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if r.Method != http.MethodPost {

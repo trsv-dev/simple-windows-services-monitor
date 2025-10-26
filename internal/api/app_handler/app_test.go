@@ -1,6 +1,7 @@
-package api
+package app_handler
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -9,7 +10,6 @@ import (
 
 	broadcasterMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
-	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
 
 func init() {
@@ -23,25 +23,20 @@ func TestNewAppHandler(t *testing.T) {
 	defer ctrl.Finish()
 
 	tests := []struct {
-		name           string                                                                // название теста
-		setupMocks     func() (*storageMocks.MockStorage, *broadcasterMocks.MockBroadcaster) // настройка зависимостей
-		jwtSecretKey   string                                                                // JWT секретный ключ
-		wantValidation func(t *testing.T, handler *AppHandler)                               // функция проверки результата
+		name             string
+		jwtSecretKey     string
+		setupBroadcaster func() *broadcasterMocks.MockBroadcaster
+		wantValidation   func(t *testing.T, handler *AppHandler)
 	}{
 		{
-			name: "успешное создание обработчика с валидными параметрами",
-			setupMocks: func() (*storageMocks.MockStorage, *broadcasterMocks.MockBroadcaster) {
-				// создаём моки зависимостей
-				mockStorage := storageMocks.NewMockStorage(ctrl)
-				mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
-				return mockStorage, mockBroadcaster
-			},
+			name:         "успешное создание обработчика с валидными параметрами",
 			jwtSecretKey: "test-secret-key-123",
+			setupBroadcaster: func() *broadcasterMocks.MockBroadcaster {
+				return broadcasterMocks.NewMockBroadcaster(ctrl)
+			},
 			wantValidation: func(t *testing.T, handler *AppHandler) {
 				// проверяем что обработчик не nil
 				assert.NotNil(t, handler, "AppHandler не должен быть nil")
-				// проверяем что storage инициализирован
-				assert.NotNil(t, handler.storage, "поле storage должно быть инициализировано")
 				// проверяем что broadcaster инициализирован
 				assert.NotNil(t, handler.Broadcaster, "поле Broadcaster должно быть инициализировано")
 				// проверяем что JWT секретный ключ установлен правильно
@@ -49,19 +44,14 @@ func TestNewAppHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "создание обработчика с пустым JWT ключом",
-			setupMocks: func() (*storageMocks.MockStorage, *broadcasterMocks.MockBroadcaster) {
-				// создаём моки зависимостей
-				mockStorage := storageMocks.NewMockStorage(ctrl)
-				mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
-				return mockStorage, mockBroadcaster
-			},
+			name:         "создание обработчика с пустым JWT ключом",
 			jwtSecretKey: "",
+			setupBroadcaster: func() *broadcasterMocks.MockBroadcaster {
+				return broadcasterMocks.NewMockBroadcaster(ctrl)
+			},
 			wantValidation: func(t *testing.T, handler *AppHandler) {
 				// проверяем что обработчик создан корректно
 				assert.NotNil(t, handler, "AppHandler не должен быть nil даже с пустым ключом")
-				// проверяем что storage инициализирован
-				assert.NotNil(t, handler.storage, "storage должен быть инициализирован")
 				// проверяем что broadcaster инициализирован
 				assert.NotNil(t, handler.Broadcaster, "Broadcaster должен быть инициализирован")
 				// проверяем что JWT ключ пустой
@@ -69,14 +59,11 @@ func TestNewAppHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "создание обработчика с длинным сложным JWT ключом",
-			setupMocks: func() (*storageMocks.MockStorage, *broadcasterMocks.MockBroadcaster) {
-				// создаём моки зависимостей
-				mockStorage := storageMocks.NewMockStorage(ctrl)
-				mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
-				return mockStorage, mockBroadcaster
-			},
+			name:         "создание обработчика с длинным сложным JWT ключом",
 			jwtSecretKey: "very-long-secret-key-with-many-symbols-1234567890-!@#$%^&*()",
+			setupBroadcaster: func() *broadcasterMocks.MockBroadcaster {
+				return broadcasterMocks.NewMockBroadcaster(ctrl)
+			},
 			wantValidation: func(t *testing.T, handler *AppHandler) {
 				// проверяем что обработчик создан
 				assert.NotNil(t, handler, "AppHandler не должен быть nil")
@@ -90,18 +77,14 @@ func TestNewAppHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "проверка что все зависимости правильно передаются",
-			setupMocks: func() (*storageMocks.MockStorage, *broadcasterMocks.MockBroadcaster) {
-				// создаём моки зависимостей
-				mockStorage := storageMocks.NewMockStorage(ctrl)
-				mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
-				return mockStorage, mockBroadcaster
-			},
+			name:         "проверка что все зависимости правильно передаются",
 			jwtSecretKey: "secret",
+			setupBroadcaster: func() *broadcasterMocks.MockBroadcaster {
+				return broadcasterMocks.NewMockBroadcaster(ctrl)
+			},
 			wantValidation: func(t *testing.T, handler *AppHandler) {
 				// проверяем что все компоненты инициализированы
 				require.NotNil(t, handler, "AppHandler должен быть создан")
-				require.NotNil(t, handler.storage, "storage должно быть инициализировано")
 				require.NotNil(t, handler.Broadcaster, "Broadcaster должно быть инициализировано")
 				require.NotEmpty(t, handler.JWTSecretKey, "JWTSecretKey должен быть установлен")
 			},
@@ -111,10 +94,10 @@ func TestNewAppHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// подготовка зависимостей
-			mockStorage, mockBroadcaster := tt.setupMocks()
+			mockBroadcaster := tt.setupBroadcaster()
 
 			// создаём AppHandler через конструктор
-			handler := NewAppHandler(mockStorage, tt.jwtSecretKey, mockBroadcaster)
+			handler := NewAppHandler(tt.jwtSecretKey, mockBroadcaster)
 
 			// проверяем результат создания
 			tt.wantValidation(t, handler)
@@ -128,24 +111,17 @@ func TestAppHandlerFields(t *testing.T) {
 	defer ctrl.Finish()
 
 	// подготовка
-	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
 	testJWTKey := "test-key"
 
 	// создаём обработчик
-	handler := NewAppHandler(mockStorage, testJWTKey, mockBroadcaster)
+	handler := NewAppHandler(testJWTKey, mockBroadcaster)
 
 	// проверяем все поля
 	tests := []struct {
-		name       string             // название проверки
-		checkField func(t *testing.T) // функция проверки поля
+		name       string
+		checkField func(t *testing.T)
 	}{
-		{
-			name: "поле storage содержит моковое хранилище",
-			checkField: func(t *testing.T) {
-				assert.Equal(t, mockStorage, handler.storage, "storage должно совпадать с переданным мок-объектом")
-			},
-		},
 		{
 			name: "поле JWTSecretKey содержит правильное значение",
 			checkField: func(t *testing.T) {
@@ -165,4 +141,50 @@ func TestAppHandlerFields(t *testing.T) {
 			tt.checkField(t)
 		})
 	}
+}
+
+// TestNewAppHandlerDifferentBroadcasters Проверяет что разные broadcaster-ы корректно передаются.
+func TestNewAppHandlerDifferentBroadcasters(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	broadcaster1 := broadcasterMocks.NewMockBroadcaster(ctrl)
+	broadcaster2 := broadcasterMocks.NewMockBroadcaster(ctrl)
+	jwtKey := "secret"
+
+	handler1 := NewAppHandler(jwtKey, broadcaster1)
+	handler2 := NewAppHandler(jwtKey, broadcaster2)
+
+	// сохраняем адреса для проверки
+	addr1 := fmt.Sprintf("%p", handler1.Broadcaster)
+	addr2 := fmt.Sprintf("%p", handler2.Broadcaster)
+
+	// проверяем что это разные объекты
+	assert.NotEqual(t, addr1, addr2,
+		"handler1.Broadcaster и handler2.Broadcaster должны быть разными объектами")
+
+	// проверяем что каждый handler имеет свой broadcaster
+	assert.NotNil(t, handler1.Broadcaster)
+	assert.NotNil(t, handler2.Broadcaster)
+}
+
+// TestNewAppHandlerImmutability Проверяет что после создания поля не меняются.
+func TestNewAppHandlerImmutability(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
+	testJWTKey := "original-key"
+
+	handler := NewAppHandler(testJWTKey, mockBroadcaster)
+
+	// сохраняем исходные значения
+	originalJWTKey := handler.JWTSecretKey
+	originalBroadcaster := handler.Broadcaster
+
+	// проверяем что значения не изменились после получения
+	assert.Equal(t, testJWTKey, handler.JWTSecretKey)
+	assert.Equal(t, mockBroadcaster, handler.Broadcaster)
+	assert.Equal(t, originalJWTKey, handler.JWTSecretKey)
+	assert.Equal(t, originalBroadcaster, handler.Broadcaster)
 }

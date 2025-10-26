@@ -1,4 +1,4 @@
-package api
+package authorization_handler
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 
 	"io"
 	"net/http"
@@ -15,8 +16,22 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 )
 
+// AuthorizationHandler Обработчик авторизации.
+type AuthorizationHandler struct {
+	storage      storage.Storage
+	JWTSecretKey string
+}
+
+// NewAuthorizationHandler Конструктор AuthorizationHandler.
+func NewAuthorizationHandler(storage storage.Storage, JWTSecretKey string) *AuthorizationHandler {
+	return &AuthorizationHandler{
+		storage:      storage,
+		JWTSecretKey: JWTSecretKey,
+	}
+}
+
 // UserAuthorization Авторизация пользователей.
-func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
+func (h *AuthorizationHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if r.Method != http.MethodPost {

@@ -1,0 +1,47 @@
+package api
+
+import (
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/app_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/authorization_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/control_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/registration_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/server_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/service_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
+)
+
+// HandlersContainer Контейнер со всеми handlers приложения (и их зависимостями).
+type HandlersContainer struct {
+	ServerHandler        *server_handler.ServerHandler
+	ServiceHandler       *service_handler.ServiceHandler
+	ControlHandler       *control_handler.ControlHandler
+	RegistrationHandler  *registration_handler.RegistrationHandler
+	AuthorizationHandler *authorization_handler.AuthorizationHandler
+	AppHandler           *app_handler.AppHandler
+}
+
+func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, broadcaster broadcast.Broadcaster) *HandlersContainer {
+	clientFactory := service_control.NewWinRMClientFactory()
+	netChecker := netutils.NewNetworkChecker()
+	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker)
+
+	serverHandler := server_handler.NewServerHandler(storage, fingerprinter)
+	serviceHandler := service_handler.NewServiceHandler(storage, netChecker)
+	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker)
+	registrationHandler := registration_handler.NewRegistrationHandler(storage, srvConfig.JWTSecretKey)
+	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, srvConfig.JWTSecretKey)
+	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, broadcaster)
+
+	return &HandlersContainer{
+		ServerHandler:        serverHandler,
+		ServiceHandler:       serviceHandler,
+		ControlHandler:       controlHandler,
+		RegistrationHandler:  registrationHandler,
+		AuthorizationHandler: authorizationHandler,
+		AppHandler:           appHandler,
+	}
+}

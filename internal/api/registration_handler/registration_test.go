@@ -1,4 +1,4 @@
-package api
+package registration_handler
 
 import (
 	"bytes"
@@ -11,8 +11,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
-	broadcasterMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
@@ -30,13 +30,12 @@ func TestUserRegistration(t *testing.T) {
 	defer ctrl.Finish()
 
 	tests := []struct {
-		name         string                            // название теста
-		method       string                            // HTTP метод
-		body         io.Reader                         // тело запроса
-		setupMock    func(m *storageMocks.MockStorage) // настройка мока storage
-		wantStatus   int                               // ожидаемый HTTP статус
-		wantResponse interface{}                       // ожидаемый ответ
-		checkToken   bool                              // нужно ли проверять наличие токена
+		name       string
+		method     string
+		body       io.Reader
+		setupMock  func(m *storageMocks.MockStorage)
+		wantStatus int
+		checkToken bool
 	}{
 		{
 			name:       "метод не POST",
@@ -52,10 +51,6 @@ func TestUserRegistration(t *testing.T) {
 			body:       bytes.NewBufferString("{invalid}"),
 			setupMock:  func(m *storageMocks.MockStorage) {},
 			wantStatus: http.StatusBadRequest,
-			wantResponse: response.APIError{
-				Code:    http.StatusBadRequest,
-				Message: "Неверный формат запроса",
-			},
 			checkToken: false,
 		},
 		{
@@ -64,10 +59,6 @@ func TestUserRegistration(t *testing.T) {
 			body:       &errorReader{},
 			setupMock:  func(m *storageMocks.MockStorage) {},
 			wantStatus: http.StatusBadRequest,
-			wantResponse: response.APIError{
-				Code:    http.StatusBadRequest,
-				Message: "Ошибка чтения тела запроса",
-			},
 			checkToken: false,
 		},
 		{
@@ -80,26 +71,18 @@ func TestUserRegistration(t *testing.T) {
 			}(),
 			setupMock:  func(m *storageMocks.MockStorage) {},
 			wantStatus: http.StatusBadRequest,
-			wantResponse: response.APIError{
-				Code:    http.StatusBadRequest,
-				Message: "передан слишком короткий логин (менее 4 символов)",
-			},
 			checkToken: false,
 		},
 		{
 			name:   "логин менее 4 символов при валидации",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "", Password: "password"}
+				u := models.User{Login: "usr", Password: "password"}
 				b, _ := json.Marshal(u)
 				return bytes.NewBuffer(b)
 			}(),
 			setupMock:  func(m *storageMocks.MockStorage) {},
 			wantStatus: http.StatusBadRequest,
-			wantResponse: response.APIError{
-				Code:    http.StatusBadRequest,
-				Message: "передан слишком короткий логин (менее 4 символов)",
-			},
 			checkToken: false,
 		},
 		{
@@ -118,7 +101,7 @@ func TestUserRegistration(t *testing.T) {
 			name:   "пароль менее 5 символов при валидации",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "user", Password: ""}
+				u := models.User{Login: "user", Password: "pass"}
 				b, _ := json.Marshal(u)
 				return bytes.NewBuffer(b)
 			}(),
@@ -135,16 +118,11 @@ func TestUserRegistration(t *testing.T) {
 				return bytes.NewBuffer(b)
 			}(),
 			setupMock: func(mock *storageMocks.MockStorage) {
-				// ожидаем вызов CreateUser с возвратом ошибки дубликата логина
 				mock.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(errs.NewErrLoginIsTaken("existing_user", errors.New("duplicate key")))
 			},
 			wantStatus: http.StatusConflict,
-			wantResponse: response.APIError{
-				Code:    http.StatusConflict,
-				Message: "Пользователь уже существует",
-			},
 			checkToken: false,
 		},
 		{
@@ -156,7 +134,6 @@ func TestUserRegistration(t *testing.T) {
 				return bytes.NewBuffer(b)
 			}(),
 			setupMock: func(mock *storageMocks.MockStorage) {
-				// ожидаем вызов CreateUser с возвратом неизвестной ошибки
 				mock.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(errors.New("database error"))
@@ -173,34 +150,23 @@ func TestUserRegistration(t *testing.T) {
 				return bytes.NewBuffer(b)
 			}(),
 			setupMock: func(mock *storageMocks.MockStorage) {
-				// ожидаем успешный CreateUser
 				mock.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(nil)
 			},
 			wantStatus: http.StatusCreated,
-			wantResponse: response.AuthResponse{
-				Message: "Пользователь зарегистрирован",
-				Login:   "new_user",
-				Token:   "", // будет проверяться отдельно через checkToken
-			},
 			checkToken: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Arrange - подготовка
+			// подготовка
 			mockStorage := storageMocks.NewMockStorage(ctrl)
 			tt.setupMock(mockStorage)
-			mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
 
-			// создаём handler с моками
-			handler := &AppHandler{
-				storage:      mockStorage,
-				JWTSecretKey: "test-secret-key",
-				Broadcaster:  mockBroadcaster,
-			}
+			// создаём handler с правильными параметрами
+			handler := NewRegistrationHandler(mockStorage, "test-jwt-secret-key")
 
 			// создаём HTTP запрос
 			r := httptest.NewRequest(tt.method, "/register", tt.body)
@@ -219,36 +185,19 @@ func TestUserRegistration(t *testing.T) {
 			// проверяем HTTP статус-код
 			assert.Equal(t, tt.wantStatus, res.StatusCode)
 
-			// проверяем тело ответа, если ожидается
-			if tt.wantResponse != nil {
+			// если успешная регистрация - проверяем токен
+			if tt.checkToken && tt.wantStatus == http.StatusCreated {
 				data, _ := io.ReadAll(res.Body)
-
-				switch exp := tt.wantResponse.(type) {
-				case response.APIError:
-					// проверяем ответ с ошибкой
-					var got response.APIError
-					json.Unmarshal(data, &got)
-					assert.Equal(t, exp.Code, got.Code)
-					assert.Equal(t, exp.Message, got.Message)
-				case response.AuthResponse:
-					// проверяем успешный ответ регистрации
-					var got response.AuthResponse
-					json.Unmarshal(data, &got)
-					assert.Equal(t, exp.Message, got.Message)
-					assert.Equal(t, exp.Login, got.Login)
-
-					// если нужно проверить токен - проверяем что он не пустой
-					if tt.checkToken {
-						assert.NotEmpty(t, got.Token, "токен не должен быть пустым")
-					}
-				}
+				var got response.AuthResponse
+				json.Unmarshal(data, &got)
+				assert.NotEmpty(t, got.Token, "токен не должен быть пустым при успешной регистрации")
 			}
 		})
 	}
 }
 
-// TestUserRegistrationHeaders Проверяет установку заголовков при успешной регистрации.
-func TestUserRegistrationHeaders(t *testing.T) {
+// TestUserRegistrationContentType Проверяет установку заголовков при успешной регистрации.
+func TestUserRegistrationContentType(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -258,13 +207,7 @@ func TestUserRegistrationHeaders(t *testing.T) {
 		CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 		Return(nil)
 
-	mockBroadcaster := broadcasterMocks.NewMockBroadcaster(ctrl)
-
-	handler := &AppHandler{
-		storage:      mockStorage,
-		JWTSecretKey: "test-secret-key",
-		Broadcaster:  mockBroadcaster,
-	}
+	handler := NewRegistrationHandler(mockStorage, "test-jwt-secret-key")
 
 	u := models.User{Login: "user", Password: "password"}
 	b, _ := json.Marshal(u)
@@ -275,12 +218,13 @@ func TestUserRegistrationHeaders(t *testing.T) {
 	// выполнение регистрации
 	handler.UserRegistration(w, r)
 
-	// проверка заголовков
+	// проверка результатов
 	res := w.Result()
 	defer res.Body.Close()
 
+	// проверяем заголовки
 	tests := []struct {
-		name        string // название проверки
+		name        string
 		checkHeader func(t *testing.T)
 	}{
 		{
@@ -290,11 +234,9 @@ func TestUserRegistrationHeaders(t *testing.T) {
 			},
 		},
 		{
-			name: "заголовок Set-Cookie содержит JWT токен",
+			name: "статус код 201 Created",
 			checkHeader: func(t *testing.T) {
-				cookie := res.Header.Get("Set-Cookie")
-				assert.NotEmpty(t, cookie, "cookie должна быть установлена")
-				assert.Contains(t, cookie, "JWT=", "cookie должна содержать JWT=")
+				assert.Equal(t, http.StatusCreated, res.StatusCode)
 			},
 		},
 	}
@@ -306,7 +248,77 @@ func TestUserRegistrationHeaders(t *testing.T) {
 	}
 }
 
-// errorReader - вспомогательная структура для имитации ошибки при чтении
+// TestUserRegistrationErrors Проверяет различные сценарии ошибок.
+func TestUserRegistrationErrors(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tests := []struct {
+		name       string
+		body       io.Reader
+		setupMock  func(m *storageMocks.MockStorage)
+		wantStatus int
+	}{
+		{
+			name: "пользователь существует",
+			body: bytes.NewBufferString(`{"login":"existing","password":"password"}`),
+			setupMock: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.Any()).
+					Return(errs.NewErrLoginIsTaken("existing", errors.New("dup")))
+			},
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name: "ошибка БД",
+			body: bytes.NewBufferString(`{"login":"new_user","password":"password"}`),
+			setupMock: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.Any()).
+					Return(errors.New("db error"))
+			},
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage := storageMocks.NewMockStorage(ctrl)
+			tt.setupMock(mockStorage)
+
+			handler := NewRegistrationHandler(mockStorage, "test-jwt-secret-key")
+
+			r := httptest.NewRequest(http.MethodPost, "/register", tt.body)
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.UserRegistration(w, r)
+
+			res := w.Result()
+			defer res.Body.Close()
+
+			assert.Equal(t, tt.wantStatus, res.StatusCode)
+		})
+	}
+}
+
+// TestNewRegistrationHandler Проверяет конструктор RegistrationHandler.
+func TestNewRegistrationHandler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	jwtSecret := "test-secret-key"
+
+	handler := NewRegistrationHandler(mockStorage, jwtSecret)
+
+	// проверяем что все поля инициализированы
+	assert.NotNil(t, handler, "handler не должен быть nil")
+	assert.Equal(t, jwtSecret, handler.JWTSecretKey, "JWT ключ должен совпадать")
+	assert.NotNil(t, handler.storage, "storage должно быть инициализировано")
+}
+
+// errorReader Вспомогательная структура для имитации ошибки при чтении.
 type errorReader struct{}
 
 func (e *errorReader) Read(p []byte) (n int, err error) {

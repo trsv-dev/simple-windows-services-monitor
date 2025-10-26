@@ -75,15 +75,15 @@ func main() {
 		broadcaster = broadcast.NewNoopAdapter(func(r *http.Request) (string, error) { return "noop", nil })
 	}
 
-	// создаём AppHandler — контейнер зависимостей для всех хендлеров,
+	// создаём handlersContainer — контейнер зависимостей для всех хендлеров,
 	// передаём в него хранилище, JWT ключ и SSE адаптер
-	appHandler := api.NewAppHandler(storage, srvConfig.JWTSecretKey, broadcaster)
+	handlersContainer := api.NewHandlersContainer(storage, srvConfig, broadcaster)
 
 	// запуск HTTP-сервера,
-	// передаём готовый AppHandler, содержащий все зависимости
+	// передаём готовый handlersContainer, содержащий все зависимости
 
 	// создаем сервер и запускаем его
-	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, appHandler)
+	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, handlersContainer)
 
 	// запускаем воркер в отдельной горутине,
 	// воркер периодически опрашивает БД и публикует обновления статусов служб через SSE

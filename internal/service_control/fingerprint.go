@@ -10,10 +10,24 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 )
 
+// WinRMFingerprinter Реальная реализация получения fingerprint через WinRM.
+type WinRMFingerprinter struct {
+	clientFactory ClientFactory
+	netChecker    netutils.Checker
+}
+
+// NewWinRMFingerprinter Конструктор.
+func NewWinRMFingerprinter(clientFactory ClientFactory, netChecker netutils.Checker) *WinRMFingerprinter {
+	return &WinRMFingerprinter{
+		clientFactory: clientFactory,
+		netChecker:    netChecker,
+	}
+}
+
 // GetFingerprint Получение fingerprint (MachineGuid) с Windows сервера.
-func GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
+func (wf *WinRMFingerprinter) GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(address, 5985, 0) {
+	if !wf.netChecker.IsHostReachable(address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s недоступен", address))
 		return uuid.Nil, fmt.Errorf("сервер %s недоступен", address)
 	}

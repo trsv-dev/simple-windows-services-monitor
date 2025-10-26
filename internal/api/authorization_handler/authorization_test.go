@@ -1,4 +1,4 @@
-package api
+package authorization_handler
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -131,7 +130,7 @@ func TestUserAuthorization(t *testing.T) {
 			tt.setupMock(mockStore)
 
 			// создаём handler с моком storage
-			handler := &AppHandler{
+			handler := &AuthorizationHandler{
 				storage:      mockStore,
 				JWTSecretKey: "test-secret-key",
 			}
