@@ -19,13 +19,15 @@ import (
 // AuthorizationHandler Обработчик авторизации.
 type AuthorizationHandler struct {
 	storage      storage.Storage
+	tokenBuilder auth.TokenBuilder
 	JWTSecretKey string
 }
 
 // NewAuthorizationHandler Конструктор AuthorizationHandler.
-func NewAuthorizationHandler(storage storage.Storage, JWTSecretKey string) *AuthorizationHandler {
+func NewAuthorizationHandler(storage storage.Storage, tokenBuilder auth.TokenBuilder, JWTSecretKey string) *AuthorizationHandler {
 	return &AuthorizationHandler{
 		storage:      storage,
+		tokenBuilder: tokenBuilder,
 		JWTSecretKey: JWTSecretKey,
 	}
 }
@@ -75,7 +77,7 @@ func (h *AuthorizationHandler) UserAuthorization(w http.ResponseWriter, r *http.
 		return
 	}
 
-	tokenString, err := auth.BuildJWTToken(verifiedUser, h.JWTSecretKey)
+	tokenString, err := h.tokenBuilder.BuildJWTToken(verifiedUser, h.JWTSecretKey)
 	if err != nil {
 		logger.Log.Debug("Ошибка при создании JWT-токена", logger.String("jwt-token", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при создании JWT-токена")

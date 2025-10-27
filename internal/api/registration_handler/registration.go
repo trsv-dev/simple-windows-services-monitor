@@ -17,13 +17,15 @@ import (
 // RegistrationHandler Обработчик регистрации.
 type RegistrationHandler struct {
 	storage      storage.Storage
+	tokenBuilder auth.TokenBuilder
 	JWTSecretKey string
 }
 
 // NewRegistrationHandler Конструктор RegistrationHandler.
-func NewRegistrationHandler(storage storage.Storage, JWTSecretKey string) *RegistrationHandler {
+func NewRegistrationHandler(storage storage.Storage, tokenBuilder auth.TokenBuilder, JWTSecretKey string) *RegistrationHandler {
 	return &RegistrationHandler{
 		storage:      storage,
+		tokenBuilder: tokenBuilder,
 		JWTSecretKey: JWTSecretKey,
 	}
 }
@@ -75,7 +77,7 @@ func (h *RegistrationHandler) UserRegistration(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	tokenString, err := auth.BuildJWTToken(&user, h.JWTSecretKey)
+	tokenString, err := h.tokenBuilder.BuildJWTToken(&user, h.JWTSecretKey)
 	if err != nil {
 		logger.Log.Debug("Ошибка при создании JWT-токена", logger.String("jwt-token", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при создании JWT-токена")

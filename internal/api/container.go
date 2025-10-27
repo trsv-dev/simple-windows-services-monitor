@@ -7,6 +7,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/registration_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/server_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/service_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
@@ -24,7 +25,7 @@ type HandlersContainer struct {
 	AppHandler           *app_handler.AppHandler
 }
 
-func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, broadcaster broadcast.Broadcaster) *HandlersContainer {
+func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, broadcaster broadcast.Broadcaster, tokenBuilder auth.TokenBuilder) *HandlersContainer {
 	clientFactory := service_control.NewWinRMClientFactory()
 	netChecker := netutils.NewNetworkChecker()
 	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker)
@@ -32,9 +33,9 @@ func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, bro
 	serverHandler := server_handler.NewServerHandler(storage, fingerprinter)
 	serviceHandler := service_handler.NewServiceHandler(storage, netChecker)
 	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker)
-	registrationHandler := registration_handler.NewRegistrationHandler(storage, srvConfig.JWTSecretKey)
-	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, srvConfig.JWTSecretKey)
-	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, broadcaster)
+	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
+	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
+	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, tokenBuilder, broadcaster)
 
 	return &HandlersContainer{
 		ServerHandler:        serverHandler,

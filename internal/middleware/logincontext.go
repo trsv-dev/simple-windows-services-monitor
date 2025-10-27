@@ -13,7 +13,7 @@ import (
 // UserLoginUserIdToContextMiddleware Middleware, который извлекает логин пользователя из JWT-токена,
 // проверяет его и добавляет логин в контекст запроса.
 // Это позволяет в дальнейшем получить логин из контекста (request.Context) в других обработчиках.
-func UserLoginUserIdToContextMiddleware(JWTSecretKey string) func(http.Handler) http.Handler {
+func UserLoginUserIdToContextMiddleware(JWTSecretKey string, tokenBuilder auth.TokenBuilder) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tokenCookie, err := r.Cookie("JWT")
@@ -28,7 +28,7 @@ func UserLoginUserIdToContextMiddleware(JWTSecretKey string) func(http.Handler) 
 			tokenString := tokenCookie.Value
 
 			// в claims будет лежать login и id
-			claims, err := auth.GetClaims(tokenString, JWTSecretKey)
+			claims, err := tokenBuilder.GetClaims(tokenString, JWTSecretKey)
 			if err != nil {
 				// если не удалось извлечь логин — ошибка сервера
 				logger.Log.Error("Ошибка идентификации пользователя", logger.String("err", err.Error()))

@@ -11,16 +11,41 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
+	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
+	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
 
 func init() {
-	// инициализируем логгер для избежания nil pointer dereference в тестах
 	logger.InitLogger("error", "stdout")
+}
+
+// TestNewAuthorizationHandler Проверяет конструктор AuthorizationHandler.
+func TestNewAuthorizationHandler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
+	testJWTSecret := "test-secret-key"
+
+	handler := NewAuthorizationHandler(mockStorage, mockTokenBuilder, testJWTSecret)
+
+	assert.NotNil(t, handler, "handler не должен быть nil")
+	assert.NotNil(t, handler.storage, "storage должен быть инициализирован")
+	assert.NotNil(t, handler.tokenBuilder, "tokenBuilder должен быть инициализирован")
+	assert.Equal(t, testJWTSecret, handler.JWTSecretKey, "JWTSecretKey должен совпадать")
+}
+
+// errorReader - helper для эмуляции ошибки чтения тела запроса
+type errorReader struct{}
+
+func (er *errorReader) Read(p []byte) (n int, err error) {
+	return 0, errors.New("read error")
 }
 
 // TestUserAuthorization Проверяет авторизацию пользователя.
@@ -28,34 +53,65 @@ func TestUserAuthorization(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	testToken := "test-jwt-token"
+
 	tests := []struct {
-		name         string                        // название теста
-		method       string                        // HTTP метод
-		body         io.Reader                     // тело запроса
-		setupMock    func(mock *mocks.MockStorage) // настройка мока storage
-		wantStatus   int                           // ожидаемый HTTP статус
-		wantResponse interface{}                   // ожидаемый ответ
-		checkToken   bool                          // нужно ли проверять токен
+		name              string                                 // название теста
+		method            string                                 // HTTP метод
+		body              io.Reader                              // тело запроса
+		setupStorage      func(mock *storageMocks.MockStorage)   // настройка мока storage
+		setupTokenBuilder func(mock *authMocks.MockTokenBuilder) // настройка мока TokenBuilder
+		wantStatus        int                                    // ожидаемый HTTP статус
+		wantResponse      interface{}                            // ожидаемый ответ
+		checkToken        bool                                   // нужно ли проверять токен
 	}{
 		{
-			name:       "метод не POST",
-			method:     http.MethodGet,
-			body:       nil,
-			setupMock:  func(mock *mocks.MockStorage) {},
-			wantStatus: http.StatusMethodNotAllowed,
+			name:              "метод не POST",
+			method:            http.MethodGet,
+			body:              nil,
+			setupStorage:      func(mock *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusMethodNotAllowed,
+			checkToken:        false,
+		},
+		{
+			name:              "ошибка чтения тела запроса",
+			method:            http.MethodPost,
+			body:              &errorReader{},
+			setupStorage:      func(mock *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusInternalServerError,
+			wantResponse: response.APIError{
+				Code:    http.StatusInternalServerError,
+				Message: "Ошибка чтения тела запроса",
+			},
 			checkToken: false,
 		},
 		{
-			name:       "невалидный JSON",
-			method:     http.MethodPost,
-			body:       bytes.NewBufferString("{invalid}"),
-			setupMock:  func(mock *mocks.MockStorage) {},
-			wantStatus: http.StatusBadRequest,
+			name:              "невалидный JSON",
+			method:            http.MethodPost,
+			body:              bytes.NewBufferString("{invalid}"),
+			setupStorage:      func(mock *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusBadRequest,
 			wantResponse: response.APIError{
 				Code:    http.StatusBadRequest,
 				Message: "Неверный формат запроса",
 			},
 			checkToken: false,
+		},
+		{
+			name:   "валидация не пройдена - пустой логин",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				u := models.User{Login: "", Password: "password"}
+				b, _ := json.Marshal(u)
+				return bytes.NewBuffer(b)
+			}(),
+			setupStorage:      func(mock *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusBadRequest,
+			checkToken:        false,
 		},
 		{
 			name:   "неверные учётные данные",
@@ -65,13 +121,13 @@ func TestUserAuthorization(t *testing.T) {
 				b, _ := json.Marshal(u)
 				return bytes.NewBuffer(b)
 			}(),
-			setupMock: func(mock *mocks.MockStorage) {
-				// ожидаем вызов GetUser с возвратом ошибки неверных учётных данных
+			setupStorage: func(mock *storageMocks.MockStorage) {
 				mock.EXPECT().
 					GetUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(nil, errs.NewErrWrongLoginOrPassword(errors.New("bad")))
 			},
-			wantStatus: http.StatusUnauthorized,
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusUnauthorized,
 			wantResponse: response.APIError{
 				Code:    http.StatusUnauthorized,
 				Message: "Неверная пара логин/пароль",
@@ -86,16 +142,42 @@ func TestUserAuthorization(t *testing.T) {
 				b, _ := json.Marshal(u)
 				return bytes.NewReader(b)
 			}(),
-			setupMock: func(mock *mocks.MockStorage) {
-				// ожидаем вызов GetUser с возвратом ошибки БД
+			setupStorage: func(mock *storageMocks.MockStorage) {
 				mock.EXPECT().
 					GetUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(nil, errors.New("db err"))
 			},
-			wantStatus: http.StatusInternalServerError,
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusInternalServerError,
 			wantResponse: response.APIError{
 				Code:    http.StatusInternalServerError,
 				Message: "Внутренняя ошибка сервера",
+			},
+			checkToken: false,
+		},
+		{
+			name:   "ошибка при создании JWT-токена",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				u := models.User{Login: "user", Password: "password"}
+				b, _ := json.Marshal(u)
+				return bytes.NewReader(b)
+			}(),
+			setupStorage: func(mock *storageMocks.MockStorage) {
+				mock.EXPECT().
+					GetUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
+					Return(&models.User{ID: 1, Login: "user"}, nil)
+			},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {
+				// TokenBuilder возвращает ошибку
+				mock.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return("", errors.New("signing failed"))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantResponse: response.APIError{
+				Code:    http.StatusInternalServerError,
+				Message: "Ошибка при создании JWT-токена",
 			},
 			checkToken: false,
 		},
@@ -107,17 +189,22 @@ func TestUserAuthorization(t *testing.T) {
 				b, _ := json.Marshal(u)
 				return bytes.NewReader(b)
 			}(),
-			setupMock: func(mock *mocks.MockStorage) {
-				// ожидаем успешный GetUser
+			setupStorage: func(mock *storageMocks.MockStorage) {
 				mock.EXPECT().
 					GetUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
 					Return(&models.User{ID: 1, Login: "user"}, nil)
+			},
+			setupTokenBuilder: func(mock *authMocks.MockTokenBuilder) {
+				// TokenBuilder успешно создаёт токен
+				mock.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return(testToken, nil)
 			},
 			wantStatus: http.StatusOK,
 			wantResponse: response.AuthResponse{
 				Message: "Пользователь авторизован",
 				Login:   "user",
-				Token:   "", // будет проверяться отдельно через checkToken
+				Token:   testToken,
 			},
 			checkToken: true,
 		},
@@ -125,13 +212,17 @@ func TestUserAuthorization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// подготавливаем моковое хранилище
-			mockStore := mocks.NewMockStorage(ctrl)
-			tt.setupMock(mockStore)
+			// подготавливаем моки
+			mockStore := storageMocks.NewMockStorage(ctrl)
+			mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
 
-			// создаём handler с моком storage
+			tt.setupStorage(mockStore)
+			tt.setupTokenBuilder(mockTokenBuilder)
+
+			// создаём handler с моками
 			handler := &AuthorizationHandler{
 				storage:      mockStore,
+				tokenBuilder: mockTokenBuilder,
 				JWTSecretKey: "test-secret-key",
 			}
 
@@ -161,7 +252,8 @@ func TestUserAuthorization(t *testing.T) {
 					// проверяем ответ с ошибкой
 					var got response.APIError
 					json.Unmarshal(data, &got)
-					assert.Equal(t, exp, got)
+					assert.Equal(t, exp.Code, got.Code)
+					assert.Contains(t, got.Message, exp.Message)
 				case response.AuthResponse:
 					// проверяем успешный ответ авторизации
 					var got response.AuthResponse
@@ -169,9 +261,9 @@ func TestUserAuthorization(t *testing.T) {
 					assert.Equal(t, exp.Message, got.Message)
 					assert.Equal(t, exp.Login, got.Login)
 
-					// если нужно проверить токен - проверяем что он не пустой
+					// если нужно проверить токен - проверяем что он совпадает
 					if tt.checkToken {
-						assert.NotEmpty(t, got.Token, "токен не должен быть пустым")
+						assert.Equal(t, testToken, got.Token)
 					}
 				}
 			}

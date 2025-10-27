@@ -17,7 +17,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
-// ControlHandler обрабатывает запросы управления службами (start, stop, restart, status).
+// ControlHandler Обрабатывает запросы управления службами (start, stop, restart, status).
 type ControlHandler struct {
 	storage       storage.Storage
 	clientFactory service_control.ClientFactory // фабрика для создания WinRM клиентов
