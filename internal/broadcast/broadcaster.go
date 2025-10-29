@@ -6,6 +6,8 @@ import (
 	"net/http"
 )
 
+//go:generate mockgen -destination=mocks/broadcast_mock.go -package=mocks . Broadcaster
+
 var (
 	ErrSubscribeNotSupported = errors.New("подписка не реализована в данном адаптере; используйте HTTPHandler()")
 )

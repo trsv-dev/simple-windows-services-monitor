@@ -30,6 +30,12 @@ func ParseServerIDMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		if id <= 0 {
+			logger.Log.Error("Некорректный id: должен быть положительным")
+			response.ErrorJSON(w, http.StatusBadRequest, "id сервера должен быть положительным числом")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), contextkeys.ServerID, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -51,6 +57,12 @@ func ParseServiceIDMiddleware(next http.Handler) http.Handler {
 		if err != nil {
 			logger.Log.Error("Некорректный id")
 			response.ErrorJSON(w, http.StatusBadRequest, "Некорректный id службы")
+			return
+		}
+
+		if id <= 0 {
+			logger.Log.Error("Некорректный id: должен быть положительным")
+			response.ErrorJSON(w, http.StatusBadRequest, "id службы должен быть положительным числом")
 			return
 		}
 

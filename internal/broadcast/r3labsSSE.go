@@ -22,7 +22,6 @@ type R3labsSSEAdapter struct {
 // NewR3labsSSEAdapter Создаёт новый экземпляр адаптера (и internal sse.Server).
 func NewR3labsSSEAdapter(resolve TopicResolver) *R3labsSSEAdapter {
 	srv := sse.New()
-	//srv.AutoStream = true // автоматическое создание стримов при коннекте клиента
 
 	return &R3labsSSEAdapter{srv: srv, resolve: resolve}
 }

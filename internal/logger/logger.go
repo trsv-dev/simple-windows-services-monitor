@@ -1,5 +1,7 @@
 package logger
 
+//go:generate mockgen -destination=mocks/logger_mock.go -package=mocks . Logger
+
 type Field struct {
 	Key   string
 	Value string
