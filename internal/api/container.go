@@ -13,6 +13,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
 // HandlersContainer Контейнер со всеми handlers приложения (и их зависимостями).
@@ -25,13 +26,15 @@ type HandlersContainer struct {
 	AppHandler           *app_handler.AppHandler
 }
 
+// NewHandlersContainer Конструктор контейнера с зависимостями.
 func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, broadcaster broadcast.Broadcaster, tokenBuilder auth.TokenBuilder) *HandlersContainer {
 	clientFactory := service_control.NewWinRMClientFactory()
 	netChecker := netutils.NewNetworkChecker()
 	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker)
+	servicesStatusesWorker := worker.NewServicesStatusesWorker(clientFactory)
 
 	serverHandler := server_handler.NewServerHandler(storage, fingerprinter)
-	serviceHandler := service_handler.NewServiceHandler(storage, netChecker)
+	serviceHandler := service_handler.NewServiceHandler(storage, clientFactory, netChecker, servicesStatusesWorker)
 	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker)
 	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
 	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)

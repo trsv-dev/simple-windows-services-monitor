@@ -11,8 +11,8 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
-// StatusWorker Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
-func StatusWorker(ctx context.Context, storage storage.Storage, broadcaster broadcast.Broadcaster, interval time.Duration) {
+// BroadcastServiceStatuses Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
+func BroadcastServiceStatuses(ctx context.Context, storage storage.Storage, broadcaster broadcast.Broadcaster, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

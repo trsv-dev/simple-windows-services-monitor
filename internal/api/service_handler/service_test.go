@@ -8,15 +8,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 	netutilsMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/netutils/mocks"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
+	serviceControlMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/mocks"
+	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
+	workerMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/worker/mocks"
 )
 
 func init() {
@@ -28,16 +32,17 @@ func TestNewServiceHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
 
-	// проверяем что handler не nil
+	// проверяем что handler создан
 	assert.NotNil(t, handler)
-
-	// проверяем что поля установлены
 	assert.NotNil(t, handler.storage)
+	assert.NotNil(t, handler.clientFactory)
 	assert.NotNil(t, handler.checker)
 }
 
@@ -46,44 +51,104 @@ func TestAddServiceInvalidJSON(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// создаём запрос с невалидным JSON
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	// невалидный JSON
 	body := []byte(`{invalid json}`)
 	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
-	// добавляем контекст с credentials
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.AddService(w, r)
 
 	// проверяем статус
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-
-	// проверяем что ответ содержит ошибку
 	assert.Contains(t, w.Body.String(), "формат")
 }
 
-// TestAddServiceInvalidServiceData Проверяет добавление службы с невалидными данными.
+// TestAddServiceInvalidServiceData Проверяет валидацию данных службы.
 func TestAddServiceInvalidServiceData(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// создаём service с пустым именем
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	tests := []struct {
+		name    string
+		service models.Service
+	}{
+		{
+			name: "пустое имя службы",
+			service: models.Service{
+				ServiceName:   "",
+				DisplayedName: "Test",
+			},
+		},
+		{
+			name: "пустое отображаемое имя",
+			service: models.Service{
+				ServiceName:   "test",
+				DisplayedName: "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.service)
+			r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+			w := httptest.NewRecorder()
+
+			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+			r = r.WithContext(ctx)
+
+			handler.AddService(w, r)
+
+			// проверяем ошибку валидации
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+// TestAddServiceServerNotFound Проверяет добавление когда сервер не найден.
+func TestAddServiceServerNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(nil, &errs.ErrServerNotFound{
+			UserID:   1,
+			ServerID: 1,
+			Err:      errors.New("server not found"),
+		})
+
 	service := models.Service{
-		ServiceName:   "",
-		DisplayedName: "Test",
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
 	}
 
 	body, _ := json.Marshal(service)
@@ -98,7 +163,598 @@ func TestAddServiceInvalidServiceData(t *testing.T) {
 	handler.AddService(w, r)
 
 	// проверяем статус
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Сервер не найден")
+}
+
+// TestAddServiceDatabaseError Проверяет ошибку БД при получении сервера.
+func TestAddServiceDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(nil, errors.New("database error"))
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Ошибка при получении информации о сервере")
+}
+
+// TestAddServiceServerUnreachable Проверяет добавление на недоступный сервер.
+func TestAddServiceServerUnreachable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(false)
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusBadGateway, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), "недоступен")
+}
+
+// TestAddServiceClientFactoryError Проверяет ошибку создания WinRM клиента.
+func TestAddServiceClientFactoryError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	// ошибка создания клиента
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(nil, errors.New("connection error"))
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Ошибка подключения к серверу")
+}
+
+// TestAddServiceRunCommandError Проверяет ошибку выполнения команды.
+func TestAddServiceRunCommandError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	// ошибка выполнения команды
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("", errors.New("command failed"))
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Не удалось получить статус службы")
+}
+
+// TestAddServiceNotExistsOnServer Проверяет что служба не существует на сервере.
+func TestAddServiceNotExistsOnServer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	// команда возвращает код 1060 (служба не найдена)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("QueryServiceConfig FAILED 1060", nil)
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "не найдена на сервере")
+}
+
+// TestAddServiceDuplicateService Проверяет добавление дублирующейся службы.
+func TestAddServiceDuplicateService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	// команда возвращает успешный результат
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
+
+	// ошибка дублирования в БД
+	mockStorage.EXPECT().
+		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		Return(nil, &errs.ErrDuplicatedService{
+			ServiceName: "testservice",
+			Err:         errors.New("duplicate"),
+		})
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), "уже была добавлена")
+}
+
+// TestAddServiceServerNotFoundInAddService Проверяет ошибку сервера при AddService.
+func TestAddServiceServerNotFoundInAddService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
+
+	// сервер не найден при добавлении службы
+	mockStorage.EXPECT().
+		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		Return(nil, &errs.ErrServerNotFound{
+			UserID:   1,
+			ServerID: 1,
+			Err:      errors.New("not found"),
+		})
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Сервер не был найден")
+}
+
+// TestAddServiceDatabaseErrorInAddService Проверяет ошибку БД при AddService.
+func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
+
+	// обычная ошибка БД
+	mockStorage.EXPECT().
+		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		Return(nil, errors.New("database error"))
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Ошибка добавления службы")
+}
+
+// TestAddServiceSuccess Проверяет успешное добавление службы.
+func TestAddServiceSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	createdService := &models.Service{
+		ID:            1,
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+		Status:        "running",
+		UpdatedAt:     time.Now(),
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
+
+	mockStorage.EXPECT().
+		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		Return(createdService, nil)
+
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.AddService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// проверяем что ответ содержит службу
+	var responseService models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseService)
+	assert.NoError(t, err)
+	assert.Equal(t, "testservice", responseService.ServiceName)
+}
+
+// TestAddServiceNameNormalization Проверяет нормализацию имени службы.
+func TestAddServiceNameNormalization(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"с пробелами", "  MyService  "},
+		{"с двойными кавычками", `"MyService"`},
+		{"с одинарными кавычками", "'MyService'"},
+		{"с обратными кавычками", "`MyService`"},
+		{"с французскими кавычками", "«MyService»"},
+		{"с английскими кавычками", "\"MyService\""},
+		{"верхний регистр", "MYSERVICE"},
+		{"смешанный регистр", "MySeRvIcE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStorage := storageMocks.NewMockStorage(ctrl)
+			mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+			mockChecker := netutilsMocks.NewMockChecker(ctrl)
+			mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+			handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+			mockStorage.EXPECT().
+				GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, &errs.ErrServerNotFound{
+					UserID:   1,
+					ServerID: 1,
+					Err:      errors.New("not found"),
+				})
+
+			service := models.Service{
+				ServiceName:   tt.input,
+				DisplayedName: "Test Service",
+			}
+
+			body, _ := json.Marshal(service)
+			r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+			w := httptest.NewRecorder()
+
+			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+			r = r.WithContext(ctx)
+
+			handler.AddService(w, r)
+
+			// проверяем что обработка прошла
+			assert.Equal(t, http.StatusNotFound, w.Code)
+		})
+	}
 }
 
 // TestDelServiceSuccess Проверяет успешное удаление службы.
@@ -106,33 +762,30 @@ func TestDelServiceSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// ожидаем что DelService будет вызван
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), int64(1), int64(1), int64(1)).
 		Return(nil)
 
-	handler := NewServiceHandler(mockStorage, mockChecker)
-
 	r := httptest.NewRequest(http.MethodDelete, "/services/1", nil)
 	w := httptest.NewRecorder()
 
-	// создаём контекст с credentials
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.DelService(w, r)
 
 	// проверяем статус
 	assert.Equal(t, http.StatusOK, w.Code)
-
-	// проверяем что ответ содержит сообщение об успехе
 	assert.Contains(t, w.Body.String(), "успешно удалена")
 }
 
@@ -141,10 +794,13 @@ func TestDelServiceNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// ожидаем что DelService вернёт ошибку
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&errs.ErrServiceNotFound{
@@ -154,7 +810,37 @@ func TestDelServiceNotFound(t *testing.T) {
 			Err:       errors.New("not found"),
 		})
 
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	r := httptest.NewRequest(http.MethodDelete, "/services/1", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.DelService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "не найдена")
+}
+
+// TestDelServiceDatabaseError Проверяет ошибку БД при удалении.
+func TestDelServiceDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	mockStorage.EXPECT().
+		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("database error"))
 
 	r := httptest.NewRequest(http.MethodDelete, "/services/1", nil)
 	w := httptest.NewRecorder()
@@ -163,25 +849,25 @@ func TestDelServiceNotFound(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.DelService(w, r)
 
 	// проверяем статус
-	assert.Equal(t, http.StatusNotFound, w.Code)
-
-	// проверяем сообщение об ошибке
-	assert.Contains(t, w.Body.String(), "не найдена")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-// TestGetServiceSuccess Проверяет успешное получение информации о службе.
+// TestGetServiceSuccess Проверяет успешное получение службы.
 func TestGetServiceSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
 
 	service := &models.Service{
 		ID:            1,
@@ -190,12 +876,9 @@ func TestGetServiceSuccess(t *testing.T) {
 		Status:        "running",
 	}
 
-	// ожидаем что GetService будет вызван
 	mockStorage.EXPECT().
 		GetService(gomock.Any(), int64(1), int64(1), int64(1)).
 		Return(service, nil)
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
 
 	r := httptest.NewRequest(http.MethodGet, "/services/1", nil)
 	w := httptest.NewRecorder()
@@ -204,18 +887,15 @@ func TestGetServiceSuccess(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.GetService(w, r)
 
 	// проверяем статус
 	assert.Equal(t, http.StatusOK, w.Code)
-
-	// проверяем content-type
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	// проверяем что ответ содержит сервис
+	// проверяем ответ
 	var responseService models.Service
 	err := json.NewDecoder(w.Body).Decode(&responseService)
 	assert.NoError(t, err)
@@ -227,10 +907,13 @@ func TestGetServiceNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// ожидаем что GetService вернёт ошибку
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
 	mockStorage.EXPECT().
 		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, &errs.ErrServiceNotFound{
@@ -240,7 +923,37 @@ func TestGetServiceNotFound(t *testing.T) {
 			Err:       errors.New("not found"),
 		})
 
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	r := httptest.NewRequest(http.MethodGet, "/services/1", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetService(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "не найдена")
+}
+
+// TestGetServiceDatabaseError Проверяет ошибку БД.
+func TestGetServiceDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("database error"))
 
 	r := httptest.NewRequest(http.MethodGet, "/services/1", nil)
 	w := httptest.NewRecorder()
@@ -249,37 +962,34 @@ func TestGetServiceNotFound(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.GetService(w, r)
 
 	// проверяем статус
-	assert.Equal(t, http.StatusNotFound, w.Code)
-
-	// проверяем сообщение об ошибке
-	assert.Contains(t, w.Body.String(), "не найдена")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
-// TestGetServicesListSuccess Проверяет успешное получение списка служб.
+// TestGetServicesListSuccess Проверяет успешное получение списка.
 func TestGetServicesListSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
 		{ID: 2, ServiceName: "service2", DisplayedName: "Service 2", Status: "stopped"},
 	}
 
-	// ожидаем что ListServices будет вызван
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), int64(1), int64(1)).
 		Return(services, nil)
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
 
 	r := httptest.NewRequest(http.MethodGet, "/services", nil)
 	w := httptest.NewRecorder()
@@ -287,38 +997,36 @@ func TestGetServicesListSuccess(t *testing.T) {
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
 	// проверяем статус
 	assert.Equal(t, http.StatusOK, w.Code)
-
-	// проверяем content-type
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	// проверяем что ответ содержит два сервиса
+	// проверяем ответ
 	var responseServices []*models.Service
 	err := json.NewDecoder(w.Body).Decode(&responseServices)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(responseServices))
 }
 
-// TestGetServicesListEmpty Проверяет получение пустого списка служб.
+// TestGetServicesListEmpty Проверяет пустой список.
 func TestGetServicesListEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// ожидаем что ListServices вернёт пустой слайс
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), int64(1), int64(1)).
 		Return([]*models.Service{}, nil)
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
 
 	r := httptest.NewRequest(http.MethodGet, "/services", nil)
 	w := httptest.NewRecorder()
@@ -326,7 +1034,6 @@ func TestGetServicesListEmpty(t *testing.T) {
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-
 	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
@@ -334,205 +1041,25 @@ func TestGetServicesListEmpty(t *testing.T) {
 	// проверяем статус
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// проверяем что ответ содержит пустой слайс
+	// проверяем пустой массив
 	var responseServices []*models.Service
 	err := json.NewDecoder(w.Body).Decode(&responseServices)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(responseServices))
 }
 
-// TestIsServiceExistsWithStateMarker Проверяет существование службы по маркеру STATE.
-func TestIsServiceExistsWithStateMarker(t *testing.T) {
-	result := `SERVICE_NAME: TestService
-	DISPLAY_NAME: Test Service
-	TYPE: 10 WIN32_OWN_PROCESS
-	STATE: 4 RUNNING
-	WIN32_EXIT_CODE: 0
-	SERVICE_EXIT_CODE: 0
-	CHECKPOINT: 0
-	WAIT_HINT: 0`
-
-	// проверяем что функция вернёт true
-	assert.True(t, isServiceExists(result))
-}
-
-// TestIsServiceExistsWithServiceNameMarker Проверяет существование службы по маркеру SERVICE_NAME.
-func TestIsServiceExistsWithServiceNameMarker(t *testing.T) {
-	result := "SERVICE_NAME: someservice"
-
-	// проверяем что функция вернёт true
-	assert.True(t, isServiceExists(result))
-}
-
-// TestIsServiceExistsWithErrorCode1060 Проверяет отсутствие службы по коду 1060.
-func TestIsServiceExistsWithErrorCode1060(t *testing.T) {
-	result := `QueryServiceConfig FAILED
-	1060`
-
-	// проверяем что функция вернёт false
-	assert.False(t, isServiceExists(result))
-}
-
-// TestIsServiceExistsWithEmptyResult Проверяет отсутствие службы при пустом результате.
-func TestIsServiceExistsWithEmptyResult(t *testing.T) {
-	result := ""
-
-	// проверяем что функция вернёт false
-	assert.False(t, isServiceExists(result))
-}
-
-// TestIsServiceExistsWithUnknownResult Проверяет отсутствие службы при неизвестном результате.
-func TestIsServiceExistsWithUnknownResult(t *testing.T) {
-	result := "Some random text without markers"
-
-	// проверяем что функция вернёт false
-	assert.False(t, isServiceExists(result))
-}
-
-// TestGetServicesListWithActualParameter Проверяет получение списка с параметром actual=true.
-func TestGetServicesListWithActualParameter(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := mocks.NewMockStorage(ctrl)
-	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-
-	services := []*models.Service{
-		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
-	}
-
-	// ожидаем вызовы для получения списка служб
-	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
-		Return(services, nil)
-
-	// ожидаем ошибку при получении сервера (так тест будет проще)
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, &errs.ErrServerNotFound{
-			UserID:   1,
-			ServerID: 1,
-			Err:      errors.New("not found"),
-		})
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
-
-	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-
-	r = r.WithContext(ctx)
-
-	handler.GetServicesList(w, r)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-// TestDelServiceDatabaseError Проверяет удаление при ошибке БД.
-func TestDelServiceDatabaseError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := mocks.NewMockStorage(ctrl)
-	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-
-	// ожидаем что DelService вернёт обычную ошибку
-	mockStorage.EXPECT().
-		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(errors.New("database error"))
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
-
-	r := httptest.NewRequest(http.MethodDelete, "/services/1", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
-	r = r.WithContext(ctx)
-
-	handler.DelService(w, r)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// TestGetServiceDatabaseError Проверяет получение при ошибке БД.
-func TestGetServiceDatabaseError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := mocks.NewMockStorage(ctrl)
-	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-
-	// ожидаем что GetService вернёт обычную ошибку
-	mockStorage.EXPECT().
-		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("database error"))
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
-
-	r := httptest.NewRequest(http.MethodGet, "/services/1", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
-
-	r = r.WithContext(ctx)
-
-	handler.GetService(w, r)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// TestGetServicesListDatabaseError Проверяет получение списка при ошибке БД.
-func TestGetServicesListDatabaseError(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := mocks.NewMockStorage(ctrl)
-	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-
-	// ожидаем что ListServices вернёт обычную ошибку
-	mockStorage.EXPECT().
-		ListServices(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil, errors.New("database error"))
-
-	handler := NewServiceHandler(mockStorage, mockChecker)
-
-	r := httptest.NewRequest(http.MethodGet, "/services", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-
-	r = r.WithContext(ctx)
-
-	handler.GetServicesList(w, r)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// TestGetServicesListServerNotFound Проверяет получение списка когда сервер не найден.
+// TestGetServicesListServerNotFound Проверяет ошибку "сервер не найден".
 func TestGetServicesListServerNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
 
-	// ожидаем что ListServices вернёт ошибку что сервер не найден
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, &errs.ErrServiceNotFound{
@@ -540,7 +1067,35 @@ func TestGetServicesListServerNotFound(t *testing.T) {
 			Err:      errors.New("server not found"),
 		})
 
-	handler := NewServiceHandler(mockStorage, mockChecker)
+	r := httptest.NewRequest(http.MethodGet, "/services", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// TestGetServicesListDatabaseError Проверяет ошибку БД.
+func TestGetServicesListDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, errors.New("database error"))
 
 	r := httptest.NewRequest(http.MethodGet, "/services", nil)
 	w := httptest.NewRecorder()
@@ -548,11 +1103,513 @@ func TestGetServicesListServerNotFound(t *testing.T) {
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
 
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// TestGetServicesListWithActualTrueServerNotFound Проверяет actual=true когда сервер не найден.
+func TestGetServicesListWithActualTrueServerNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	// первый вызов - получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// второй вызов - получение сервера с паролем (ошибка)
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(nil, &errs.ErrServerNotFound{
+			UserID:   1,
+			ServerID: 1,
+			Err:      errors.New("server not found"),
+		})
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
 	// проверяем статус
 	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Сервер не найден")
+}
+
+// TestGetServicesListWithActualTrueDatabaseError Проверяет actual=true при ошибке БД.
+func TestGetServicesListWithActualTrueDatabaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	// первый вызов - получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// второй вызов - ошибка БД
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(nil, errors.New("database error"))
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Ошибка при получении информации о сервере")
+}
+
+// TestGetServicesListWithActualTrueServerUnreachable Проверяет actual=true когда сервер недоступен.
+func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	// получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// получение сервера
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	// сервер недоступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		Return(false)
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "false", w.Header().Get("X-Is-Updated"))
+
+	// проверяем что список служб вернулся
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(responseServices))
+}
+
+// TestGetServicesListWithActualTrueWorkerFailed Проверяет actual=true когда worker не смог обновить статусы.
+func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	// получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// получение сервера
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	// сервер доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		Return(true)
+
+	// worker не смог обновить статусы (возвращает false)
+	mockStatusesWorker.EXPECT().
+		CheckServicesStatuses(gomock.Any(), server, services).
+		Return(nil, false)
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "false", w.Header().Get("X-Is-Updated"))
+
+	// проверяем что список служб вернулся
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(responseServices))
+}
+
+// TestGetServicesListWithActualTrueBatchUpdateFailed Проверяет actual=true когда BatchChangeServiceStatus упал.
+func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	// обновлённые статусы служб
+	updatedServices := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "stopped", UpdatedAt: time.Now()},
+	}
+
+	// получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// получение сервера
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	// сервер доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		Return(true)
+
+	// worker успешно вернул обновлённые статусы
+	mockStatusesWorker.EXPECT().
+		CheckServicesStatuses(gomock.Any(), server, services).
+		Return(updatedServices, true)
+
+	// BatchChangeServiceStatus возвращает ошибку
+	mockStorage.EXPECT().
+		BatchChangeServiceStatus(gomock.Any(), int64(1), updatedServices).
+		Return(errors.New("database error"))
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "false", w.Header().Get("X-Is-Updated"))
+
+	// проверяем что список служб вернулся
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(responseServices))
+}
+
+// TestGetServicesListWithActualTrueSuccess Проверяет успешный сценарий actual=true.
+func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+	}
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	// обновлённые статусы служб
+	updatedServices := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "stopped", UpdatedAt: time.Now()},
+	}
+
+	// получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// получение сервера
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	// сервер доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		Return(true)
+
+	// worker успешно вернул обновлённые статусы
+	mockStatusesWorker.EXPECT().
+		CheckServicesStatuses(gomock.Any(), server, services).
+		Return(updatedServices, true)
+
+	// BatchChangeServiceStatus успешен
+	mockStorage.EXPECT().
+		BatchChangeServiceStatus(gomock.Any(), int64(1), updatedServices).
+		Return(nil)
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "true", w.Header().Get("X-Is-Updated"))
+
+	// проверяем что список служб вернулся
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(responseServices))
+}
+
+// TestGetServicesListWithActualFalse Проверяет запрос без actual=true.
+func TestGetServicesListWithActualFalse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	services := []*models.Service{
+		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
+		{ID: 2, ServiceName: "service2", DisplayedName: "Service 2", Status: "stopped"},
+	}
+
+	// только один вызов - получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// GetServerWithPassword НЕ должен быть вызван
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		Times(0)
+
+	r := httptest.NewRequest(http.MethodGet, "/services", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// заголовок X-Is-Updated не должен быть установлен
+	assert.Empty(t, w.Header().Get("X-Is-Updated"))
+
+	// проверяем что список служб вернулся
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(responseServices))
+}
+
+// TestGetServicesListWithActualTrueEmptyServices Проверяет actual=true с пустым списком служб.
+func TestGetServicesListWithActualTrueEmptyServices(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+
+	// пустой список служб
+	services := []*models.Service{}
+
+	// только один вызов - получение списка служб
+	mockStorage.EXPECT().
+		ListServices(gomock.Any(), int64(1), int64(1)).
+		Return(services, nil)
+
+	// GetServerWithPassword НЕ должен быть вызван для пустого списка
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		Times(0)
+
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler.GetServicesList(w, r)
+
+	// проверяем статус
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// проверяем пустой массив
+	var responseServices []*models.Service
+	err := json.NewDecoder(w.Body).Decode(&responseServices)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(responseServices))
+}
+
+// TestIsServiceExistsVariants Проверяет все варианты isServiceExists.
+func TestIsServiceExistsVariants(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   string
+		expected bool
+	}{
+		{
+			name:     "с маркером STATE",
+			result:   "SERVICE_NAME: test\nSTATE: 4 RUNNING",
+			expected: true,
+		},
+		{
+			name:     "с маркером SERVICE_NAME",
+			result:   "SERVICE_NAME: someservice",
+			expected: true,
+		},
+		{
+			name:     "код ошибки 1060",
+			result:   "QueryServiceConfig FAILED 1060",
+			expected: false,
+		},
+		{
+			name:     "пустой результат",
+			result:   "",
+			expected: false,
+		},
+		{
+			name:     "неизвестный результат",
+			result:   "Some random text",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isServiceExists(tt.result)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

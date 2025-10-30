@@ -22,15 +22,19 @@ import (
 
 // ServiceHandler Обработчик для управления службами.
 type ServiceHandler struct {
-	storage storage.Storage
-	checker netutils.Checker
+	storage                storage.Storage
+	clientFactory          service_control.ClientFactory
+	checker                netutils.Checker
+	servicesStatusesWorker worker.StatusesChecker
 }
 
 // NewServiceHandler Конструктор ServiceHandler.
-func NewServiceHandler(storage storage.Storage, checker netutils.Checker) *ServiceHandler {
+func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, servicesStatusesWorker worker.StatusesChecker) *ServiceHandler {
 	return &ServiceHandler{
-		storage: storage,
-		checker: checker,
+		storage:                storage,
+		clientFactory:          clientFactory,
+		checker:                checker,
+		servicesStatusesWorker: servicesStatusesWorker,
 	}
 }
 
@@ -85,7 +89,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// создаём WinRM клиент
-	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -304,7 +308,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// опрашиваем службы через воркер, получаем слайс служб с обновленными данными и булево значение об успехе
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := h.servicesStatusesWorker.CheckServicesStatuses(ctx, server, services)
 
 	if !success {
 		w.Header().Set("Content-Type", "application/json")

@@ -33,7 +33,7 @@ func (wf *WinRMFingerprinter) GetFingerprint(ctx context.Context, address, usern
 	}
 
 	// создаём WinRM клиент для получения fingerprint (MachineGuid) с Windows сервера
-	client, err := NewWinRMClient(address, username, password)
+	client, err := wf.clientFactory.CreateClient(address, username, password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -50,9 +50,6 @@ func (wf *WinRMFingerprinter) GetFingerprint(ctx context.Context, address, usern
 	// получение fingerprint сервера
 	fingerprintStr, err := client.RunCommand(fingerprintCtx, fingerprintCmd)
 	if err != nil {
-		//logger.Log.Warn(fmt.Sprintf("Не удалось получить уникальный идентификатор `%s` от сервера `%s`",
-		//	username, address), logger.String("err", err.Error()))
-
 		return uuid.Nil, fmt.Errorf("не удалось получить уникальный идентификатор сервера: %w", err)
 	}
 

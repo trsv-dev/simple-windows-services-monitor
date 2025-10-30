@@ -101,7 +101,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.StatusWorker(workerCtx, storage, broadcaster, interval)
+			worker.BroadcastServiceStatuses(workerCtx, storage, broadcaster, interval)
 		}()
 	}
 
