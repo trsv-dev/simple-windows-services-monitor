@@ -10,16 +10,30 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 )
 
+// WinRMFingerprinter Реальная реализация получения fingerprint через WinRM.
+type WinRMFingerprinter struct {
+	clientFactory ClientFactory
+	netChecker    netutils.Checker
+}
+
+// NewWinRMFingerprinter Конструктор.
+func NewWinRMFingerprinter(clientFactory ClientFactory, netChecker netutils.Checker) *WinRMFingerprinter {
+	return &WinRMFingerprinter{
+		clientFactory: clientFactory,
+		netChecker:    netChecker,
+	}
+}
+
 // GetFingerprint Получение fingerprint (MachineGuid) с Windows сервера.
-func GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
+func (wf *WinRMFingerprinter) GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(address, 5985, 0) {
+	if !wf.netChecker.IsHostReachable(address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s недоступен", address))
 		return uuid.Nil, fmt.Errorf("сервер %s недоступен", address)
 	}
 
 	// создаём WinRM клиент для получения fingerprint (MachineGuid) с Windows сервера
-	client, err := NewWinRMClient(address, username, password)
+	client, err := wf.clientFactory.CreateClient(address, username, password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -36,9 +50,6 @@ func GetFingerprint(ctx context.Context, address, username, password string) (uu
 	// получение fingerprint сервера
 	fingerprintStr, err := client.RunCommand(fingerprintCtx, fingerprintCmd)
 	if err != nil {
-		//logger.Log.Warn(fmt.Sprintf("Не удалось получить уникальный идентификатор `%s` от сервера `%s`",
-		//	username, address), logger.String("err", err.Error()))
-
 		return uuid.Nil, fmt.Errorf("не удалось получить уникальный идентификатор сервера: %w", err)
 	}
 

@@ -7,7 +7,7 @@ import (
 )
 
 // Router Роутер.
-func Router(h *api.AppHandler) chi.Router {
+func Router(h *api.HandlersContainer) chi.Router {
 	router := chi.NewRouter()
 
 	router.Use(middleware.CorsMiddleware)
@@ -16,23 +16,23 @@ func Router(h *api.AppHandler) chi.Router {
 	router.Use(middleware.LogMiddleware)
 
 	// публичные маршруты
-	router.Post("/api/user/register", h.UserRegistration)
-	router.Post("/api/user/login", h.UserAuthorization)
+	router.Post("/api/user/register", h.RegistrationHandler.UserRegistration)
+	router.Post("/api/user/login", h.AuthorizationHandler.UserAuthorization)
 
 	// маршруты, требующие авторизацию
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.UserLoginUserIdToContextMiddleware(h.JWTSecretKey))
+		r.Use(middleware.UserLoginUserIdToContextMiddleware(h.AppHandler.JWTSecretKey, h.AppHandler.TokenBuilder))
 		r.Use(middleware.RequireAuthMiddleware)
 
 		// SSE: подписка на события служб
 		// h.Broadcaster.HTTPHandler() — это http.Handler для всех топиков
-		r.Handle("/broadcasting", h.Broadcaster.HTTPHandler())
+		r.Handle("/broadcasting", h.AppHandler.Broadcaster.HTTPHandler())
 
 		// маршруты БЕЗ ServerID параметра
-		r.Post("/servers", h.AddServer)    // создание сервера
-		r.Get("/servers", h.GetServerList) // список серверов пользователя
+		r.Post("/servers", h.ServerHandler.AddServer)    // создание сервера
+		r.Get("/servers", h.ServerHandler.GetServerList) // список серверов пользователя
 
 		// маршруты С serverID параметром
 		r.Route("/servers/{serverID}", func(r chi.Router) {
@@ -40,13 +40,13 @@ func Router(h *api.AppHandler) chi.Router {
 			// извлекаем serverID из параметров роутера
 			r.Use(middleware.ParseServerIDMiddleware)
 
-			r.Patch("/", h.EditServer) // редактирование сервера
-			r.Delete("/", h.DelServer) // удаление сервера
-			r.Get("/", h.GetServer)    // получение сервера
+			r.Patch("/", h.ServerHandler.EditServer) // редактирование сервера
+			r.Delete("/", h.ServerHandler.DelServer) // удаление сервера
+			r.Get("/", h.ServerHandler.GetServer)    // получение сервера
 
 			r.Route("/services", func(r chi.Router) {
-				r.Post("/", h.AddService)     // добавление службы
-				r.Get("/", h.GetServicesList) // список служб сервера
+				r.Post("/", h.ServiceHandler.AddService)     // добавление службы
+				r.Get("/", h.ServiceHandler.GetServicesList) // список служб сервера
 
 				// маршруты С serviceID параметром
 				r.Route("/{serviceID}", func(r chi.Router) {
@@ -54,13 +54,13 @@ func Router(h *api.AppHandler) chi.Router {
 					// извлекаем serviceID из параметров роутера
 					r.Use(middleware.ParseServiceIDMiddleware)
 
-					r.Delete("/", h.DelService) //удаление службы
-					r.Get("/", h.GetService)    // получение службы
+					r.Delete("/", h.ServiceHandler.DelService) //удаление службы
+					r.Get("/", h.ServiceHandler.GetService)    // получение службы
 
 					// управление службами
-					r.Post("/start", h.ServiceStart)     // запуск службы
-					r.Post("/stop", h.ServiceStop)       // остановка службы
-					r.Post("/restart", h.ServiceRestart) // перезапуск службы
+					r.Post("/start", h.ControlHandler.ServiceStart)     // запуск службы
+					r.Post("/stop", h.ControlHandler.ServiceStop)       // остановка службы
+					r.Post("/restart", h.ControlHandler.ServiceRestart) // перезапуск службы
 				})
 			})
 		})

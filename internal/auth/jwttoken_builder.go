@@ -9,6 +9,14 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 )
 
+// JWTTokenBuilder Создает и парсит JWT-токен
+type JWTTokenBuilder struct{}
+
+// NewJWTTokenBuilder Конструктор JWTTokenBuilder.
+func NewJWTTokenBuilder() *JWTTokenBuilder {
+	return &JWTTokenBuilder{}
+}
+
 type Claims struct {
 	jwt.RegisteredClaims
 	Login string
@@ -18,7 +26,7 @@ type Claims struct {
 const TokenExp = time.Hour * 24
 
 // BuildJWTToken Создание JWT-токена.
-func BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
+func (t JWTTokenBuilder) BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
 	// создаем экземпляр структуры, которую будем записывать в токен
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -41,7 +49,7 @@ func BuildJWTToken(user *models.User, JWTSecretKey string) (string, error) {
 }
 
 // GetClaims Получение Claims (login и id) пользователя с помощью распарсивания JWT-токена.
-func GetClaims(tokenString, JWTSecretKey string) (*Claims, error) {
+func (t JWTTokenBuilder) GetClaims(tokenString, JWTSecretKey string) (*Claims, error) {
 	// создаем пустой экземпляр Claims, куда будем распарсивать токен
 	claims := &Claims{}
 

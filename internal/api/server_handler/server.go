@@ -1,4 +1,4 @@
-package api
+package server_handler
 
 import (
 	"encoding/json"
@@ -6,16 +6,32 @@ import (
 	"fmt"
 	"net/http"
 
+	//"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
+// ServerHandler Обработчик для управления серверами.
+type ServerHandler struct {
+	storage       storage.Storage
+	fingerprinter service_control.Fingerprinter
+}
+
+// NewServerHandler Конструктор ServerHandler.
+func NewServerHandler(storage storage.Storage, fingerprinter service_control.Fingerprinter) *ServerHandler {
+	return &ServerHandler{
+		storage:       storage,
+		fingerprinter: fingerprinter,
+	}
+}
+
 // AddServer Добавление нового сервера.
-func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -33,7 +49,7 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fingerprint, err := service_control.GetFingerprint(ctx, server.Address, server.Username, server.Password)
+	fingerprint, err := h.fingerprinter.GetFingerprint(ctx, server.Address, server.Username, server.Password)
 	if err != nil {
 		logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
@@ -71,7 +87,7 @@ func (h *AppHandler) AddServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // EditServer Редактирование пользовательского сервера.
-func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -130,7 +146,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 			password = input.Password
 		}
 
-		fingerprint, err := service_control.GetFingerprint(ctx, input.Address, input.Username, password)
+		fingerprint, err := h.fingerprinter.GetFingerprint(ctx, input.Address, input.Username, password)
 		if err != nil {
 			logger.Log.Error("Ошибка получения UUID сервера", logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка получения UUID сервера"))
@@ -177,7 +193,7 @@ func (h *AppHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // DelServer Удаление сервера, добавленного пользователем.
-func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -209,7 +225,7 @@ func (h *AppHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetServer Получение информации о сервере.
-func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -244,7 +260,7 @@ func (h *AppHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetServerList Получение списка серверов пользователя.
-func (h *AppHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
+func (h *ServerHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := ctx.Value(contextkeys.ID).(int64)
 

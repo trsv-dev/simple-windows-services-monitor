@@ -10,8 +10,8 @@ import (
 )
 
 // NewServer Создание нового сервера.
-func NewServer(runAddress string, appHandler *api.AppHandler) *http.Server {
-	mux := router.Router(appHandler)
+func NewServer(runAddress string, handlers *api.HandlersContainer) *http.Server {
+	mux := router.Router(handlers)
 
 	server := &http.Server{
 		Addr:    runAddress,
@@ -22,8 +22,8 @@ func NewServer(runAddress string, appHandler *api.AppHandler) *http.Server {
 }
 
 // RunServer Запускает сервер в горутине и возвращает сам сервер и канал ошибок.
-func RunServer(runAddress string, appHandler *api.AppHandler) (*http.Server, chan error) {
-	server := NewServer(runAddress, appHandler)
+func RunServer(runAddress string, handlers *api.HandlersContainer) (*http.Server, chan error) {
+	server := NewServer(runAddress, handlers)
 
 	// канал ошибок сервера
 	serverErrorCh := make(chan error, 1)

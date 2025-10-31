@@ -1,4 +1,4 @@
-package api
+package control_handler
 
 import (
 	"context"
@@ -14,10 +14,27 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
+// ControlHandler Обрабатывает запросы управления службами (start, stop, restart, status).
+type ControlHandler struct {
+	storage       storage.Storage
+	clientFactory service_control.ClientFactory // фабрика для создания WinRM клиентов
+	checker       netutils.Checker
+}
+
+// NewControlHandler Конструктор ControlHandler.
+func NewControlHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker) *ControlHandler {
+	return &ControlHandler{
+		storage:       storage,
+		clientFactory: clientFactory,
+		checker:       checker,
+	}
+}
+
 // ServiceStop Остановка службы.
-func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
+func (h *ControlHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -62,14 +79,14 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно остановить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
 	}
 
 	// создаём WinRM клиент
-	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -150,7 +167,7 @@ func (h *AppHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServiceStart Запуск службы.
-func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
+func (h *ControlHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -195,14 +212,14 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
 	}
 
 	// создаём WinRM клиент
-	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -281,7 +298,7 @@ func (h *AppHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServiceRestart Перезапуск службы.
-func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
+func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -326,14 +343,14 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно перезапустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
 	}
 
 	// создаём WinRM клиент
-	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -451,7 +468,7 @@ func (h *AppHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 // Вспомогательный метод для ожидания статуса
-func (h *AppHandler) waitForServiceStatus(ctx context.Context, client *service_control.WinRMClient, serviceName string, expectedStatus int) error {
+func (h *ControlHandler) waitForServiceStatus(ctx context.Context, client service_control.Client, serviceName string, expectedStatus int) error {
 	statusCmd := fmt.Sprintf("sc query \"%s\"", serviceName)
 
 	// Экспоненциальная задержка: 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s

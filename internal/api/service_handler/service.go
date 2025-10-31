@@ -1,4 +1,4 @@
-package api
+package service_handler
 
 import (
 	"context"
@@ -16,11 +16,30 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
+// ServiceHandler Обработчик для управления службами.
+type ServiceHandler struct {
+	storage                storage.Storage
+	clientFactory          service_control.ClientFactory
+	checker                netutils.Checker
+	servicesStatusesWorker worker.StatusesChecker
+}
+
+// NewServiceHandler Конструктор ServiceHandler.
+func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, servicesStatusesWorker worker.StatusesChecker) *ServiceHandler {
+	return &ServiceHandler{
+		storage:                storage,
+		clientFactory:          clientFactory,
+		checker:                checker,
+		servicesStatusesWorker: servicesStatusesWorker,
+	}
+}
+
 // AddService Добавление службы.
-func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -61,7 +80,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -70,7 +89,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// создаём WinRM клиент
-	client, err := service_control.NewWinRMClient(server.Address, server.Username, server.Password)
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
 	if err != nil {
 		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
@@ -141,7 +160,7 @@ func (h *AppHandler) AddService(w http.ResponseWriter, r *http.Request) {
 }
 
 // DelService Удаление службы.
-func (h *AppHandler) DelService(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceHandler) DelService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -170,7 +189,7 @@ func (h *AppHandler) DelService(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetService Получение информации о службе.
-func (h *AppHandler) GetService(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -206,7 +225,7 @@ func (h *AppHandler) GetService(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetServicesList Получение списка служб сервера, принадлежащего пользователю.
-func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
+func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -274,7 +293,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !netutils.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -289,7 +308,7 @@ func (h *AppHandler) GetServicesList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// опрашиваем службы через воркер, получаем слайс служб с обновленными данными и булево значение об успехе
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := h.servicesStatusesWorker.CheckServicesStatuses(ctx, server, services)
 
 	if !success {
 		w.Header().Set("Content-Type", "application/json")

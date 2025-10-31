@@ -9,7 +9,7 @@ import (
 )
 
 // MakeJWTTopicResolver возвращает resolver, использующий JWT из cookie "JWT".
-func MakeJWTTopicResolver(JWTSecretKey string) TopicResolver {
+func MakeJWTTopicResolver(JWTSecretKey string, tokenBuilder auth.TokenBuilder) TopicResolver {
 	return func(r *http.Request) (string, error) {
 		c, err := r.Cookie("JWT")
 		if err != nil {
@@ -17,7 +17,7 @@ func MakeJWTTopicResolver(JWTSecretKey string) TopicResolver {
 		}
 		token := c.Value
 
-		claims, err := auth.GetClaims(token, JWTSecretKey)
+		claims, err := tokenBuilder.GetClaims(token, JWTSecretKey)
 		if err != nil {
 			return "", err
 		}

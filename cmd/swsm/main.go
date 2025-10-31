@@ -14,6 +14,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -60,6 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	tokenBuilder := auth.NewJWTTokenBuilder()
 	var broadcaster broadcast.Broadcaster
 
 	if srvConfig.WebInterface {
@@ -69,21 +71,21 @@ func main() {
 		// Если планируется использовать только API без фронтенда - broadcaster можно убрать из зависимостей AppHandler.
 		// Инициализировав broadcaster в main далее он используется в status_worker.
 		broadcaster = broadcast.NewR3labsSSEAdapter(
-			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey),
+			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey, tokenBuilder),
 		)
 	} else {
 		broadcaster = broadcast.NewNoopAdapter(func(r *http.Request) (string, error) { return "noop", nil })
 	}
 
-	// создаём AppHandler — контейнер зависимостей для всех хендлеров,
+	// создаём handlersContainer — контейнер зависимостей для всех хендлеров,
 	// передаём в него хранилище, JWT ключ и SSE адаптер
-	appHandler := api.NewAppHandler(storage, srvConfig.JWTSecretKey, broadcaster)
+	handlersContainer := api.NewHandlersContainer(storage, srvConfig, broadcaster, tokenBuilder)
 
 	// запуск HTTP-сервера,
-	// передаём готовый AppHandler, содержащий все зависимости
+	// передаём готовый handlersContainer, содержащий все зависимости
 
 	// создаем сервер и запускаем его
-	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, appHandler)
+	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, handlersContainer)
 
 	// запускаем воркер в отдельной горутине,
 	// воркер периодически опрашивает БД и публикует обновления статусов служб через SSE
@@ -99,7 +101,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.StatusWorker(workerCtx, storage, broadcaster, interval)
+			worker.BroadcastServiceStatuses(workerCtx, storage, broadcaster, interval)
 		}()
 	}
 

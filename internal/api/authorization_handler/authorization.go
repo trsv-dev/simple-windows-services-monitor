@@ -1,4 +1,4 @@
-package api
+package authorization_handler
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 
 	"io"
 	"net/http"
@@ -15,8 +16,24 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 )
 
+// AuthorizationHandler Обработчик авторизации.
+type AuthorizationHandler struct {
+	storage      storage.Storage
+	tokenBuilder auth.TokenBuilder
+	JWTSecretKey string
+}
+
+// NewAuthorizationHandler Конструктор AuthorizationHandler.
+func NewAuthorizationHandler(storage storage.Storage, tokenBuilder auth.TokenBuilder, JWTSecretKey string) *AuthorizationHandler {
+	return &AuthorizationHandler{
+		storage:      storage,
+		tokenBuilder: tokenBuilder,
+		JWTSecretKey: JWTSecretKey,
+	}
+}
+
 // UserAuthorization Авторизация пользователей.
-func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
+func (h *AuthorizationHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if r.Method != http.MethodPost {
@@ -60,7 +77,7 @@ func (h *AppHandler) UserAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, err := auth.BuildJWTToken(verifiedUser, h.JWTSecretKey)
+	tokenString, err := h.tokenBuilder.BuildJWTToken(verifiedUser, h.JWTSecretKey)
 	if err != nil {
 		logger.Log.Debug("Ошибка при создании JWT-токена", logger.String("jwt-token", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при создании JWT-токена")
