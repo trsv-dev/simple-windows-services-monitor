@@ -138,6 +138,14 @@ type ServiceStatus struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
+// RegisterRequest Модель для тела запроса регистрации пользователя.
+type RegisterRequest struct {
+	ID              int64  `json:"id,omitempty"`
+	Login           string `json:"login"`
+	Password        string `json:"password"`
+	RegistrationKey string `json:"registration_key,omitempty"`
+}
+
 // User Модель пользователя.
 type User struct {
 	ID       int64  `json:"id,omitempty"`

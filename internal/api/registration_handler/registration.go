@@ -3,6 +3,7 @@ package registration_handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -16,17 +17,21 @@ import (
 
 // RegistrationHandler Обработчик регистрации.
 type RegistrationHandler struct {
-	storage      storage.Storage
-	tokenBuilder auth.TokenBuilder
-	JWTSecretKey string
+	storage          storage.Storage
+	tokenBuilder     auth.TokenBuilder
+	JWTSecretKey     string
+	registrationKey  string
+	openRegistration bool
 }
 
 // NewRegistrationHandler Конструктор RegistrationHandler.
-func NewRegistrationHandler(storage storage.Storage, tokenBuilder auth.TokenBuilder, JWTSecretKey string) *RegistrationHandler {
+func NewRegistrationHandler(storage storage.Storage, tokenBuilder auth.TokenBuilder, JWTSecretKey string, registrationKey string, openRegistration bool) *RegistrationHandler {
 	return &RegistrationHandler{
-		storage:      storage,
-		tokenBuilder: tokenBuilder,
-		JWTSecretKey: JWTSecretKey,
+		storage:          storage,
+		tokenBuilder:     tokenBuilder,
+		JWTSecretKey:     JWTSecretKey,
+		registrationKey:  registrationKey,
+		openRegistration: openRegistration,
 	}
 }
 
@@ -47,12 +52,31 @@ func (h *RegistrationHandler) UserRegistration(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var user models.User
-	err = json.Unmarshal(data, &user)
+	// registerRequest включает в себя поля модели models.User и поле RegistrationKey, необходимое для
+	// успешной регистрации если включена ограниченная регистрация пользователей
+	var registerRequest models.RegisterRequest
+
+	err = json.Unmarshal(data, &registerRequest)
 	if err != nil {
-		logger.Log.Error("Ошибка анмаршаллинга данных в модель User", logger.String("error", err.Error()))
+		logger.Log.Error("Ошибка декодирования тела запроса при регистрации", logger.String("error", err.Error()))
 		response.ErrorJSON(w, http.StatusBadRequest, "Неверный формат запроса")
 		return
+	}
+
+	// если открытая регистрация выключена в .env - для регистрации потребуется регистрационный ключ,
+	// проверяем поступивший в запросе ключ на соответствие ключу из .env
+	if !h.openRegistration {
+		if registerRequest.RegistrationKey != h.registrationKey {
+			logger.Log.Error("Попытка регистрации с невалидным ключом")
+			response.ErrorJSON(w, http.StatusBadRequest, fmt.Errorf("невалидный ключ регистрации").Error())
+			return
+		}
+	}
+
+	// если открытая регистрация включена в .env - ключ не требуется, просто продолжаем
+	user := models.User{
+		Login:    registerRequest.Login,
+		Password: registerRequest.Password,
 	}
 
 	if err := user.Validate(); err != nil {

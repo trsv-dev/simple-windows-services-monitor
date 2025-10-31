@@ -78,6 +78,11 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
     API_BASE_URL=http://localhost:8080/api
+    # Разрешение открытой регистрации для всех или регистрация с регистрационным ключом
+    OPEN_REGISTRATION=false
+    # Если регистрация закрытая (`OPEN_REGISTRATION=false`) - необходимо задать регистрационный ключ,
+    # ипользуя который избранные пользовтели смогут зарегистрироваться
+    REGISTRATION_KEY=your-secret-registration-key
     
     # Postgres init vars (для образа postgres)
     ####################################################################################
@@ -128,6 +133,11 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
     API_BASE_URL=/api
+    # Разрешение открытой регистрации для всех или регистрация с регистрационным ключом
+    OPEN_REGISTRATION=false
+    # Если регистрация закрытая (`OPEN_REGISTRATION=false`) - необходимо задать регистрационный ключ,
+    # ипользуя который избранные пользовтели смогут зарегистрироваться
+    REGISTRATION_KEY=your-secret-registration-key
     
     # Postgres init vars (для образа postgres)
     ####################################################################################

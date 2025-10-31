@@ -36,7 +36,8 @@ func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, bro
 	serverHandler := server_handler.NewServerHandler(storage, fingerprinter)
 	serviceHandler := service_handler.NewServiceHandler(storage, clientFactory, netChecker, servicesStatusesWorker)
 	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker)
-	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
+	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder,
+		srvConfig.JWTSecretKey, srvConfig.RegistrationKey, srvConfig.OpenRegistration)
 	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
 	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, tokenBuilder, broadcaster)
 

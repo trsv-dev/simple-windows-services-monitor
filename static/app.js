@@ -635,8 +635,26 @@ async function handleRegister(event) {
     event.preventDefault();
     console.log('Registration attempt started');
 
-    const username = document.getElementById('registerUsername').value;
+    const username = document.getElementById('registerUsername').value.trim();
     const password = document.getElementById('registerPassword').value;
+    const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
+    const registrationKey = document.getElementById('registrationKey').value.trim();
+
+    // Проверка совпадения паролей
+    if (password !== passwordConfirm) {
+        showToast('Ошибка', 'Пароли не совпадают', 'error');
+        return;
+    }
+
+    if (username.length < 4) {
+        showToast('Ошибка', 'Логин должен содержать не менее 4 символов', 'error');
+        return;
+    }
+
+    if (password.length < 5) {
+        showToast('Ошибка', 'Пароль должен содержать не менее 5 символов', 'error');
+        return;
+    }
 
     showLoading();
 
@@ -645,8 +663,9 @@ async function handleRegister(event) {
             method: 'POST',
             body: JSON.stringify({
                 login: username,
-                password: password
-            })
+                password: password,
+                registration_key: registrationKey,
+            }),
         });
 
         console.log('Registration response:', response);

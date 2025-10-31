@@ -24,7 +24,7 @@ func init() {
 	logger.InitLogger("error", "stdout")
 }
 
-// errorReader - helper для эмуляции ошибки чтения тела запроса
+// errorReader Helper для эмуляции ошибки чтения тела запроса
 type errorReader struct{}
 
 func (er *errorReader) Read(p []byte) (n int, err error) {
@@ -39,36 +39,40 @@ func TestNewRegistrationHandler(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
 	jwtSecret := "test-secret-key"
+	regKey := "reg-key"
 
-	handler := NewRegistrationHandler(mockStorage, mockTokenBuilder, jwtSecret)
+	handler := NewRegistrationHandler(mockStorage, mockTokenBuilder, jwtSecret, regKey, false)
 
 	assert.NotNil(t, handler, "handler не должен быть nil")
 	assert.NotNil(t, handler.storage, "storage должен быть инициализирован")
 	assert.NotNil(t, handler.tokenBuilder, "tokenBuilder должен быть инициализирован")
 	assert.Equal(t, jwtSecret, handler.JWTSecretKey, "JWTSecretKey должен совпадать")
+	assert.Equal(t, regKey, handler.registrationKey)
+	assert.False(t, handler.openRegistration)
 }
 
 // TestUserRegistration Проверяет регистрацию пользователей.
 func TestUserRegistration(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
 	testToken := "test-jwt-token"
 
 	tests := []struct {
-		name              string                              // название теста
-		method            string                              // HTTP метод
-		body              io.Reader                           // тело запроса
-		setupStorage      func(m *storageMocks.MockStorage)   // настройка мока storage
-		setupTokenBuilder func(m *authMocks.MockTokenBuilder) // настройка мока TokenBuilder
-		wantStatus        int                                 // ожидаемый HTTP статус
-		wantResponse      interface{}                         // ожидаемый ответ
-		checkToken        bool                                // нужно ли проверять токен
+		name              string
+		method            string
+		body              io.Reader
+		openRegistration  bool
+		registrationKey   string
+		setupStorage      func(m *storageMocks.MockStorage)
+		setupTokenBuilder func(m *authMocks.MockTokenBuilder)
+		wantStatus        int
+		wantResponse      interface{}
+		checkToken        bool
 	}{
 		{
 			name:              "метод не POST",
 			method:            http.MethodGet,
 			body:              nil,
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusMethodNotAllowed,
@@ -78,6 +82,8 @@ func TestUserRegistration(t *testing.T) {
 			name:              "ошибка чтения тела запроса",
 			method:            http.MethodPost,
 			body:              &errorReader{},
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -91,6 +97,8 @@ func TestUserRegistration(t *testing.T) {
 			name:              "невалидный JSON",
 			method:            http.MethodPost,
 			body:              bytes.NewBufferString("{invalid}"),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -104,10 +112,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "валидация - пустой логин",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -117,10 +131,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "валидация - логин менее 4 символов",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "usr", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "usr",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -130,10 +150,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "валидация - пустой пароль",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "user", Password: ""}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -143,10 +169,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "валидация - пароль менее 5 символов",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "user", Password: "pass"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "pass",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
 			setupStorage:      func(m *storageMocks.MockStorage) {},
 			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
 			wantStatus:        http.StatusBadRequest,
@@ -156,10 +188,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "пользователь уже существует",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "existing", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "existing",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
@@ -177,10 +215,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "ошибка БД при создании пользователя",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "newuser", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
@@ -194,10 +238,16 @@ func TestUserRegistration(t *testing.T) {
 			name:   "ошибка при создании JWT-токена",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "newuser", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
@@ -216,13 +266,65 @@ func TestUserRegistration(t *testing.T) {
 			checkToken: false,
 		},
 		{
-			name:   "успешная регистрация",
+			name:   "закрытая регистрация - отсутствует регистрационный ключ",
 			method: http.MethodPost,
 			body: func() io.Reader {
-				u := models.User{Login: "newuser", Password: "password"}
-				b, _ := json.Marshal(u)
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "",
+				}
+				b, _ := json.Marshal(req)
 				return bytes.NewBuffer(b)
 			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
+			setupStorage:      func(m *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusBadRequest,
+			wantResponse: response.APIError{
+				Code:    http.StatusBadRequest,
+				Message: "невалидный ключ регистрации",
+			},
+			checkToken: false,
+		},
+		{
+			name:   "закрытая регистрация - неверный регистрационный ключ",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "wrong-key",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration:  false,
+			registrationKey:   "valid-reg-key",
+			setupStorage:      func(m *storageMocks.MockStorage) {},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {},
+			wantStatus:        http.StatusBadRequest,
+			wantResponse: response.APIError{
+				Code:    http.StatusBadRequest,
+				Message: "невалидный ключ регистрации",
+			},
+			checkToken: false,
+		},
+		{
+			name:   "открытая регистрация - ключ не требуется",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration: true,
+			registrationKey:  "valid-reg-key",
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
 					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
@@ -241,60 +343,185 @@ func TestUserRegistration(t *testing.T) {
 			},
 			checkToken: true,
 		},
+		{
+			name:   "успешная регистрация с верным ключом",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
+			setupStorage: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
+					Return(nil)
+			},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {
+				m.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return(testToken, nil)
+			},
+			wantStatus: http.StatusCreated,
+			wantResponse: response.AuthResponse{
+				Message: "Пользователь зарегистрирован",
+				Login:   "newuser",
+				Token:   testToken,
+			},
+			checkToken: true,
+		},
+		{
+			name:   "логин с мин. допустимой длиной (4 символа)",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "user",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
+			setupStorage: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
+					Return(nil)
+			},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {
+				m.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return(testToken, nil)
+			},
+			wantStatus: http.StatusCreated,
+			wantResponse: response.AuthResponse{
+				Message: "Пользователь зарегистрирован",
+				Login:   "user",
+				Token:   testToken,
+			},
+			checkToken: true,
+		},
+		{
+			name:   "пароль с мин. допустимой длиной (5 символов)",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "newuser",
+					Password:        "pass1",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
+			setupStorage: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
+					Return(nil)
+			},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {
+				m.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return(testToken, nil)
+			},
+			wantStatus: http.StatusCreated,
+			wantResponse: response.AuthResponse{
+				Message: "Пользователь зарегистрирован",
+				Login:   "newuser",
+				Token:   testToken,
+			},
+			checkToken: true,
+		},
+		{
+			name:   "логин со спецсимволами и цифрами",
+			method: http.MethodPost,
+			body: func() io.Reader {
+				req := models.RegisterRequest{
+					Login:           "user_123-test",
+					Password:        "password123",
+					RegistrationKey: "valid-reg-key",
+				}
+				b, _ := json.Marshal(req)
+				return bytes.NewBuffer(b)
+			}(),
+			openRegistration: false,
+			registrationKey:  "valid-reg-key",
+			setupStorage: func(m *storageMocks.MockStorage) {
+				m.EXPECT().
+					CreateUser(gomock.Any(), gomock.AssignableToTypeOf(&models.User{})).
+					Return(nil)
+			},
+			setupTokenBuilder: func(m *authMocks.MockTokenBuilder) {
+				m.EXPECT().
+					BuildJWTToken(gomock.AssignableToTypeOf(&models.User{}), "test-secret-key").
+					Return(testToken, nil)
+			},
+			wantStatus: http.StatusCreated,
+			wantResponse: response.AuthResponse{
+				Message: "Пользователь зарегистрирован",
+				Login:   "user_123-test",
+				Token:   testToken,
+			},
+			checkToken: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// подготавливаем моки
+			// новый gomock контроллер для каждого теста
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
 			mockStorage := storageMocks.NewMockStorage(ctrl)
 			mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
 
 			tt.setupStorage(mockStorage)
 			tt.setupTokenBuilder(mockTokenBuilder)
 
-			// создаём handler с моками
-			handler := &RegistrationHandler{
-				storage:      mockStorage,
-				tokenBuilder: mockTokenBuilder,
-				JWTSecretKey: "test-secret-key",
-			}
+			// используем параметры из теста
+			handler := NewRegistrationHandler(
+				mockStorage,
+				mockTokenBuilder,
+				"test-secret-key",
+				tt.registrationKey,
+				tt.openRegistration,
+			)
 
-			// создаём HTTP запрос
 			r := httptest.NewRequest(tt.method, "/register", tt.body)
 			if tt.body != nil {
 				r.Header.Set("Content-Type", "application/json")
 			}
 			w := httptest.NewRecorder()
 
-			// выполняем регистрацию
 			handler.UserRegistration(w, r)
 
-			// проверка результатов
 			res := w.Result()
 			defer res.Body.Close()
 
-			// проверяем HTTP статус код
 			assert.Equal(t, tt.wantStatus, res.StatusCode)
 
-			// проверяем тело ответа, если ожидается
 			if tt.wantResponse != nil {
 				data, _ := io.ReadAll(res.Body)
 
 				switch exp := tt.wantResponse.(type) {
 				case response.APIError:
-					// проверяем ответ с ошибкой
 					var got response.APIError
 					json.Unmarshal(data, &got)
 					assert.Equal(t, exp.Code, got.Code)
 					assert.Contains(t, got.Message, exp.Message)
 				case response.AuthResponse:
-					// проверяем успешный ответ регистрации
 					var got response.AuthResponse
 					json.Unmarshal(data, &got)
 					assert.Equal(t, exp.Message, got.Message)
 					assert.Equal(t, exp.Login, got.Login)
 
-					// если нужно проверить токен
 					if tt.checkToken {
 						assert.Equal(t, testToken, got.Token)
 					}

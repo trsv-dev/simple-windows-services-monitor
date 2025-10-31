@@ -26,6 +26,7 @@ func init() {
 	logger.InitLogger("error", "stdout")
 }
 
+// createContextWithCreds Создаёт контекст с учётными данными пользователя.
 func createContextWithCreds(login string, userID, serverID, serviceID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
@@ -35,931 +36,936 @@ func createContextWithCreds(login string, userID, serverID, serviceID int64) con
 	return ctx
 }
 
-// TestServiceStop Проверяет остановку службы.
-func TestServiceStop(t *testing.T) {
+// ============================================================================
+// ServiceStop
+// ============================================================================
+
+// TestServiceStopErrServerNotFound Проверяет обработку ErrServerNotFound.
+func TestServiceStopErrServerNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	tests := []struct {
-		name           string
-		login          string
-		userID         int64
-		serverID       int64
-		serviceID      int64
-		setupStorage   func(m *storageMocks.MockStorage)
-		setupFactory   func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient)
-		setupChecker   func(m *netutilsMock.MockChecker)
-		wantStatus     int
-		wantErrorResp  *response.APIError
-		wantSuccessMsg string
-	}{
-		{
-			name:      "сервер не найден",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("not found")))
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {},
-			setupChecker: func(m *netutilsMock.MockChecker) {},
-			wantStatus:   http.StatusNotFound,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusNotFound,
-				Message: "Сервер не найден",
-			},
-		},
-		{
-			name:      "служба не найдена",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("not found")))
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {},
-			setupChecker: func(m *netutilsMock.MockChecker) {},
-			wantStatus:   http.StatusNotFound,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusNotFound,
-				Message: "Служба не найдена",
-			},
-		},
-		{
-			name:      "сервер недоступен",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	// возвращаем ErrServerNotFound
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(false)
-			},
-			wantStatus: http.StatusBadGateway,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusBadGateway,
-				Message: "Сервер недоступен",
-			},
-		},
-		{
-			name:      "ошибка создания WinRM клиента",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(nil, errors.New("auth failed"))
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusInternalServerError,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusInternalServerError,
-				Message: "Ошибка подключения к серверу",
-			},
-		},
-		{
-			name:      "успешная остановка запущенной службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	// создаём запрос с контекстом пользователя
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
+	handler.ServiceStop(w, r)
 
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
+	res := w.Result()
+	defer res.Body.Close()
 
-				// Проверка статуса (запущена)
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 4 RUNNING", nil).
-					Times(1)
-
-				// Остановка
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc stop "TestService"`).
-					Return("", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` остановлена",
-		},
-		{
-			name:      "служба уже остановлена",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Проверка статуса (уже остановлена)
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 1 STOPPED", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` уже остановлена",
-		},
-		{
-			name:      "служба в процессе остановки",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Проверка статуса (в процессе остановки)
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 3 STOP_PENDING", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusConflict,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusConflict,
-				Message: "Служба `Test Service` уже останавливается",
-			},
-		},
-		{
-			name:      "ошибка получения статуса службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Ошибка получения статуса
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("", errors.New("connection error")).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusInternalServerError,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusInternalServerError,
-				Message: "Не удалось получить статус службы `Test Service`",
-			},
-		},
-		{
-			name:      "ошибка при остановке службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: запущена
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 4 RUNNING", nil).
-					Times(1)
-
-				// Ошибка при остановке
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc stop "TestService"`).
-					Return("", errors.New("permission denied")).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusInternalServerError,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusInternalServerError,
-				Message: "Не удалось остановить службу",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStorage := storageMocks.NewMockStorage(ctrl)
-			mockChecker := netutilsMock.NewMockChecker(ctrl)
-			mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
-			mockClient := serviceControlMocks.NewMockClient(ctrl)
-
-			tt.setupStorage(mockStorage)
-			tt.setupFactory(mockClientFactory, mockClient)
-			tt.setupChecker(mockChecker)
-
-			handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
-
-			ctx := createContextWithCreds(tt.login, tt.userID, tt.serverID, tt.serviceID)
-			r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
-			w := httptest.NewRecorder()
-
-			handler.ServiceStop(w, r)
-
-			res := w.Result()
-			defer res.Body.Close()
-
-			assert.Equal(t, tt.wantStatus, res.StatusCode, "статус должен совпадать")
-
-			if tt.wantSuccessMsg != "" {
-				var got response.APISuccess
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantSuccessMsg, got.Message)
-			} else if tt.wantErrorResp != nil {
-				var got response.APIError
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantErrorResp.Code, got.Code)
-				assert.Equal(t, tt.wantErrorResp.Message, got.Message)
-			}
-		})
-	}
+	// проверяем, что вернулась 404
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер не найден", got.Message)
 }
 
-// TestServiceStart Проверяет запуск службы.
-func TestServiceStart(t *testing.T) {
+// TestServiceStopGetServerGenericError Проверяет обработку generic ошибки при GetServerWithPassword.
+func TestServiceStopGetServerGenericError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	tests := []struct {
-		name           string
-		login          string
-		userID         int64
-		serverID       int64
-		serviceID      int64
-		setupStorage   func(m *storageMocks.MockStorage)
-		setupFactory   func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient)
-		setupChecker   func(m *netutilsMock.MockChecker)
-		wantStatus     int
-		wantErrorResp  *response.APIError
-		wantSuccessMsg string
-	}{
-		{
-			name:      "успешный запуск остановленной службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
+	// generic ошибка (не специфичная ErrServerNotFound)
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errors.New("database connection timeout"))
 
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
 
-				// Статус: остановлена
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 1 STOPPED", nil).
-					Times(1)
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
 
-				// Запуск
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc start "TestService"`).
-					Return("", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` запущена",
-		},
-		{
-			name:      "служба уже запущена",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	handler.ServiceStop(w, r)
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
+	res := w.Result()
+	defer res.Body.Close()
 
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: уже запущена
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 4 RUNNING", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` уже запущена",
-		},
-		{
-			name:      "служба в процессе запуска",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: в процессе запуска
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 2 START_PENDING", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusConflict,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusConflict,
-				Message: "Служба `Test Service` уже запускается",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStorage := storageMocks.NewMockStorage(ctrl)
-			mockChecker := netutilsMock.NewMockChecker(ctrl)
-			mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
-			mockClient := serviceControlMocks.NewMockClient(ctrl)
-
-			tt.setupStorage(mockStorage)
-			tt.setupFactory(mockClientFactory, mockClient)
-			tt.setupChecker(mockChecker)
-
-			handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
-
-			ctx := createContextWithCreds(tt.login, tt.userID, tt.serverID, tt.serviceID)
-			r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
-			w := httptest.NewRecorder()
-
-			handler.ServiceStart(w, r)
-
-			res := w.Result()
-			defer res.Body.Close()
-
-			assert.Equal(t, tt.wantStatus, res.StatusCode)
-
-			if tt.wantSuccessMsg != "" {
-				var got response.APISuccess
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantSuccessMsg, got.Message)
-			} else if tt.wantErrorResp != nil {
-				var got response.APIError
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantErrorResp.Code, got.Code)
-				assert.Equal(t, tt.wantErrorResp.Message, got.Message)
-			}
-		})
-	}
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о сервере", got.Message)
 }
 
-// TestServiceRestart Проверяет перезапуск службы.
-func TestServiceRestart(t *testing.T) {
+// TestServiceStopErrServiceNotFound Проверяет обработку ErrServiceNotFound.
+func TestServiceStopErrServiceNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	tests := []struct {
-		name           string
-		login          string
-		userID         int64
-		serverID       int64
-		serviceID      int64
-		setupStorage   func(m *storageMocks.MockStorage)
-		setupFactory   func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient)
-		setupChecker   func(m *netutilsMock.MockChecker)
-		wantStatus     int
-		wantErrorResp  *response.APIError
-		wantSuccessMsg string
-	}{
-		{
-			name:      "успешный перезапуск запущенной службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
 
-				// Статус при остановке
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
-					Return(nil)
+	// возвращаем ErrServiceNotFound
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
 
-				// Статус при запуске
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
 
-				// Первый запрос: статус (запущена)
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 4 RUNNING", nil).
-					Times(1)
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
 
-				// Остановка
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc stop "TestService"`).
-					Return("", nil).
-					Times(1)
+	handler.ServiceStop(w, r)
 
-				// Ожидание остановки (может быть несколько попыток)
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 1 STOPPED", nil).
-					MinTimes(1).MaxTimes(5)
+	res := w.Result()
+	defer res.Body.Close()
 
-				// Запуск
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc start "TestService"`).
-					Return("", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` перезапущена",
-		},
-		{
-			name:      "перезапуск остановленной службы",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-
-				mock.EXPECT().
-					ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
-					Return(nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: остановлена
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 1 STOPPED", nil).
-					Times(1)
-
-				// Запуск
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc start "TestService"`).
-					Return("", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus:     http.StatusOK,
-			wantSuccessMsg: "Служба `Test Service` перезапущена",
-		},
-		{
-			name:      "служба в процессе изменения состояния",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: в процессе изменения
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 2 START_PENDING", nil).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusConflict,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusConflict,
-				Message: "Служба `Test Service` уже изменяет состояние, попробуйте позже",
-			},
-		},
-		{
-			name:      "ошибка при остановке во время перезапуска",
-			login:     "user",
-			userID:    1,
-			serverID:  100,
-			serviceID: 10,
-			setupStorage: func(mock *storageMocks.MockStorage) {
-				mock.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(&models.Server{
-						ID:       100,
-						Name:     "TestServer",
-						Address:  "192.168.1.1",
-						Username: "admin",
-						Password: "password",
-					}, nil)
-
-				mock.EXPECT().
-					GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-					Return(&models.Service{
-						ID:            10,
-						ServiceName:   "TestService",
-						DisplayedName: "Test Service",
-					}, nil)
-			},
-			setupFactory: func(m *serviceControlMocks.MockClientFactory, client *serviceControlMocks.MockClient) {
-				m.EXPECT().
-					CreateClient("192.168.1.1", "admin", "password").
-					Return(client, nil)
-
-				// Статус: запущена
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc query "TestService"`).
-					Return("STATE : 4 RUNNING", nil).
-					Times(1)
-
-				// Ошибка при остановке
-				client.EXPECT().
-					RunCommand(gomock.Any(), `sc stop "TestService"`).
-					Return("", errors.New("permission denied")).
-					Times(1)
-			},
-			setupChecker: func(m *netutilsMock.MockChecker) {
-				m.EXPECT().
-					IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-					Return(true)
-			},
-			wantStatus: http.StatusInternalServerError,
-			wantErrorResp: &response.APIError{
-				Code:    http.StatusInternalServerError,
-				Message: "Не удалось остановить службу `Test Service`",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStorage := storageMocks.NewMockStorage(ctrl)
-			mockChecker := netutilsMock.NewMockChecker(ctrl)
-			mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
-			mockClient := serviceControlMocks.NewMockClient(ctrl)
-
-			tt.setupStorage(mockStorage)
-			tt.setupFactory(mockClientFactory, mockClient)
-			tt.setupChecker(mockChecker)
-
-			handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
-
-			ctx := createContextWithCreds(tt.login, tt.userID, tt.serverID, tt.serviceID)
-			r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
-			w := httptest.NewRecorder()
-
-			handler.ServiceRestart(w, r)
-
-			res := w.Result()
-			defer res.Body.Close()
-
-			assert.Equal(t, tt.wantStatus, res.StatusCode)
-
-			if tt.wantSuccessMsg != "" {
-				var got response.APISuccess
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantSuccessMsg, got.Message)
-			} else if tt.wantErrorResp != nil {
-				var got response.APIError
-				json.NewDecoder(res.Body).Decode(&got)
-				assert.Equal(t, tt.wantErrorResp.Code, got.Code)
-				assert.Equal(t, tt.wantErrorResp.Message, got.Message)
-			}
-		})
-	}
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба не найдена", got.Message)
 }
 
-// TestNewControlHandler Проверяет конструктор ControlHandler.
+// TestServiceStopGetServiceGenericError Проверяет обработку generic ошибки при GetService.
+func TestServiceStopGetServiceGenericError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// generic ошибка (не специфичная ErrServiceNotFound)
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errors.New("database read error"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
+}
+
+// TestServiceStopIsHostReachableFalse Проверяет обработку недоступного хоста.
+func TestServiceStopIsHostReachableFalse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост недоступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(false)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// проверяем 502 Bad Gateway
+	assert.Equal(t, http.StatusBadGateway, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер недоступен", got.Message)
+}
+
+// TestServiceStopCreateClientError Проверяет обработку ошибки при создании WinRM клиента.
+func TestServiceStopCreateClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// ошибка при создании WinRM клиента
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(nil, errors.New("authentication failed"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка подключения к серверу", got.Message)
+}
+
+// TestServiceStopRunCommandStatusError Проверяет обработку ошибки команды sc query.
+func TestServiceStopRunCommandStatusError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// ошибка при выполнении sc query команды
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("", errors.New("WinRM connection timeout"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось получить статус службы `Test Service`", got.Message)
+}
+
+// TestServiceStopRunCommandStopError Проверяет обработку ошибки команды sc stop.
+func TestServiceStopRunCommandStopError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: сначала sc query (RUNNING), потом sc stop (ошибка)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", errors.New("access denied")),
+	)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось остановить службу", got.Message)
+}
+
+// TestServiceStopRunningSuccess Проверяет успешную остановку из RUNNING.
+func TestServiceStopRunningSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), потом sc stop (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` остановлена", got.Message)
+}
+
+// TestServiceStopStoppedAlready Проверяет обработку уже остановленной службы.
+func TestServiceStopStoppedAlready(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: STOPPED (уже остановлена)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 1 STOPPED", nil)
+
+	// обновляем статус в БД для синхронизации
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже остановлена", got.Message)
+}
+
+// TestServiceStopStopPendingConflict Проверяет конфликт для STOP_PENDING.
+func TestServiceStopStopPendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: STOP_PENDING (уже в процессе остановки)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 3 STOP_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже останавливается", got.Message)
+}
+
+// TestServiceStopPausePendingConflict Проверяет конфликт для PAUSE_PENDING.
+func TestServiceStopPausePendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: PAUSE_PENDING (в процессе паузы)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 6 PAUSE_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже останавливается", got.Message)
+}
+
+// TestServiceStopPausedDefaultError Проверяет неожиданный статус в default case.
+func TestServiceStopPausedDefaultError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: PAUSED (код 7) - неожиданный, попадает в default
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 7 PAUSED", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` находится в состоянии, не позволяющем остановку", got.Message)
+}
+
+// TestServiceStopStartPendingSuccess Проверяет успешную остановку из START_PENDING.
+func TestServiceStopStartPendingSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (START_PENDING), потом sc stop (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 2 START_PENDING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` остановлена", got.Message)
+}
+
+// TestServiceStopDbErrorAfterStop Проверяет обработку ошибки БД после остановки.
+func TestServiceStopDbErrorAfterStop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), потом sc stop (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+	)
+
+	// ошибка БД при обновлении статуса, но служба реально остановлена
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(errors.New("database write error"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех так как служба реально остановлена
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` остановлена", got.Message)
+}
+
+// TestServiceStopDbErrorWhenStopped Проверяет обработку ошибки БД для остановленной службы.
+func TestServiceStopDbErrorWhenStopped(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: уже STOPPED
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 1 STOPPED", nil)
+
+	// ошибка БД при синхронизации статуса, но служба реально остановлена
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(errors.New("database connection lost"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStop(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже остановлена", got.Message)
+}
+
+// TestNewControlHandler Проверяет конструктор и инициализацию ControlHandler.
 func TestNewControlHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -968,10 +974,2298 @@ func TestNewControlHandler(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 
+	// создаём handler через конструктор
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
 
-	assert.NotNil(t, handler, "handler не должен быть nil")
-	assert.NotNil(t, handler.storage, "storage должен быть инициализирован")
-	assert.NotNil(t, handler.clientFactory, "clientFactory должен быть инициализирован")
-	assert.NotNil(t, handler.checker, "checker должен быть инициализирован")
+	// проверяем инициализацию всех полей
+	assert.NotNil(t, handler)
+	assert.NotNil(t, handler.storage)
+	assert.NotNil(t, handler.clientFactory)
+	assert.NotNil(t, handler.checker)
+}
+
+// ============================================================================
+// ServiceStart
+// ============================================================================
+
+// TestServiceStartErrServerNotFound Проверяет обработку ErrServerNotFound.
+func TestServiceStartErrServerNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// возвращаем ErrServerNotFound
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	// создаём запрос с контекстом пользователя
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// проверяем, что вернулась 404
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер не найден", got.Message)
+}
+
+// TestServiceStartGetServerGenericError Проверяет обработку generic ошибки при GetServerWithPassword.
+func TestServiceStartGetServerGenericError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// generic ошибка (не специфичная ErrServerNotFound)
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errors.New("database connection timeout"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о сервере", got.Message)
+}
+
+// TestServiceStartErrServiceNotFound Проверяет обработку ErrServiceNotFound.
+func TestServiceStartErrServiceNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// возвращаем ErrServiceNotFound
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба не найдена", got.Message)
+}
+
+// TestServiceStartGetServiceGenericError Проверяет обработку generic ошибки при GetService.
+func TestServiceStartGetServiceGenericError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// generic ошибка (не специфичная ErrServiceNotFound)
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errors.New("database read error"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
+}
+
+// TestServiceStartIsHostReachableFalse Проверяет обработку недоступного хоста.
+func TestServiceStartIsHostReachableFalse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост недоступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(false)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// проверяем 502 Bad Gateway
+	assert.Equal(t, http.StatusBadGateway, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер недоступен", got.Message)
+}
+
+// TestServiceStartCreateClientError Проверяет обработку ошибки при создании WinRM клиента.
+func TestServiceStartCreateClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// ошибка при создании WinRM клиента
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(nil, errors.New("authentication failed"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка подключения к серверу", got.Message)
+}
+
+// TestServiceStartRunCommandStatusError Проверяет обработку ошибки команды sc query.
+func TestServiceStartRunCommandStatusError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// ошибка при выполнении sc query команды
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("", errors.New("WinRM connection timeout"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось получить статус службы `Test Service`", got.Message)
+}
+
+// TestServiceStartRunCommandStartError Проверяет обработку ошибки команды sc start.
+func TestServiceStartRunCommandStartError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: сначала sc query (STOPPED), потом sc start (ошибка)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", errors.New("access denied")),
+	)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось запустить службу", got.Message)
+}
+
+// TestServiceStartStoppedSuccess Проверяет успешный запуск из STOPPED.
+func TestServiceStartStoppedSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOPPED), потом sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` запущена", got.Message)
+}
+
+// TestServiceStartStopPendingSuccess Проверяет успешный запуск из STOP_PENDING.
+func TestServiceStartStopPendingSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOP_PENDING), потом sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 3 STOP_PENDING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` запущена", got.Message)
+}
+
+// TestServiceStartRunningAlready Проверяет обработку уже запущенной службы.
+func TestServiceStartRunningAlready(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: RUNNING (уже запущена)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil)
+
+	// обновляем статус в БД для синхронизации
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже запущена", got.Message)
+}
+
+// TestServiceStartStartPendingConflict Проверяет конфликт для START_PENDING.
+func TestServiceStartStartPendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: START_PENDING (уже в процессе запуска)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 2 START_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже запускается", got.Message)
+}
+
+// TestServiceStartPausePendingConflict Проверяет конфликт для PAUSE_PENDING.
+func TestServiceStartPausePendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: PAUSE_PENDING (в процессе паузы)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 6 PAUSE_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже запускается", got.Message)
+}
+
+// TestServiceStartPausedDefaultError Проверяет неожиданный статус в default case.
+func TestServiceStartPausedDefaultError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: PAUSED (код 7) - неожиданный, попадает в default
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 7 PAUSED", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` находится в состоянии, не позволяющем запуск", got.Message)
+}
+
+// TestServiceStartDbErrorAfterStart Проверяет обработку ошибки БД после запуска.
+func TestServiceStartDbErrorAfterStart(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOPPED), потом sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// ошибка БД при обновлении статуса, но служба реально запущена
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(errors.New("database write error"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех так как служба реально запущена
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` запущена", got.Message)
+}
+
+// TestServiceStartDbErrorWhenRunning Проверяет обработку ошибки БД для запущенной службы.
+func TestServiceStartDbErrorWhenRunning(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: уже RUNNING
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil)
+
+	// ошибка БД при синхронизации статуса, но служба реально запущена
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(errors.New("database connection lost"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceStart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже запущена", got.Message)
+}
+
+// ============================================================================
+// ServiceRestart
+// ============================================================================
+
+// TestServiceRestartErrServerNotFound Проверяет обработку ErrServerNotFound.
+func TestServiceRestartErrServerNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// возвращаем ErrServerNotFound
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	// создаём запрос с контекстом пользователя
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// проверяем, что вернулась 404
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер не найден", got.Message)
+}
+
+// TestServiceRestartGetServerGenericError Проверяет обработку generic ошибки при GetServerWithPassword.
+func TestServiceRestartGetServerGenericError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// generic ошибка (не специфичная ErrServerNotFound)
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(nil, errors.New("database connection timeout"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о сервере", got.Message)
+}
+
+// TestServiceRestartErrServiceNotFound Проверяет обработку ErrServiceNotFound.
+func TestServiceRestartErrServiceNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// возвращаем ErrServiceNotFound
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба не найдена", got.Message)
+}
+
+// TestServiceRestartGetServiceGenericError Проверяет обработку generic ошибки при GetService.
+func TestServiceRestartGetServiceGenericError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// generic ошибка (не специфичная ErrServiceNotFound)
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(nil, errors.New("database read error"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
+}
+
+// TestServiceRestartIsHostReachableFalse Проверяет обработку недоступного хоста.
+func TestServiceRestartIsHostReachableFalse(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост недоступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(false)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// проверяем 502 Bad Gateway
+	assert.Equal(t, http.StatusBadGateway, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Сервер недоступен", got.Message)
+}
+
+// TestServiceRestartCreateClientError Проверяет обработку ошибки при создании WinRM клиента.
+func TestServiceRestartCreateClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// ошибка при создании WinRM клиента
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(nil, errors.New("authentication failed"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Ошибка подключения к серверу", got.Message)
+}
+
+// TestServiceRestartRunCommandStatusError Проверяет обработку ошибки команды sc query.
+func TestServiceRestartRunCommandStatusError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// ошибка при выполнении sc query команды
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("", errors.New("WinRM connection timeout"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось получить статус службы `Test Service`", got.Message)
+}
+
+// TestServiceRestartRunCommandStopError Проверяет обработку ошибки команды sc stop.
+func TestServiceRestartRunCommandStopError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: сначала sc query (RUNNING), потом sc stop (ошибка)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", errors.New("access denied")),
+	)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось остановить службу `Test Service`", got.Message)
+}
+
+// TestServiceRestartWaitForStatusError Проверяет ошибку ожидания остановки (быстро с мок контекстом).
+func TestServiceRestartWaitForStatusError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// первая sc query - проверка начального статуса (RUNNING)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil).
+		Times(1)
+
+	// sc stop - остановка
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc stop "TestService"`).
+		Return("", nil).
+		Times(1)
+
+	// повторные sc query при ожидании остановки - служба остаётся RUNNING
+	// вызовется 1-3 раза за 100ms таймаута (не 30 секунд!)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil).
+		MinTimes(1).
+		MaxTimes(3)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	// используем контекст с КОРОТКИМ таймаутом (100ms вместо 30s)
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	// добавляем таймаут 100ms для ожидания остановки, чтобы тест выполнялся быстро
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctxWithTimeout)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// таймаут при ожидании остановки
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` не остановилась в ожидаемое время", got.Message)
+}
+
+//// TestServiceRestartWaitForStatusError Проверяет ошибку ожидания остановки.
+//func TestServiceRestartWaitForStatusError(t *testing.T) {
+//	ctrl := gomock.NewController(t)
+//	defer ctrl.Finish()
+//
+//	mockStorage := storageMocks.NewMockStorage(ctrl)
+//	mockChecker := netutilsMock.NewMockChecker(ctrl)
+//	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+//	mockClient := serviceControlMocks.NewMockClient(ctrl)
+//
+//	// получаем сервер успешно
+//	mockStorage.EXPECT().
+//		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+//		Return(&models.Server{
+//			ID:       100,
+//			Name:     "TestServer",
+//			Address:  "192.168.1.1",
+//			Username: "admin",
+//			Password: "password",
+//		}, nil)
+//
+//	// получаем службу успешно
+//	mockStorage.EXPECT().
+//		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+//		Return(&models.Service{
+//			ID:            10,
+//			ServiceName:   "TestService",
+//			DisplayedName: "Test Service",
+//		}, nil)
+//
+//	// хост доступен
+//	mockChecker.EXPECT().
+//		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+//		Return(true)
+//
+//	// клиент создан успешно
+//	mockClientFactory.EXPECT().
+//		CreateClient("192.168.1.1", "admin", "password").
+//		Return(mockClient, nil)
+//
+//	// первая sc query - проверка начального статуса (RUNNING)
+//	mockClient.EXPECT().
+//		RunCommand(gomock.Any(), `sc query "TestService"`).
+//		Return("STATE : 4 RUNNING", nil).
+//		Times(1)
+//
+//	// sc stop - остановка
+//	mockClient.EXPECT().
+//		RunCommand(gomock.Any(), `sc stop "TestService"`).
+//		Return("", nil).
+//		Times(1)
+//
+//	// повторные sc query при ожидании остановки - служба остаётся RUNNING
+//	// экспоненциальная задержка: 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s
+//	// вызовется примерно 5-6 раз за 30 секунд таймаута, потом вернёт ошибку таймаута
+//	// БЕЗ InOrder - может быть любое количество раз
+//	mockClient.EXPECT().
+//		RunCommand(gomock.Any(), `sc query "TestService"`).
+//		Return("STATE : 4 RUNNING", nil).
+//		MinTimes(1).
+//		MaxTimes(10) // от 1 до 10 попыток
+//
+//	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+//
+//	ctx := createContextWithCreds("user", 1, 100, 10)
+//	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+//	w := httptest.NewRecorder()
+//
+//	handler.ServiceRestart(w, r)
+//
+//	res := w.Result()
+//	defer res.Body.Close()
+//
+//	// таймаут при ожидании остановки
+//	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+//	var got response.APIError
+//	json.NewDecoder(res.Body).Decode(&got)
+//	assert.Equal(t, "Служба `Test Service` не остановилась в ожидаемое время", got.Message)
+//}
+
+// TestServiceRestartWaitForStatusRunCommandError Проверяет ошибку sc query внутри цикла ожидания статуса.
+func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// первая sc query - проверка начального статуса (RUNNING)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil).
+		Times(1)
+
+	// sc stop - остановка
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc stop "TestService"`).
+		Return("", nil).
+		Times(1)
+
+	// вторая sc query вернёт ошибку во время ожидания остановки
+	// это вызовет return fmt.Errorf("ошибка получения статуса службы: %w", err)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("", errors.New("WinRM connection lost")).
+		Times(1)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ошибка при ожидании остановки (ошибка sc query)
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` не остановилась в ожидаемое время", got.Message)
+}
+
+// TestServiceRestartRunCommandStartErrorAfterStop Проверяет ошибку запуска после остановки (для RUNNING → остановка → запуск ошибка).
+func TestServiceRestartRunCommandStartErrorAfterStop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), sc stop (успешно), ожидание остановки (успешно), sc start (ошибка)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 4 RUNNING", nil).
+		Times(1)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc stop "TestService"`).
+		Return("", nil).
+		Times(1)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 1 STOPPED", nil).
+		Times(1)
+
+	// ошибка при запуске
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc start "TestService"`).
+		Return("", errors.New("service startup failed")).
+		Times(1)
+
+	// БД будет обновлён для остановки
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ошибка запуска
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось запустить службу `Test Service`", got.Message)
+}
+
+// TestServiceRestartRunCommandStartErrorFromStopped Проверяет ошибку запуска для STOPPED.
+func TestServiceRestartRunCommandStartErrorFromStopped(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOPPED), sc start (ошибка)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 1 STOPPED", nil).
+		Times(1)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc start "TestService"`).
+		Return("", errors.New("access denied")).
+		Times(1)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось запустить службу `Test Service`", got.Message)
+}
+
+// TestServiceRestartRunCommandStartError Проверяет обработку ошибки команды sc start.
+func TestServiceRestartRunCommandStartError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), sc stop (успешно), ожидание остановки (успешно), sc start (ошибка)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", errors.New("service startup failed")),
+	)
+
+	// БД будет обновлён для остановки
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Не удалось запустить службу `Test Service`", got.Message)
+}
+
+// TestServiceRestartRunningSuccess Проверяет успешный перезапуск из RUNNING.
+func TestServiceRestartRunningSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), sc stop (успешно), ожидание остановки (успешно), sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД - сначала остановлена, потом работает
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(nil)
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` перезапущена", got.Message)
+}
+
+// TestServiceRestartStoppedSuccess Проверяет успешный перезапуск из STOPPED.
+func TestServiceRestartStoppedSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOPPED), sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// обновляем статус в БД для синхронизации
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` перезапущена", got.Message)
+}
+
+// TestServiceRestartStartPendingConflict Проверяет конфликт для START_PENDING.
+func TestServiceRestartStartPendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: START_PENDING (уже в процессе изменения состояния)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 2 START_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже изменяет состояние, попробуйте позже", got.Message)
+}
+
+// TestServiceRestartStopPendingConflict Проверяет конфликт для STOP_PENDING.
+func TestServiceRestartStopPendingConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: STOP_PENDING (уже в процессе изменения состояния)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 3 STOP_PENDING", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// ожидаем конфликт 409
+	assert.Equal(t, http.StatusConflict, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` уже изменяет состояние, попробуйте позже", got.Message)
+}
+
+// TestServiceRestartPausedDefaultError Проверяет неожиданный статус в default case.
+func TestServiceRestartPausedDefaultError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// статус: PAUSED (код 7) - неожиданный, попадает в default
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "TestService"`).
+		Return("STATE : 7 PAUSED", nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	var got response.APIError
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` находится в состоянии, не позволяющем перезапуск", got.Message)
+}
+
+// TestServiceRestartDbErrorAfterStop Проверяет обработку ошибки БД после остановки.
+func TestServiceRestartDbErrorAfterStop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (RUNNING), sc stop (успешно), ожидание остановки (успешно), sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 4 RUNNING", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc stop "TestService"`).
+			Return("", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// ошибка БД при обновлении статуса после остановки, но продолжаем
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
+		Return(errors.New("database write error"))
+	// успешное обновление после запуска
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(nil)
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех так как служба реально перезапущена
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` перезапущена", got.Message)
+}
+
+// TestServiceRestartDbErrorAfterStart Проверяет обработку ошибки БД после запуска.
+func TestServiceRestartDbErrorAfterStart(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMock.NewMockChecker(ctrl)
+	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockClient := serviceControlMocks.NewMockClient(ctrl)
+
+	// получаем сервер успешно
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		Return(&models.Server{
+			ID:       100,
+			Name:     "TestServer",
+			Address:  "192.168.1.1",
+			Username: "admin",
+			Password: "password",
+		}, nil)
+
+	// получаем службу успешно
+	mockStorage.EXPECT().
+		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		Return(&models.Service{
+			ID:            10,
+			ServiceName:   "TestService",
+			DisplayedName: "Test Service",
+		}, nil)
+
+	// хост доступен
+	mockChecker.EXPECT().
+		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		Return(true)
+
+	// клиент создан успешно
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.1", "admin", "password").
+		Return(mockClient, nil)
+
+	// последовательность: sc query (STOPPED), sc start (успешно)
+	gomock.InOrder(
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc query "TestService"`).
+			Return("STATE : 1 STOPPED", nil),
+		mockClient.EXPECT().
+			RunCommand(gomock.Any(), `sc start "TestService"`).
+			Return("", nil),
+	)
+
+	// ошибка БД при обновлении статуса после запуска, но служба реально запущена
+	mockStorage.EXPECT().
+		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
+		Return(errors.New("database connection lost"))
+
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	handler.ServiceRestart(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+
+	// несмотря на ошибку БД, возвращаем успех
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	var got response.APISuccess
+	json.NewDecoder(res.Body).Decode(&got)
+	assert.Equal(t, "Служба `Test Service` перезапущена", got.Message)
 }

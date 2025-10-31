@@ -7,13 +7,15 @@ import (
 )
 
 type Config struct {
-	RunAddress   string
-	DatabaseURI  string
-	LogLevel     string
-	LogOutput    string
-	JWTSecretKey string
-	AESKey       string
-	WebInterface bool
+	RunAddress       string
+	DatabaseURI      string
+	LogLevel         string
+	LogOutput        string
+	JWTSecretKey     string
+	AESKey           string
+	WebInterface     bool
+	OpenRegistration bool
+	RegistrationKey  string
 }
 
 // InitConfig Инициализация структуры, содержащей конфигурацию сервера, полученную из флагов или
@@ -28,6 +30,8 @@ func InitConfig() *Config {
 	flag.StringVar(&config.JWTSecretKey, "s", "", "Secret key used for signing and verifying JWT tokens (example: UIfuBqY1crEUgzIem9)")
 	flag.StringVar(&config.AESKey, "k", "", "AES key for encrypting server passwords (hex-encoded, 32 bytes, for example: DjffxQxRnhvkB0CkxEiGbrFIoN8PTJc3TZqf/YNSVRI=)")
 	flag.BoolVar(&config.WebInterface, "w", true, "Enable the web interface (SSE and HTTP frontend). Set to false to run the server as API-only without frontend and SSE support. Default: true")
+	flag.BoolVar(&config.OpenRegistration, "r", false, "Enable open registration. Default: false")
+	flag.StringVar(&config.RegistrationKey, "rk", "your-secret-registration-key", "Secret key required for user registration")
 	flag.Parse()
 
 	if value, ok := os.LookupEnv("RUN_ADDRESS"); ok {
@@ -61,6 +65,19 @@ func InitConfig() *Config {
 		case "0", "false", "no", "off":
 			config.WebInterface = false
 		}
+	}
+
+	if value, ok := os.LookupEnv("OPEN_REGISTRATION"); ok {
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			config.OpenRegistration = true
+		case "0", "false", "no", "off":
+			config.OpenRegistration = false
+		}
+	}
+
+	if value, ok := os.LookupEnv("REGISTRATION_KEY"); ok {
+		config.RegistrationKey = value
 	}
 
 	return config
