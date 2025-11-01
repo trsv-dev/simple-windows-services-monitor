@@ -2302,7 +2302,7 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 	assert.Equal(t, "Не удалось остановить службу `Test Service`", got.Message)
 }
 
-// TestServiceRestartWaitForStatusError Проверяет ошибку ожидания остановки (быстро с мок контекстом).
+// TestServiceRestartWaitForStatusError Проверяет ошибку ожидания остановки.
 func TestServiceRestartWaitForStatusError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -2355,7 +2355,7 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 		Times(1)
 
 	// повторные sc query при ожидании остановки - служба остаётся RUNNING
-	// вызовется 1-3 раза за 100ms таймаута (не 30 секунд!)
+	// вызовется 1-3 раза за 100ms таймаута
 	mockClient.EXPECT().
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 4 RUNNING", nil).
@@ -2364,7 +2364,7 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
 
-	// используем контекст с КОРОТКИМ таймаутом (100ms вместо 30s)
+	// используем контекст с КОРОТКИМ таймаутом
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	// добавляем таймаут 100ms для ожидания остановки, чтобы тест выполнялся быстро
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -2384,86 +2384,6 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 	json.NewDecoder(res.Body).Decode(&got)
 	assert.Equal(t, "Служба `Test Service` не остановилась в ожидаемое время", got.Message)
 }
-
-//// TestServiceRestartWaitForStatusError Проверяет ошибку ожидания остановки.
-//func TestServiceRestartWaitForStatusError(t *testing.T) {
-//	ctrl := gomock.NewController(t)
-//	defer ctrl.Finish()
-//
-//	mockStorage := storageMocks.NewMockStorage(ctrl)
-//	mockChecker := netutilsMock.NewMockChecker(ctrl)
-//	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
-//	mockClient := serviceControlMocks.NewMockClient(ctrl)
-//
-//	// получаем сервер успешно
-//	mockStorage.EXPECT().
-//		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-//		Return(&models.Server{
-//			ID:       100,
-//			Name:     "TestServer",
-//			Address:  "192.168.1.1",
-//			Username: "admin",
-//			Password: "password",
-//		}, nil)
-//
-//	// получаем службу успешно
-//	mockStorage.EXPECT().
-//		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-//		Return(&models.Service{
-//			ID:            10,
-//			ServiceName:   "TestService",
-//			DisplayedName: "Test Service",
-//		}, nil)
-//
-//	// хост доступен
-//	mockChecker.EXPECT().
-//		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
-//		Return(true)
-//
-//	// клиент создан успешно
-//	mockClientFactory.EXPECT().
-//		CreateClient("192.168.1.1", "admin", "password").
-//		Return(mockClient, nil)
-//
-//	// первая sc query - проверка начального статуса (RUNNING)
-//	mockClient.EXPECT().
-//		RunCommand(gomock.Any(), `sc query "TestService"`).
-//		Return("STATE : 4 RUNNING", nil).
-//		Times(1)
-//
-//	// sc stop - остановка
-//	mockClient.EXPECT().
-//		RunCommand(gomock.Any(), `sc stop "TestService"`).
-//		Return("", nil).
-//		Times(1)
-//
-//	// повторные sc query при ожидании остановки - служба остаётся RUNNING
-//	// экспоненциальная задержка: 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s
-//	// вызовется примерно 5-6 раз за 30 секунд таймаута, потом вернёт ошибку таймаута
-//	// БЕЗ InOrder - может быть любое количество раз
-//	mockClient.EXPECT().
-//		RunCommand(gomock.Any(), `sc query "TestService"`).
-//		Return("STATE : 4 RUNNING", nil).
-//		MinTimes(1).
-//		MaxTimes(10) // от 1 до 10 попыток
-//
-//	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
-//
-//	ctx := createContextWithCreds("user", 1, 100, 10)
-//	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
-//	w := httptest.NewRecorder()
-//
-//	handler.ServiceRestart(w, r)
-//
-//	res := w.Result()
-//	defer res.Body.Close()
-//
-//	// таймаут при ожидании остановки
-//	assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
-//	var got response.APIError
-//	json.NewDecoder(res.Body).Decode(&got)
-//	assert.Equal(t, "Служба `Test Service` не остановилась в ожидаемое время", got.Message)
-//}
 
 // TestServiceRestartWaitForStatusRunCommandError Проверяет ошибку sc query внутри цикла ожидания статуса.
 func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
