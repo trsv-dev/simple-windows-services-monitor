@@ -6,14 +6,15 @@ const CONFIG = {
     // SSE
     SSE_MAX_RECONNECTS: 5,
     SSE_RECONNECT_DELAYS: [1000, 2000, 5000, 10000, 30000],
-    
+
     // Toast
     TOAST_DUPLICATE_CHECK_TIME: 3000,
     TOAST_AUTO_HIDE_DELAY: 3000,
-    
+
     // Rate limiting
     RATE_LIMIT_DELAY: 500,
-    
+    RATE_LIMIT_CLEANUP_MS: 10 * 60 * 1000, // 10 minutes
+
     // Pagination
     PAGE_SIZE_MOBILE: 6,
     PAGE_SIZE_DESKTOP: 9,
@@ -21,9 +22,13 @@ const CONFIG = {
     MIN_ITEMS_PAGINATION_DESKTOP: 9,
     MIN_SERVERS_PAGINATION_MOBILE: 3,
     MIN_SERVERS_PAGINATION_DESKTOP: 9,
-    
+
     // Polling
-    POLLING_INTERVAL: 5000
+    POLLING_INTERVAL: 5000,
+
+    // Cache limits to avoid unbounded growth
+    MAX_SERVICES_CACHE: 2000,
+    MAX_SERVERS_CACHE: 1000
 };
 
 // ============================================
@@ -50,8 +55,8 @@ let servicePollingInterval = null;
 let sseReconnectAttempts = 0;
 let sseConnectionStatus = 'closed'; // 'closed', 'connecting', 'open'
 
-// Rate limiting
-const REQUEST_RATE_LIMIT = {};
+// Rate limiting map (actionName -> timestamp)
+const REQUEST_RATE_LIMIT = new Map();
 
 // Page size cache
 let cachedPageSize = null;
@@ -63,8 +68,35 @@ let toastHistory = [];
 // Session expired flag
 window._sessionExpiredNotified = false;
 
+// helper timestamps
+let lastServicesUpdateAt = 0; // timestamp (ms) последнего успешного обновления статусов
+let sseReconnectTimerId = null;
+
 // ============================================
-// DOM ELEMENTS
+// App timers registry (to prevent leaks)
+// ============================================
+const AppTimers = {
+    intervals: new Set(),
+    timeouts: new Set(),
+
+    addInterval(id) { if (id != null) this.intervals.add(id); },
+    addTimeout(id) { if (id != null) this.timeouts.add(id); },
+
+    clearAll() {
+        for (const id of this.intervals) {
+            try { clearInterval(id); } catch (e) {}
+        }
+        this.intervals.clear();
+
+        for (const id of this.timeouts) {
+            try { clearTimeout(id); } catch (e) {}
+        }
+        this.timeouts.clear();
+    }
+};
+
+// ============================================
+// DOM ELEMENTS (grab once)
 // ============================================
 
 const loginPage = document.getElementById('loginPage');
@@ -112,16 +144,27 @@ function debounce(func, delay = 500) {
     };
 }
 
-function canPerformAction(actionName) {
+function cleanupOldRateLimits() {
     const now = Date.now();
-    const lastTime = REQUEST_RATE_LIMIT[actionName] || 0;
-    
+    for (const [key, ts] of REQUEST_RATE_LIMIT.entries()) {
+        if (now - ts > CONFIG.RATE_LIMIT_CLEANUP_MS) {
+            REQUEST_RATE_LIMIT.delete(key);
+        }
+    }
+}
+
+function canPerformAction(actionName) {
+    cleanupOldRateLimits();
+
+    const now = Date.now();
+    const lastTime = REQUEST_RATE_LIMIT.get(actionName) || 0;
+
     if (now - lastTime < CONFIG.RATE_LIMIT_DELAY) {
-        console.warn(`Действие '${actionName}' ограничено по времени`);
+        // rate limited
         return false;
     }
-    
-    REQUEST_RATE_LIMIT[actionName] = now;
+
+    REQUEST_RATE_LIMIT.set(actionName, now);
     return true;
 }
 
@@ -147,36 +190,14 @@ function getMinItemsForPagination(type) {
     return 0;
 }
 
-// Очистка кэша при изменении размера окна
-window.addEventListener('resize', () => {
+// named resize handler so we can reason about it
+function onWindowResize() {
     cachedPageSize = null;
-});
-
-// Обработка изменения видимости страницы - экономия памяти при неактивной вкладке
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-
-        // Закрытие SSE соединения
-        if (serviceEventsSource) {
-            serviceEventsSource.close();
-            serviceEventsSource = null;
-            sseConnectionStatus = 'closed';
-        }
-
-        // Закрытие полинга
-        stopServicePolling();
-
-    } else {
-
-        // Переподключение при возврате на вкладку
-        if (currentServerId) {
-            subscribeServiceEvents(currentServerId);
-        }
-    }
-});
+}
+window.addEventListener('resize', onWindowResize);
 
 // ============================================
-// TOAST NOTIFICATIONS (with deduplication)
+// TOAST NOTIFICATIONS (with deduplication & proper cleanup)
 // ============================================
 
 function showToast(title, message, type = 'success') {
@@ -278,7 +299,10 @@ async function apiRequest(endpoint, options = {}) {
         if (response.status === 401) {
             if (!window._sessionExpiredNotified) {
                 window._sessionExpiredNotified = true;
-                
+
+                // не удаляем слушатели форм, лишь очищаем состояние и таймеры
+                cleanupOnLogout();
+
                 localStorage.removeItem('swsm_user');
                 localStorage.removeItem('swsm_current_server_id');
                 currentUser = null;
@@ -290,10 +314,10 @@ async function apiRequest(endpoint, options = {}) {
                 serversCurrentPage = 1;
 
                 if (serviceEventsSource) {
-                    serviceEventsSource.close();
+                    try { serviceEventsSource.close(); } catch (e) {}
                     serviceEventsSource = null;
                 }
-                
+
                 stopServicePolling();
 
                 showToast('Сессия истекла', 'Ваша сессия истекла. Пожалуйста, авторизуйтесь снова.', 'warning');
@@ -335,7 +359,7 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 // ============================================
-// SSE FUNCTIONS (with improvements)
+// SSE FUNCTIONS (with improvements & timers registration)
 // ============================================
 
 function subscribeServiceEvents(serverId) {
@@ -345,7 +369,7 @@ function subscribeServiceEvents(serverId) {
         return;
     }
 
-    // КЛЮЧЕВАЯ ПРОВЕРКА: если уже есть открытое соединение - не создаём новое!
+    // Если уже есть открытое соединение - не создаём новое!
     if (serviceEventsSource && serviceEventsSource.readyState === EventSource.OPEN) {
         sseConnectionStatus = 'open';
         return;
@@ -353,19 +377,38 @@ function subscribeServiceEvents(serverId) {
 
     // Закрытие старого соединения если оно есть и повреждено
     if (serviceEventsSource) {
-        serviceEventsSource.close();
+        try { serviceEventsSource.close(); } catch (e) { /* noop */ }
         serviceEventsSource = null;
+    }
+
+    // Очистим таймер переподключения, если есть
+    if (sseReconnectTimerId) {
+        try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(sseReconnectTimerId);
+        sseReconnectTimerId = null;
     }
 
     const url = `${API_BASE}/user/broadcasting`;
 
-    serviceEventsSource = new EventSource(url, { withCredentials: true });
+    try {
+        serviceEventsSource = new EventSource(url, { withCredentials: true });
+    } catch (e) {
+        console.error('Не удалось создать EventSource:', e);
+        startServicePolling(serverId);
+        return;
+    }
+
     sseConnectionStatus = 'connecting';
 
     // Обработчик открытия соединения
     serviceEventsSource.onopen = function() {
         sseConnectionStatus = 'open';
         sseReconnectAttempts = 0;
+        if (sseReconnectTimerId) {
+            try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+            AppTimers.timeouts.delete(sseReconnectTimerId);
+            sseReconnectTimerId = null;
+        }
     };
 
     serviceEventsSource.onmessage = function(event) {
@@ -393,11 +436,19 @@ function subscribeServiceEvents(serverId) {
         const delay = CONFIG.SSE_RECONNECT_DELAYS[sseReconnectAttempts] || 30000;
         sseReconnectAttempts++;
 
-        setTimeout(() => {
+        if (sseReconnectTimerId) {
+            try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+            AppTimers.timeouts.delete(sseReconnectTimerId);
+            sseReconnectTimerId = null;
+        }
+        sseReconnectTimerId = setTimeout(() => {
+            sseReconnectTimerId = null;
+            AppTimers.timeouts.delete(sseReconnectTimerId);
             if (currentServerId) {
                 subscribeServiceEvents(currentServerId);
             }
         }, delay);
+        AppTimers.addTimeout(sseReconnectTimerId);
     };
 }
 
@@ -407,7 +458,7 @@ function startServicePolling(serverId) {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
 
-    servicePollingInterval = setInterval(async () => {
+    const id = setInterval(async () => {
         // НЕ создавать полинг, если страница скрыта
         if (document.hidden) {
             return;
@@ -435,21 +486,19 @@ function startServicePolling(serverId) {
             }
         }
     }, CONFIG.POLLING_INTERVAL);
+    AppTimers.addInterval(id);
+    servicePollingInterval = id;
 }
 
 function stopServicePolling() {
     if (servicePollingInterval) {
-        clearInterval(servicePollingInterval);
+        try { clearInterval(servicePollingInterval); } catch (e) {}
+        AppTimers.intervals.delete(servicePollingInterval);
         servicePollingInterval = null;
     }
 }
 
 function updateServicesStatus(statuses) {
-    // Проверка валидности
-    if (!isPageVisible) {
-        return;
-    }
-
     if (!Array.isArray(statuses) || statuses.length === 0) {
         return;
     }
@@ -462,8 +511,9 @@ function updateServicesStatus(statuses) {
     allServices.forEach(service => {
         const updatedStatus = statusMap.get(service.id);
         if (updatedStatus) {
+            // Внешний API может вернуть разные варианты имени поля времени.
             service.status = updatedStatus.status;
-            service.updatedat = updatedStatus.updatedat;
+            service.updated_at = updatedStatus.updated_at || updatedStatus.updatedat || updatedStatus.updatedAt || service.updated_at;
         }
     });
 
@@ -481,13 +531,16 @@ function updateServicesStatus(statuses) {
             statusElement.textContent = status.status;
         }
 
-        if (updatedElement && status.updatedat) {
-            const newDate = new Date(status.updatedat).toLocaleString('ru-RU');
+        if (updatedElement && (status.updated_at || status.updatedat || status.updatedAt)) {
+            const newDate = new Date(status.updated_at || status.updatedat || status.updatedAt).toLocaleString('ru-RU');
             if (updatedElement.textContent !== newDate) {
                 updatedElement.textContent = newDate;
             }
         }
     });
+
+    // Обновляем метку времени последнего обновления
+    lastServicesUpdateAt = Date.now();
 }
 
 // ============================================
@@ -528,7 +581,7 @@ async function handleLogin(event) {
 
         // Загружаем список серверов (не детали сервера)
         setTimeout(() => {
-            showServersList();  // ← Вместо loadServersList()
+            showServersList();
         }, 100);
 
     } catch (error) {
@@ -588,8 +641,21 @@ async function handleRegister(event) {
     }
 }
 
-function handleLogout() {
+function cleanupOnLogout() {
+    // Закрываем SSE, останавливаем поллинг, очищаем таймеры
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) {}
+        serviceEventsSource = null;
+    }
     stopServicePolling();
+    AppTimers.clearAll();
+
+    // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
+}
+
+function handleLogout() {
+    // Cleanup runtime resources
+    cleanupOnLogout();
 
     localStorage.removeItem('swsm_user');
     localStorage.removeItem('swsm_current_server_id');
@@ -601,11 +667,6 @@ function handleLogout() {
     allServers = [];
     serversCurrentPage = 1;
     window._sessionExpiredNotified = false;
-
-    if (serviceEventsSource) {
-        serviceEventsSource.close();
-        serviceEventsSource = null;
-    }
 
     showLoginPage();
     showToast('Информация', 'Вы вышли из системы');
@@ -620,7 +681,7 @@ async function loadServersList() {
 
     try {
         const servers = await apiRequest('/user/servers');
-        allServers = servers || [];
+        allServers = (servers || []).slice(0, CONFIG.MAX_SERVERS_CACHE);
         serversCurrentPage = 1;
         renderServersCurrentPage();
     } catch (error) {
@@ -632,6 +693,7 @@ async function loadServersList() {
     }
 }
 
+// Безопасный рендер серверов (не используем innerHTML с user-data)
 function renderServersList(servers) {
     serversList.innerHTML = '';
 
@@ -648,43 +710,75 @@ function renderServersList(servers) {
     }
 
     servers.forEach(server => {
-        const serverCard = document.createElement('div');
-        serverCard.className = 'col-md-6 col-lg-4';
-        serverCard.innerHTML = `
-            <div class="card h-100 shadow-sm service-card">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        <i class="bi bi-server me-2"></i>${server.name}
-                    </h5>
-                    <p class="card-text">
-                        <small class="text-muted">
-                            <i class="bi bi-geo-alt me-1"></i>${server.address}
-                        </small><br>
-                        <small class="text-muted">
-                            <i class="bi bi-person me-1"></i>${server.username}
-                        </small><br>
-                        <small class="text-muted">
-                            <i class="bi bi-calendar me-1"></i>${new Date(server.created_at).toLocaleDateString('ru-RU')}
-                        </small><br>
-                        <small class="text-muted">
-                            <i class="bi bi-fingerprint me-1"></i>${server.fingerprint}
-                        </small>
-                    </p>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-primary btn-sm w-100" onclick="showServerDetail(${server.id})">
-                        <i class="bi bi-list-task me-1"></i>Управление
-                    </button>
-                </div>
-            </div>
-        `;
-        serversList.appendChild(serverCard);
+        const col = document.createElement('div');
+        col.className = 'col-md-6 col-lg-4';
+
+        const card = document.createElement('div');
+        card.className = 'card h-100 shadow-sm service-card';
+
+        const body = document.createElement('div');
+        body.className = 'card-body';
+
+        const title = document.createElement('h5');
+        title.className = 'card-title';
+        // иконка как HTML, данные через textContent
+        title.innerHTML = `<i class="bi bi-server me-2"></i>`;
+        const titleText = document.createTextNode(server.name || '');
+        title.appendChild(titleText);
+
+        const p = document.createElement('p');
+        p.className = 'card-text';
+        const addr = document.createElement('small');
+        addr.className = 'text-muted d-block';
+        addr.innerHTML = `<i class="bi bi-geo-alt me-1"></i>`;
+        addr.appendChild(document.createTextNode(server.address || ''));
+
+        const user = document.createElement('small');
+        user.className = 'text-muted d-block';
+        user.innerHTML = `<i class="bi bi-person me-1"></i>`;
+        user.appendChild(document.createTextNode(server.username || ''));
+
+        const created = document.createElement('small');
+        created.className = 'text-muted d-block';
+        created.innerHTML = `<i class="bi bi-calendar me-1"></i>`;
+        try {
+            created.appendChild(document.createTextNode(new Date(server.created_at).toLocaleDateString('ru-RU')));
+        } catch (e) {
+            created.appendChild(document.createTextNode(''));
+        }
+
+        const fp = document.createElement('small');
+        fp.className = 'text-muted d-block';
+        fp.innerHTML = `<i class="bi bi-fingerprint me-1"></i>`;
+        fp.appendChild(document.createTextNode(server.fingerprint || ''));
+
+        p.appendChild(addr);
+        p.appendChild(user);
+        p.appendChild(created);
+        p.appendChild(fp);
+
+        body.appendChild(title);
+        body.appendChild(p);
+
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-primary btn-sm w-100';
+        btn.innerHTML = `<i class="bi bi-list-task me-1"></i>Управление`;
+        btn.onclick = () => showServerDetail(server.id);
+
+        footer.appendChild(btn);
+        card.appendChild(body);
+        card.appendChild(footer);
+        col.appendChild(card);
+
+        serversList.appendChild(col);
     });
 }
 
 async function handleAddServer(event) {
     event.preventDefault();
-    
+
     if (!canPerformAction('addServer')) return;
 
     const name = document.getElementById('serverName').value;
@@ -856,14 +950,16 @@ async function loadServicesList(serverId, silent = false) {
     try {
         const cacheBuster = Date.now();
         const services = await apiRequest(`/user/servers/${serverId}/services?_t=${cacheBuster}`);
-        allServices = services || [];
+        allServices = (services || []).slice(0, CONFIG.MAX_SERVICES_CACHE);
         currentPage = 1;
+        lastServicesUpdateAt = Date.now();
         renderCurrentPage();
 
     } catch (error) {
         if (!silent && !(error instanceof SessionExpiredError)) {
             showToast('Ошибка', 'Не удалось загрузить список служб', 'error');
         }
+        throw error;
     } finally {
         if (!silent) hideLoading();
     }
@@ -1058,8 +1154,9 @@ async function handleRefreshFromServer() {
         const isUpdated = response.headers.get('X-Is-Updated');
         const data = await response.json();
 
-        allServices = data || [];
+        allServices = (data || []).slice(0, CONFIG.MAX_SERVICES_CACHE);
         currentPage = 1;
+        lastServicesUpdateAt = Date.now();
         renderCurrentPage();
 
         if (isUpdated === 'false') {
@@ -1199,18 +1296,33 @@ function renderServersCurrentPage() {
 }
 
 // ============================================
-// EVENT LISTENERS
+// EVENT LISTENERS (setup once)
 // ============================================
 
 function setupEventListeners() {
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
-    document.getElementById('registerForm').addEventListener('submit', handleRegister);
-    document.getElementById('addServerForm').addEventListener('submit', handleAddServer);
-    document.getElementById('editServerForm').addEventListener('submit', handleEditServer);
-    document.getElementById('addServiceForm').addEventListener('submit', handleAddService);
-    document.getElementById('refreshFromServerBtn').addEventListener('click', handleRefreshFromServer);
-    document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-    document.getElementById('deleteServerBtn').addEventListener('click', handleDeleteServer);
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) loginForm.addEventListener('submit', handleLogin);
+
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) registerForm.addEventListener('submit', handleRegister);
+
+    const addServerForm = document.getElementById('addServerForm');
+    if (addServerForm) addServerForm.addEventListener('submit', handleAddServer);
+
+    const editServerForm = document.getElementById('editServerForm');
+    if (editServerForm) editServerForm.addEventListener('submit', handleEditServer);
+
+    const addServiceForm = document.getElementById('addServiceForm');
+    if (addServiceForm) addServiceForm.addEventListener('submit', handleAddService);
+
+    const refreshBtn = document.getElementById('refreshFromServerBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', handleRefreshFromServer);
+
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+
+    const deleteServerBtn = document.getElementById('deleteServerBtn');
+    if (deleteServerBtn) deleteServerBtn.addEventListener('click', handleDeleteServer);
 
     // Очистка модальных backdrop'ов после закрытия модали
     document.querySelectorAll('.modal').forEach(modalEl => {
@@ -1263,14 +1375,71 @@ function setupEventListeners() {
 }
 
 // ==========================================
-// PAGE VISIBILITY OPTIMIZATION
+// PAGE VISIBILITY OPTIMIZATION (single handler)
 // ==========================================
 
 let isPageVisible = true;
 
+function handlePageBackground() {
+    // Закрываем SSE и полинг, но НЕ очищаем allServices
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) { /* noop */ }
+        serviceEventsSource = null;
+        sseConnectionStatus = 'closed';
+        sseReconnectAttempts = 0;
+    }
+
+    if (sseReconnectTimerId) {
+        try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(sseReconnectTimerId);
+        sseReconnectTimerId = null;
+    }
+
+    stopServicePolling();
+}
+
+const MIN_RESUME_INTERVAL = 1000;
+let lastResumeTime = 0;
+
+function handlePageResume() {
+    const now = Date.now();
+    if (now - lastResumeTime < MIN_RESUME_INTERVAL) return;
+    lastResumeTime = now;
+
+    if (!currentUser || !currentServerId) return;
+
+    // Попытка переподключиться к SSE
+    if (!serviceEventsSource || (serviceEventsSource && serviceEventsSource.readyState === EventSource.CLOSED)) {
+        subscribeServiceEvents(currentServerId);
+    }
+
+    // Решаем, нужно ли явно запрашивать полный список:
+    // - если данных совсем нет
+    // - или если данные устарели по таймауту (например, >10s)
+    const DATA_STALE_MS = 10 * 1000; // можно подстроить под реальность
+
+    const hasData = Array.isArray(allServices) && allServices.length > 0;
+    const isStale = (lastServicesUpdateAt === 0) || (Date.now() - lastServicesUpdateAt > DATA_STALE_MS);
+
+    if (!hasData || isStale) {
+        // silent = true — чтобы не показывать спиннер, если возвращаемся из фонового режима
+        loadServicesList(currentServerId, true).catch(err => {
+            console.warn('Не удалось подгрузить данные при возврате на вкладку:', err);
+            // в случае ошибки — попытка запустить поллинг как fallback
+            startServicePolling(currentServerId);
+        });
+    } else {
+        // Данные свежие — запустим поллинг как резерв, если SSE не откроется
+        setTimeout(() => {
+            if (!serviceEventsSource || serviceEventsSource.readyState !== EventSource.OPEN) {
+                startServicePolling(currentServerId);
+            }
+        }, 1200);
+    }
+}
+
 document.addEventListener('visibilitychange', () => {
     isPageVisible = !document.hidden;
-
     if (document.hidden) {
         handlePageBackground();
     } else {
@@ -1278,66 +1447,28 @@ document.addEventListener('visibilitychange', () => {
     }
 }, false);
 
-function handlePageBackground() {
-    // ПОЛНОСТЬЮ закрытие всех соединений
-
-    // 1. Закрытие SSE
-    if (serviceEventsSource) {
-        serviceEventsSource.close();
-        serviceEventsSource = null;
-        sseConnectionStatus = 'closed';
-        sseReconnectAttempts = 0;
-    }
-
-    // 2. Остановка полинга
-    stopServicePolling();
-
-    // 3. Очистка больших данных из памяти
-    allServices = [];
-    currentPage = 1;
-    totalPages = 1;
-}
-
-function handlePageResume() {
-    // Восстановление соединений ТОЛЬКО если нужно
-
-    if (!currentUser) {
-        return;
-    }
-
-    if (!currentServerId) {
-        return;
-    }
-
-    // ВАЖНО: Полное перезагрузка данных с сервера
-    loadServicesList(currentServerId, false);
-
-    // Переподписка на обновления
-    subscribeServiceEvents(currentServerId);
-}
-
 // ============================================
 // SHOW/HIDE FUNCTIONS
 // ============================================
 
 function showLoginPage() {
-    loginPage.classList.remove('hidden');
-    mainApp.classList.add('hidden');
+    if (loginPage) loginPage.classList.remove('hidden');
+    if (mainApp) mainApp.classList.add('hidden');
     localStorage.removeItem('swsm_current_server_id');
     currentServerId = null;
     window._sessionExpiredNotified = false;
 
     if (serviceEventsSource) {
-        serviceEventsSource.close();
+        try { serviceEventsSource.close(); } catch (e) {}
         serviceEventsSource = null;
     }
     stopServicePolling();
 }
 
 function showMainApp() {
-    loginPage.classList.add('hidden');
-    mainApp.classList.remove('hidden');
-    if (currentUser) {
+    if (loginPage) loginPage.classList.add('hidden');
+    if (mainApp) mainApp.classList.remove('hidden');
+    if (currentUser && currentUserSpan) {
         currentUserSpan.textContent = currentUser;
     }
 }
@@ -1347,7 +1478,7 @@ function showServersList() {
     serverDetailView.classList.add('hidden');
     localStorage.removeItem('swsm_current_server_id');
 
-    // ПОЛНАЯ ОЧИСТКА
+    // ПОЛНАЯ ОЧИСТКА UI/контекста
     currentServerId = null;
     currentServerData = null;
     allServices = [];
@@ -1357,7 +1488,7 @@ function showServersList() {
 
     // Закрытие SSE
     if (serviceEventsSource) {
-        serviceEventsSource.close();
+        try { serviceEventsSource.close(); } catch (e) {}
         serviceEventsSource = null;
         sseConnectionStatus = 'closed';
     }
@@ -1381,9 +1512,20 @@ function showServerDetail(serverId) {
 }
 
 function showLoading() {
-    loadingSpinner.style.display = 'block';
+    if (loadingSpinner) loadingSpinner.style.display = 'block';
 }
 
 function hideLoading() {
-    loadingSpinner.style.display = 'none';
+    if (loadingSpinner) loadingSpinner.style.display = 'none';
 }
+
+// ============================================
+// Before unload - make sure timers are cleared
+// ============================================
+window.addEventListener('beforeunload', () => {
+    AppTimers.clearAll();
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) {}
+        serviceEventsSource = null;
+    }
+});
