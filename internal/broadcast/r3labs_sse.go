@@ -23,6 +23,9 @@ type R3labsSSEAdapter struct {
 func NewR3labsSSEAdapter(resolve TopicResolver) *R3labsSSEAdapter {
 	srv := sse.New()
 
+	// отключаем автоматический повтор событий при переподключении клиента к SSE серверу
+	srv.AutoReplay = false
+
 	return &R3labsSSEAdapter{srv: srv, resolve: resolve}
 }
 
