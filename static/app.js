@@ -39,6 +39,8 @@ let currentUser = localStorage.getItem('swsm_user');
 let currentServerId = localStorage.getItem('swsm_current_server_id');
 let currentServerData = null;
 
+let isDarkMode = localStorage.getItem('swsm_dark_mode') === 'true';
+
 // Pagination state for servers
 let allServers = [];
 let serversCurrentPage = 1;
@@ -113,6 +115,8 @@ const servicesList = document.getElementById('servicesList');
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
+    initTheme();
+
     if (currentUser) {
         showMainApp();
 
@@ -266,6 +270,47 @@ function showToast(title, message, type = 'success') {
     toast.addEventListener('hidden.bs.toast', () => {
         toast.remove();
     });
+}
+
+// ============================================
+// THEME MANAGEMENT
+// ============================================
+function initTheme() {
+    applyTheme(isDarkMode);
+}
+
+function applyTheme(darkMode) {
+    isDarkMode = darkMode;
+    localStorage.setItem('swsm_dark_mode', isDarkMode);
+
+    if (isDarkMode) {
+        document.documentElement.setAttribute('data-bs-theme', 'dark');
+        document.body.classList.add('dark-mode');
+    } else {
+        document.documentElement.removeAttribute('data-bs-theme');
+        document.body.classList.remove('dark-mode');
+    }
+
+    updateThemeButton();
+}
+
+function toggleTheme() {
+    applyTheme(!isDarkMode);
+}
+
+function updateThemeButton() {
+    const themeBtn = document.getElementById('themeToggleBtn');
+    if (themeBtn) {
+        if (isDarkMode) {
+            themeBtn.innerHTML = '☀️';
+            themeBtn.title = 'Переключиться на светлый режим';
+            themeBtn.className = 'btn me-2';
+        } else {
+            themeBtn.innerHTML = '🌚';
+            themeBtn.title = 'Переключиться на тёмный режим';
+            themeBtn.className = 'btn me-2';
+        }
+    }
 }
 
 // ============================================
@@ -1180,6 +1225,124 @@ async function handleRefreshFromServer() {
         hideLoading();
     }
 }
+
+// ============================================
+// AVAILABLE SERVICES LOADING
+// ============================================
+let availableServices = [];
+
+async function loadAvailableServices(serverId) {
+    try {
+        const data = await apiRequest(`/user/servers/${serverId}/services/available`);
+        availableServices = data.services || [];
+        return availableServices;
+    } catch (error) {
+        console.error('Ошибка загрузки доступных служб:', error);
+        showToast('Ошибка', 'Не удалось загрузить список служб', 'error');
+        return [];
+    }
+}
+
+// Когда открывается модалка добавления - загружаем служб
+document.getElementById('addServiceModal').addEventListener('show.bs.modal', async () => {
+    if (!currentServerId) return;
+
+    const select = document.getElementById('serviceSelect');
+    select.innerHTML = '<option value="">Загрузка служб...</option>';
+
+    const services = await loadAvailableServices(currentServerId);
+
+    select.innerHTML = '<option value="">-- Выберите службу --</option>';
+    services.forEach(service => {
+        const option = document.createElement('option');
+        option.value = service;
+        option.textContent = service;
+        select.appendChild(option);
+    });
+});
+
+// Обновление отображаемого имени при выборе службы
+document.getElementById('serviceSelect').addEventListener('change', (e) => {
+    const selected = e.target.value;
+    const displayNameInput = document.getElementById('serviceDisplayName');
+    displayNameInput.value = selected;
+});
+
+// Очистка формы при закрытии модалки
+document.getElementById('addServiceModal').addEventListener('hide.bs.modal', () => {
+    document.getElementById('addServiceForm').reset();
+    document.getElementById('serviceSelect').innerHTML = '<option value="">-- Выберите службу --</option>';
+    document.getElementById('serviceDisplayName').value = '';
+});
+
+// Когда открывается модалка добавления - загружаем служб
+document.getElementById('addServiceModal').addEventListener('show.bs.modal', async () => {
+    if (!currentServerId) return;
+
+    const select = document.getElementById('serviceSelect');
+
+    // Отключаем select во время загрузки
+    select.disabled = true;
+    select.innerHTML = '<option value="">Загрузка служб...</option>';
+
+    const services = await loadAvailableServices(currentServerId);
+
+    // Включаем select после загрузки
+    select.disabled = false;
+    select.innerHTML = '<option value="">-- Выберите службу --</option>';
+    services.forEach(service => {
+        const option = document.createElement('option');
+        option.value = service;
+        option.textContent = service;
+        select.appendChild(option);
+    });
+});
+
+// Обновление отображаемого имени при выборе службы
+document.getElementById('serviceSelect').addEventListener('change', (e) => {
+    const selected = e.target.value;
+    const displayNameInput = document.getElementById('serviceDisplayName');
+    displayNameInput.value = selected;
+});
+
+// Обработчик клика на кнопку "Добавить"
+document.getElementById('addServiceBtn').addEventListener('click', async () => {
+    const serviceName = document.getElementById('serviceSelect').value;
+    const displayedName = document.getElementById('serviceDisplayName').value;
+
+    if (!serviceName) {
+        showToast('Ошибка', 'Выберите службу', 'error');
+        return;
+    }
+
+    if (!canPerformAction('addService')) {
+        return;
+    }
+
+    showLoading();
+    try {
+        await apiRequest(`/user/servers/${currentServerId}/services`, {
+            method: 'POST',
+            body: JSON.stringify({
+                service_name: serviceName,
+                displayed_name: displayedName || serviceName
+            })
+        });
+
+        showToast('Успех', 'Служба добавлена');
+
+        // Закрываем модалку (очистка произойдет автоматически через hide.bs.modal)
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addServiceModal'));
+        modal.hide();
+
+        // Перезагружаем список служб
+        loadServicesList(currentServerId);
+    } catch (error) {
+        showToast('Ошибка', error.message, 'error');
+    } finally {
+        hideLoading();
+    }
+});
 
 // ============================================
 // PAGINATION

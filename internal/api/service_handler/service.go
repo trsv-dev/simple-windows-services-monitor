@@ -38,6 +38,84 @@ func NewServiceHandler(storage storage.Storage, clientFactory service_control.Cl
 	}
 }
 
+// ListOfServices Просмотр всех служб на удаленном сервере.
+func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	creds := models.GetContextCreds(ctx)
+
+	// получаем сервер с паролем
+	server, err := h.storage.GetServerWithPassword(ctx, creds.ServerID, creds.UserID)
+
+	var ErrServerNotFound *errs.ErrServerNotFound
+
+	if err != nil {
+		switch {
+		case errors.As(err, &ErrServerNotFound):
+			logger.Log.Warn("Сервер не найден",
+				logger.String("login", creds.Login),
+				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.Int64("serverID", ErrServerNotFound.ServerID),
+				logger.String("err", ErrServerNotFound.Err.Error()))
+			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
+			return
+		default:
+			logger.Log.Warn("Ошибка при получении информации о сервере", logger.String("err", err.Error()))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка при получении информации о сервере")
+			return
+		}
+	}
+
+	// проверяем доступность сервера, если недоступен - возвращаем ошибку
+	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
+		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
+		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
+		return
+	}
+
+	// создаём WinRM клиент
+	client, err := h.clientFactory.CreateClient(server.Address, server.Username, server.Password)
+
+	if err != nil {
+		logger.Log.Error("Ошибка создания WinRM клиента", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка подключения к серверу")
+		return
+	}
+
+	listOfServicesCmd := `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`
+
+	// контекст для получения списка служб удаленного сервера
+	listOfServicesCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	var services string
+
+	if services, err = client.RunCommand(listOfServicesCtx, listOfServicesCmd); err != nil {
+		logger.Log.Warn(fmt.Sprintf("Не удалось получить список служб с удаленного сервера `%s`, id=%d",
+			server.Name, creds.ServerID), logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось получить список служб с удаленного сервера")
+		return
+	}
+
+	var listOfServices []string
+
+	for _, service := range strings.Split(services, "\n") {
+		trimmed := strings.TrimSpace(service)
+		if trimmed != "" {
+			listOfServices = append(listOfServices, trimmed)
+		}
+	}
+
+	// если список служб по какой-то причине пуст, то возвращаем пустой слайс, а не nil
+	if listOfServices == nil {
+		listOfServices = []string{}
+	}
+
+	// возвращаем ответ с произвольным JSON
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"services": listOfServices,
+	})
+}
+
 // AddService Добавление службы.
 func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

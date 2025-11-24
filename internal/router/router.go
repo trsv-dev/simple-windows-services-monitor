@@ -48,6 +48,8 @@ func Router(h *api.HandlersContainer) chi.Router {
 				r.Post("/", h.ServiceHandler.AddService)     // добавление службы
 				r.Get("/", h.ServiceHandler.GetServicesList) // список служб сервера
 
+				r.Get("/available", h.ServiceHandler.ListOfServices) // получение всех доступных служб на удаленном сервере
+
 				// маршруты С serviceID параметром
 				r.Route("/{serviceID}", func(r chi.Router) {
 
