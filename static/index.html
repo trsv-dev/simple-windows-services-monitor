@@ -8,6 +8,132 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
+
+
+        /* ============================================ */
+        /* DARK MODE STYLES */
+        /* ============================================ */
+
+        [data-bs-theme="dark"] {
+            --bs-body-bg: #1a1a1a;
+            --bs-body-color: #e9ecef;
+            --bs-border-color: #495057;
+        }
+
+        body.dark-mode .login-container .bi-gear-wide-connected {
+            color: #0d6efd !important;
+        }
+
+        body.dark-mode .login-container h2.text-dark {
+            color: #e9ecef !important;
+        }
+
+        body.dark-mode {
+            background-color: #1a1a1a;
+            color: #e9ecef;
+        }
+
+        body.dark-mode .card,
+        body.dark-mode .modal-content {
+            background-color: #2d2d2d;
+            border-color: #495057;
+            color: #e9ecef;
+        }
+
+        body.dark-mode .form-control,
+        body.dark-mode .form-select,
+        body.dark-mode .form-check-input {
+            background-color: #2d2d2d;
+            color: #e9ecef;
+            border-color: #495057;
+        }
+
+        body.dark-mode .form-control:focus,
+        body.dark-mode .form-select:focus {
+            background-color: #2d2d2d;
+            color: #e9ecef;
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+        }
+
+        body.dark-mode .modal-header,
+        body.dark-mode .modal-footer {
+            border-color: #495057;
+            background-color: #2d2d2d;
+        }
+
+        body.dark-mode .btn-outline-secondary {
+            color: #e9ecef;
+            border-color: #495057;
+        }
+
+        body.dark-mode .btn-outline-secondary:hover {
+            background-color: #495057;
+            border-color: #495057;
+        }
+
+        body.dark-mode .table {
+            color: #e9ecef;
+            border-color: #495057;
+        }
+
+        body.dark-mode .table thead th {
+            border-color: #495057;
+            background-color: #2d2d2d;
+        }
+
+        body.dark-mode .list-group-item {
+            background-color: #2d2d2d;
+            color: #e9ecef;
+            border-color: #495057;
+        }
+
+        body.dark-mode .pagination .page-link {
+            background-color: #2d2d2d;
+            color: #e9ecef;
+            border-color: #495057;
+        }
+
+        body.dark-mode .pagination .page-link:hover {
+            background-color: #495057;
+            color: #e9ecef;
+        }
+
+        body.dark-mode .pagination .page-item.active .page-link {
+            background-color: #0d6efd;
+        }
+
+        body.dark-mode .navbar {
+            background-color: #2d2d2d !important;
+            border-bottom: 1px solid #495057;
+        }
+
+        body.dark-mode .navbar-brand,
+        body.dark-mode .navbar-brand:hover {
+            color: #e9ecef !important;
+        }
+
+        body.dark-mode .badge {
+            background-color: #495057;
+        }
+
+        body.dark-mode .text-muted {
+            color: #adb5bd !important;
+        }
+
+        body.dark-mode .service-card {
+            background-color: #2d2d2d;
+            border-color: #495057;
+        }
+
+        body.dark-mode .service-card:hover {
+            background-color: #3d3d3d;
+        }
+
+        /* ============================================ */
+        /* OTHER STYLES */
+        /* ============================================ */
+
         .hidden {
             display: none !important;
         }
@@ -107,6 +233,10 @@
                 </a>
                 <div class="navbar-nav ms-auto">
                     <div class="d-flex align-items-center">
+                        <!-- Кнопка переключения темы -->
+                        <button id="themeToggleBtn" class="btn btn-dark me-2"
+                                onclick="toggleTheme()" type="button">
+                        </button>
                         <span class="navbar-text me-2">
                             <i class="bi bi-person-circle me-1"></i>
                             <span id="currentUser"></span>
@@ -347,24 +477,24 @@
                     <h5 class="modal-title">Добавить службу</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <form id="addServiceForm">
-                    <div class="modal-body">
+                <div class="modal-body">
+                    <form id="addServiceForm">
                         <div class="mb-3">
-                            <label for="serviceDisplayedName" class="form-label">Отображаемое имя</label>
-                            <input type="text" class="form-control" id="serviceDisplayedName"
-                                placeholder="Например: Диспетчер печати" required>
+                            <label for="serviceSelect" class="form-label">Имя службы</label>
+                            <select id="serviceSelect" class="form-select" required>
+                                <option value="">Загрузка служб...</option>
+                            </select>
                         </div>
                         <div class="mb-3">
-                            <label for="serviceName" class="form-label">Имя службы</label>
-                            <input type="text" class="form-control" id="serviceName"
-                                placeholder="Например: spooler" required>
+                            <label for="serviceDisplayName" class="form-label">Отображаемое имя</label>
+                            <input type="text" id="serviceDisplayName" class="form-control" placeholder="Например: Диспетчер печати" required>
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-success">Добавить</button>
-                    </div>
-                </form>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="addServiceBtn">Добавить</button>
+                </div>
             </div>
         </div>
     </div>
@@ -428,9 +558,13 @@
     <script src="app.min.js"></script>
 
     <!-- Footer -->
-    <footer class="bg-light text-center py-2 border-top">
+    <footer class="text-center py-2 border-top">
         <div class="container">
-            © trsv
+            <a href="https://github.com/trsv-dev/simple-windows-services-monitor"
+               target="_blank" rel="noopener noreferrer"
+               title="GitHub Repository">
+                <i class="bi bi-github"></i> trsv
+            </a>
         </div>
     </footer>
 </body>
