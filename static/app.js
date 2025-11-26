@@ -41,14 +41,18 @@ let currentServerData = null;
 
 let isDarkMode = localStorage.getItem('swsm_dark_mode') === 'true';
 
+// Pagination localStorage keys
+const LS_SERVERS_PAGE_KEY  = 'swsm_servers_page';
+const LS_SERVICES_PAGE_KEY = 'swsm_services_page';
+
 // Pagination state for servers
 let allServers = [];
-let serversCurrentPage = 1;
+let serversCurrentPage = parseInt(localStorage.getItem(LS_SERVERS_PAGE_KEY) || '1', 10);
 let serversTotalPages = 1;
 
 // Pagination state for services
 let allServices = [];
-let currentPage = 1;
+let currentPage = parseInt(localStorage.getItem(LS_SERVICES_PAGE_KEY) || '1', 10);
 let totalPages = 1;
 
 // SSE EventSource
@@ -625,10 +629,13 @@ async function handleLogin(event) {
 
         // Полностью очищаем состояние при новом логине
         localStorage.removeItem('swsm_current_server_id');
+        localStorage.removeItem(LS_SERVICES_PAGE_KEY);
+        localStorage.removeItem(LS_SERVERS_PAGE_KEY);
         currentServerId = null;
         currentServerData = null;
         allServices = [];
         currentPage = 1;
+        serversCurrentPage = 1;
 
         window._sessionExpiredNotified = false;
 
@@ -715,6 +722,8 @@ function handleLogout() {
 
     localStorage.removeItem('swsm_user');
     localStorage.removeItem('swsm_current_server_id');
+    localStorage.removeItem(LS_SERVICES_PAGE_KEY);
+    localStorage.removeItem(LS_SERVERS_PAGE_KEY);
     currentUser = null;
     currentServerId = null;
     currentServerData = null;
@@ -740,7 +749,16 @@ async function loadServersList() {
     try {
         const servers = await apiRequest('/user/servers');
         allServers = (servers || []).slice(0, CONFIG.MAX_SERVERS_CACHE);
-        serversCurrentPage = 1;
+        serversCurrentPage = parseInt(localStorage.getItem(LS_SERVERS_PAGE_KEY) || '1', 10);
+
+        // Проверяем, что сохранённая страница не выходит за границы
+        const pageSize = getPageSize();
+        const maxPage = Math.max(1, Math.ceil(allServers.length / pageSize));
+        if (serversCurrentPage > maxPage) {
+            serversCurrentPage = maxPage;
+            localStorage.setItem(LS_SERVERS_PAGE_KEY, String(serversCurrentPage));
+        }
+
         renderServersCurrentPage();
     } catch (error) {
         if (!(error instanceof SessionExpiredError)) {
@@ -1008,8 +1026,19 @@ async function loadServicesList(serverId, silent = false) {
     try {
         const cacheBuster = Date.now();
         const services = await apiRequest(`/user/servers/${serverId}/services?_t=${cacheBuster}`);
-        allServices = (services || []).slice(0, CONFIG.MAX_SERVICES_CACHE);
-        currentPage = 1;
+        allServices = services.slice(0, CONFIG.MAX_SERVICES_CACHE);
+
+        // Восстанавливаем сохранённый номер страницы
+        currentPage = parseInt(localStorage.getItem(LS_SERVICES_PAGE_KEY) || '1', 10);
+
+        // Проверяем, что сохранённая страница не выходит за границы
+        const pageSize = getPageSize();
+        const maxPage = Math.max(1, Math.ceil(allServices.length / pageSize));
+        if (currentPage > maxPage) {
+            currentPage = maxPage;
+        }
+
+        localStorage.setItem(LS_SERVICES_PAGE_KEY, String(currentPage));
         lastServicesUpdateAt = Date.now();
         renderCurrentPage();
 
@@ -1212,8 +1241,19 @@ async function handleRefreshFromServer() {
         const isUpdated = response.headers.get('X-Is-Updated');
         const data = await response.json();
 
-        allServices = (data || []).slice(0, CONFIG.MAX_SERVICES_CACHE);
-        currentPage = 1;
+        allServices = data.slice(0, CONFIG.MAX_SERVICES_CACHE);
+
+        // Восстанавливаем сохранённый номер страницы
+        currentPage = parseInt(localStorage.getItem(LS_SERVICES_PAGE_KEY) || '1', 10);
+
+        // Проверяем, что сохранённая страница не выходит за границы
+        const pageSize = getPageSize();
+        const maxPage = Math.max(1, Math.ceil(allServices.length / pageSize));
+        if (currentPage > maxPage) {
+            currentPage = maxPage;
+        }
+
+        localStorage.setItem(LS_SERVICES_PAGE_KEY, String(currentPage));
         lastServicesUpdateAt = Date.now();
         renderCurrentPage();
 
@@ -1439,7 +1479,6 @@ function renderServersCurrentPage() {
         if (nextPageBtn) nextPageBtn.style.display = 'none';
         if (paginationControls) paginationControls.style.display = 'none';
         serversCurrentPage = 1;
-        serversTotalPages = 1;
         return;
     }
 
@@ -1516,14 +1555,17 @@ function setupEventListeners() {
         prevPageBtn.addEventListener('click', () => {
             if (currentPage > 1) {
                 currentPage--;
+                localStorage.setItem(LS_SERVICES_PAGE_KEY, String(currentPage));
                 renderCurrentPage();
             }
         });
     }
+
     if (nextPageBtn) {
         nextPageBtn.addEventListener('click', () => {
             if (currentPage < totalPages) {
                 currentPage++;
+                localStorage.setItem(LS_SERVICES_PAGE_KEY, String(currentPage));
                 renderCurrentPage();
             }
         });
@@ -1536,14 +1578,17 @@ function setupEventListeners() {
         serversPrevPageBtn.addEventListener('click', () => {
             if (serversCurrentPage > 1) {
                 serversCurrentPage--;
+                localStorage.setItem(LS_SERVERS_PAGE_KEY, String(serversCurrentPage));
                 renderServersCurrentPage();
             }
         });
     }
+
     if (serversNextPageBtn) {
         serversNextPageBtn.addEventListener('click', () => {
             if (serversCurrentPage < serversTotalPages) {
                 serversCurrentPage++;
+                localStorage.setItem(LS_SERVERS_PAGE_KEY, String(serversCurrentPage));
                 renderServersCurrentPage();
             }
         });
@@ -1661,6 +1706,8 @@ function showServersList() {
     currentPage = 1;
     totalPages = 1;
     sseReconnectAttempts = 0;
+    serversCurrentPage = 1;
+    serversTotalPages = 1;
 
     // Закрытие SSE
     if (serviceEventsSource) {
