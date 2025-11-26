@@ -621,6 +621,8 @@ async function handleLogin(event) {
         currentUser = response.login || response.Login;
         localStorage.setItem('swsm_user', currentUser);
 
+        document.documentElement.setAttribute('data-user-logged-in', 'true');
+
         // Полностью очищаем состояние при новом логине
         localStorage.removeItem('swsm_current_server_id');
         currentServerId = null;
@@ -721,6 +723,8 @@ function handleLogout() {
     allServers = [];
     serversCurrentPage = 1;
     window._sessionExpiredNotified = false;
+
+    document.documentElement.removeAttribute('data-user-logged-in');
 
     showLoginPage();
     showToast('Информация', 'Вы вышли из системы');
