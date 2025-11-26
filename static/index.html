@@ -134,6 +134,11 @@
         /* OTHER STYLES */
         /* ============================================ */
 
+        /* Скрыть страницу логина только если есть залогиненный пользователь */
+        [data-user-logged-in="true"] #loginPage {
+            display: none !important;
+        }
+
         .hidden {
             display: none !important;
         }
@@ -172,6 +177,16 @@
             display: none;
         }
     </style>
+
+    <script>
+        // Устранения мелькания страницы логина
+        (function() {
+            const user = localStorage.getItem('swsm_user');
+            if (user) {
+                document.documentElement.setAttribute('data-user-logged-in', 'true');
+            }
+        })();
+    </script>
 </head>
 
 <body>
@@ -259,7 +274,7 @@
                             <h3>
                                 <i class="bi bi-server me-2"></i>Серверы
                             </h3>
-                            <button class="btn btn-success" data-bs-toggle="modal"
+                            <button class="btn btn-success btn-sm" data-bs-toggle="modal"
                                 data-bs-target="#addServerModal">
                                 <i class="bi bi-plus-circle me-1"></i>Добавить сервер
                             </button>
