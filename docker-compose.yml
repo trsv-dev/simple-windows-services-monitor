@@ -2,6 +2,7 @@ services:
   db:
     container_name: postgres
     image: postgres:16
+    restart: unless-stopped
     env_file:
       - .env.production
     environment:
@@ -22,6 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
       - .env.production
     depends_on:
@@ -31,6 +33,12 @@ services:
       - "8080:8080"
     volumes:
       - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   frontend:
     container_name: frontend
@@ -39,10 +47,12 @@ services:
     build:
       context: ./static
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     profiles:
       - frontend
 

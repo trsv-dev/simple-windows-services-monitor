@@ -2133,13 +2133,65 @@ func TestGetUserServiceStatuses(t *testing.T) {
 	}
 }
 
+// TestPing Проверяет доступность PostgreSQL с таймаутом.
+func TestPing(t *testing.T) {
+	tests := []struct {
+		name           string                        // название теста
+		mockSetup      func(mock sqlmock.Sqlmock)    // настройка мока
+		expectError    bool                          // ожидается ли ошибка
+		errorAssertion func(t *testing.T, err error) // дополнительная проверка ошибки
+	}{
+		{
+			name: "успешный ping",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing()
+			},
+			expectError: false,
+		},
+		{
+			name: "ping возвращает ошибку",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectPing().WillReturnError(errors.New("connection failed"))
+			},
+			expectError: true,
+			errorAssertion: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "connection failed")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+			require.NoError(t, err)
+
+			tt.mockSetup(mock)
+
+			pg := &PgStorage{DB: db}
+
+			err = pg.Ping(context.Background())
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorAssertion != nil {
+					tt.errorAssertion(t, err)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 // TestClose Проверяет закрытие соединения с базой данных.
 func TestClose(t *testing.T) {
 	tests := []struct {
-		name           string                     // название теста
-		mockSetup      func(mock sqlmock.Sqlmock) // настройка мока
-		expectError    bool                       // ожидается ли ошибка
-		errorAssertion func(t *testing.T, err error)
+		name           string                        // название теста
+		mockSetup      func(mock sqlmock.Sqlmock)    // настройка мока
+		expectError    bool                          // ожидается ли ошибка
+		errorAssertion func(t *testing.T, err error) // дополнительная проверка ошибки
 	}{
 		{
 			name: "успешное закрытие соединения",
