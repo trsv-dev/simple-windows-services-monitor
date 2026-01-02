@@ -4,6 +4,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/app_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/authorization_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/control_handler"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/health_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/registration_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/server_handler"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/service_handler"
@@ -23,6 +24,7 @@ type HandlersContainer struct {
 	ControlHandler       *control_handler.ControlHandler
 	RegistrationHandler  *registration_handler.RegistrationHandler
 	AuthorizationHandler *authorization_handler.AuthorizationHandler
+	HealthHandler        *health_handler.HealthHandler
 	AppHandler           *app_handler.AppHandler
 }
 
@@ -39,6 +41,7 @@ func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, bro
 	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder,
 		srvConfig.JWTSecretKey, srvConfig.RegistrationKey, srvConfig.OpenRegistration)
 	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
+	healthHandler := health_handler.NewHealthHandler(storage)
 	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, tokenBuilder, broadcaster)
 
 	return &HandlersContainer{
@@ -47,6 +50,7 @@ func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, bro
 		ControlHandler:       controlHandler,
 		RegistrationHandler:  registrationHandler,
 		AuthorizationHandler: authorizationHandler,
+		HealthHandler:        healthHandler,
 		AppHandler:           appHandler,
 	}
 }

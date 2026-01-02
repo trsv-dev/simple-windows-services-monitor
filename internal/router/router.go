@@ -16,6 +16,7 @@ func Router(h *api.HandlersContainer) chi.Router {
 	router.Use(middleware.LogMiddleware)
 
 	// публичные маршруты
+	router.Get("/health", h.HealthHandler.GetHealth)
 	router.Post("/api/user/register", h.RegistrationHandler.UserRegistration)
 	router.Post("/api/user/login", h.AuthorizationHandler.UserAuthorization)
 

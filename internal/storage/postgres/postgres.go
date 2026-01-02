@@ -676,6 +676,16 @@ func (pg *PgStorage) GetUserServiceStatuses(ctx context.Context, userID int64) (
 	return statuses, nil
 }
 
+// Ping Проверяет доступность PostgreSQL с таймаутом.
+func (pg *PgStorage) Ping(ctx context.Context) error {
+	if err := pg.DB.PingContext(ctx); err != nil {
+		logger.Log.Error("База данных Postgres не отвечает", logger.String("error", err.Error()))
+		return err
+	}
+
+	return nil
+}
+
 // Close Закрытие соединения с БД.
 func (pg *PgStorage) Close() error {
 	err := pg.DB.Close()
