@@ -8,6 +8,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o swsm ./cmd/swsm
 
 # Минимальный runtime-образ
 FROM alpine:latest
+# Установить curl для healthcheck
+RUN apk add --no-cache curl
 WORKDIR /app
 COPY --from=builder /app/swsm .
 EXPOSE 8080
