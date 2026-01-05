@@ -12,6 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	netutilsMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/netutils/mocks"
 	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
 
@@ -45,7 +46,7 @@ func TestHealthHandler_GetHealth(t *testing.T) {
 					Return(errors.New("connection failed"))
 			},
 			wantStatus:  http.StatusServiceUnavailable,
-			wantMessage: "база данных недоступна\n", // http.Error добавляет \n
+			wantMessage: "База данных недоступна\n", // http.Error добавляет \n
 		},
 	}
 
@@ -55,9 +56,11 @@ func TestHealthHandler_GetHealth(t *testing.T) {
 			defer ctrl.Finish()
 
 			mockStorage := storageMocks.NewMockStorage(ctrl)
+			mockChecker := netutilsMocks.NewMockChecker(ctrl)
+			mockWinRMPort := "5985"
 			tt.setupMock(mockStorage)
 
-			handler := NewHealthHandler(mockStorage)
+			handler := NewHealthHandler(mockStorage, mockChecker, mockWinRMPort)
 
 			req := httptest.NewRequest(http.MethodGet, "/health", nil)
 			w := httptest.NewRecorder()
@@ -82,6 +85,9 @@ func TestHealthHandler_PingTimeout(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := storageMocks.NewMockStorage(ctrl)
+	mockChecker := netutilsMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
 	mockStorage.EXPECT().
 		Ping(gomock.Any()).
 		DoAndReturn(func(ctx context.Context) error {
@@ -93,7 +99,7 @@ func TestHealthHandler_PingTimeout(t *testing.T) {
 			}
 		})
 
-	handler := NewHealthHandler(mockStorage)
+	handler := NewHealthHandler(mockStorage, mockChecker, mockWinRMPort)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()

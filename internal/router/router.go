@@ -34,6 +34,7 @@ func Router(h *api.HandlersContainer) chi.Router {
 		// маршруты БЕЗ ServerID параметра
 		r.Post("/servers", h.ServerHandler.AddServer)    // создание сервера
 		r.Get("/servers", h.ServerHandler.GetServerList) // список серверов пользователя
+		//r.Get("/servers/statuses", h.HealthHandler.ServersStatuses) // статусы серверов пользователя
 
 		// маршруты С serverID параметром
 		r.Route("/servers/{serverID}", func(r chi.Router) {
@@ -41,9 +42,10 @@ func Router(h *api.HandlersContainer) chi.Router {
 			// извлекаем serverID из параметров роутера
 			r.Use(middleware.ParseServerIDMiddleware)
 
-			r.Patch("/", h.ServerHandler.EditServer) // редактирование сервера
-			r.Delete("/", h.ServerHandler.DelServer) // удаление сервера
-			r.Get("/", h.ServerHandler.GetServer)    // получение сервера
+			r.Patch("/", h.ServerHandler.EditServer)       // редактирование сервера
+			r.Delete("/", h.ServerHandler.DelServer)       // удаление сервера
+			r.Get("/", h.ServerHandler.GetServer)          // получение сервера
+			r.Get("/status", h.HealthHandler.ServerStatus) // получение статуса сервера
 
 			r.Route("/services", func(r chi.Router) {
 				r.Post("/", h.ServiceHandler.AddService)     // добавление службы

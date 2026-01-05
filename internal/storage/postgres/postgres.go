@@ -696,3 +696,35 @@ func (pg *PgStorage) Close() error {
 
 	return nil
 }
+
+//func (pg *PgStorage) ListServersAddresses(ctx context.Context) ([]*models.ServerStatus, error) {
+//	query := `SELECT id, address FROM servers ORDER BY id`
+//
+//	rows, err := pg.DB.QueryContext(ctx, query)
+//	if err != nil {
+//		logger.Log.Error("Ошибка при получении списка всех серверов", logger.String("err", err.Error()))
+//		return nil, fmt.Errorf("ошибка при получении всех серверов: %w", err)
+//	}
+//	defer rows.Close()
+//
+//	var servers []*models.ServerStatus
+//
+//	for rows.Next() {
+//		var server models.ServerStatus
+//		err = rows.Scan(&server.ServerID, &server.Address)
+//		if err != nil {
+//			logger.Log.Error("ошибка парсинга запроса на получение всех серверов", logger.String("err", err.Error()))
+//			return nil, err
+//		}
+//
+//		servers = append(servers, &server)
+//	}
+//
+//	err = rows.Err()
+//	if err != nil {
+//		logger.Log.Error("Ошибка при обработке строк на получение информации о всех серверах", logger.String("err", err.Error()))
+//		return nil, err
+//	}
+//
+//	return servers, nil
+//}

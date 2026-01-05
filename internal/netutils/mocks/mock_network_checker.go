@@ -5,6 +5,7 @@
 package mocks
 
 import (
+	context "context"
 	reflect "reflect"
 	time "time"
 
@@ -35,15 +36,15 @@ func (m *MockChecker) EXPECT() *MockCheckerMockRecorder {
 }
 
 // IsHostReachable mocks base method.
-func (m *MockChecker) IsHostReachable(arg0 string, arg1 int, arg2 time.Duration) bool {
+func (m *MockChecker) IsHostReachable(arg0 context.Context, arg1, arg2 string, arg3 time.Duration) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsHostReachable", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "IsHostReachable", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // IsHostReachable indicates an expected call of IsHostReachable.
-func (mr *MockCheckerMockRecorder) IsHostReachable(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockCheckerMockRecorder) IsHostReachable(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsHostReachable", reflect.TypeOf((*MockChecker)(nil).IsHostReachable), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsHostReachable", reflect.TypeOf((*MockChecker)(nil).IsHostReachable), arg0, arg1, arg2, arg3)
 }

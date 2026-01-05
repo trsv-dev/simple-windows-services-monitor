@@ -36,8 +36,9 @@ func TestNewServiceHandler(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	// проверяем что handler создан
 	assert.NotNil(t, handler)
@@ -56,8 +57,17 @@ func TestListOfServicesSuccess(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
 
 	server := &models.Server{
 		ID:       1,
@@ -72,7 +82,7 @@ func TestListOfServicesSuccess(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -84,14 +94,6 @@ func TestListOfServicesSuccess(t *testing.T) {
 	mockClient.EXPECT().
 		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
 		Return(servicesOutput, nil)
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -121,8 +123,9 @@ func TestListOfServicesServerNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
@@ -156,8 +159,9 @@ func TestListOfServicesDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
@@ -187,8 +191,17 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -203,16 +216,8 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(false)
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -230,8 +235,17 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -246,21 +260,13 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка создания клиента
 	mockClientFactory.EXPECT().
 		CreateClient("192.168.1.100", "admin", "password").
 		Return(nil, errors.New("connection error"))
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -279,8 +285,17 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -295,7 +310,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -306,14 +321,6 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 	mockClient.EXPECT().
 		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
 		Return("", errors.New("command failed"))
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -332,8 +339,17 @@ func TestListOfServicesEmptyList(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -348,7 +364,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -359,14 +375,6 @@ func TestListOfServicesEmptyList(t *testing.T) {
 	mockClient.EXPECT().
 		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
 		Return("", nil)
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -393,8 +401,17 @@ func TestListOfServicesWhitespaceHandling(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -409,7 +426,7 @@ func TestListOfServicesWhitespaceHandling(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -421,14 +438,6 @@ func TestListOfServicesWhitespaceHandling(t *testing.T) {
 	mockClient.EXPECT().
 		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
 		Return(servicesOutput, nil)
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.ListOfServices(w, r)
 
@@ -456,8 +465,9 @@ func TestAddServiceInvalidJSON(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	// невалидный JSON
 	body := []byte(`{invalid json}`)
@@ -485,8 +495,9 @@ func TestAddServiceInvalidServiceData(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	tests := []struct {
 		name    string
@@ -536,8 +547,9 @@ func TestAddServiceServerNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
@@ -577,8 +589,9 @@ func TestAddServiceDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
@@ -614,24 +627,7 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
-		Return(false)
+	mockWinRMPort := "5985"
 
 	service := models.Service{
 		ServiceName:   "testservice",
@@ -646,6 +642,24 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		Return(false)
 
 	handler.AddService(w, r)
 
@@ -664,29 +678,7 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
-		Return(true)
-
-	// ошибка создания клиента
-	mockClientFactory.EXPECT().
-		CreateClient("192.168.1.100", "admin", "password").
-		Return(nil, errors.New("connection error"))
+	mockWinRMPort := "5985"
 
 	service := models.Service{
 		ServiceName:   "testservice",
@@ -701,6 +693,29 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		Return(true)
+
+	// ошибка создания клиента
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(nil, errors.New("connection error"))
 
 	handler.AddService(w, r)
 
@@ -719,33 +734,7 @@ func TestAddServiceRunCommandError(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
-		Return(true)
-
-	mockClientFactory.EXPECT().
-		CreateClient("192.168.1.100", "admin", "password").
-		Return(mockClient, nil)
-
-	// ошибка выполнения команды
-	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `sc query "testservice"`).
-		Return("", errors.New("command failed"))
+	mockWinRMPort := "5985"
 
 	service := models.Service{
 		ServiceName:   "testservice",
@@ -760,6 +749,33 @@ func TestAddServiceRunCommandError(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	// ошибка выполнения команды
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("", errors.New("command failed"))
 
 	handler.AddService(w, r)
 
@@ -778,33 +794,7 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
-		Return(true)
-
-	mockClientFactory.EXPECT().
-		CreateClient("192.168.1.100", "admin", "password").
-		Return(mockClient, nil)
-
-	// команда возвращает код 1060 (служба не найдена)
-	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `sc query "testservice"`).
-		Return("QueryServiceConfig FAILED 1060", nil)
+	mockWinRMPort := "5985"
 
 	service := models.Service{
 		ServiceName:   "testservice",
@@ -819,6 +809,33 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	// команда возвращает код 1060 (служба не найдена)
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("QueryServiceConfig FAILED 1060", nil)
 
 	handler.AddService(w, r)
 
@@ -837,8 +854,23 @@ func TestAddServiceDuplicateService(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -853,7 +885,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -873,20 +905,6 @@ func TestAddServiceDuplicateService(t *testing.T) {
 			Err:         errors.New("duplicate"),
 		})
 
-	service := models.Service{
-		ServiceName:   "testservice",
-		DisplayedName: "Test Service",
-	}
-
-	body, _ := json.Marshal(service)
-	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
-
 	handler.AddService(w, r)
 
 	// проверяем статус
@@ -904,8 +922,23 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -920,7 +953,7 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -940,20 +973,6 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 			Err:      errors.New("not found"),
 		})
 
-	service := models.Service{
-		ServiceName:   "testservice",
-		DisplayedName: "Test Service",
-	}
-
-	body, _ := json.Marshal(service)
-	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
-
 	handler.AddService(w, r)
 
 	// проверяем статус
@@ -971,37 +990,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
-		Return(true)
-
-	mockClientFactory.EXPECT().
-		CreateClient("192.168.1.100", "admin", "password").
-		Return(mockClient, nil)
-
-	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `sc query "testservice"`).
-		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
-
-	// обычная ошибка БД
-	mockStorage.EXPECT().
-		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
-		Return(nil, errors.New("database error"))
+	mockWinRMPort := "5985"
 
 	service := models.Service{
 		ServiceName:   "testservice",
@@ -1016,6 +1005,37 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
+
+	server := &models.Server{
+		ID:       1,
+		Address:  "192.168.1.100",
+		Username: "admin",
+		Password: "password",
+		Name:     "TestServer",
+	}
+
+	mockStorage.EXPECT().
+		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		Return(server, nil)
+
+	mockChecker.EXPECT().
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		Return(true)
+
+	mockClientFactory.EXPECT().
+		CreateClient("192.168.1.100", "admin", "password").
+		Return(mockClient, nil)
+
+	mockClient.EXPECT().
+		RunCommand(gomock.Any(), `sc query "testservice"`).
+		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
+
+	// обычная ошибка БД
+	mockStorage.EXPECT().
+		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		Return(nil, errors.New("database error"))
 
 	handler.AddService(w, r)
 
@@ -1034,8 +1054,23 @@ func TestAddServiceSuccess(t *testing.T) {
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	service := models.Service{
+		ServiceName:   "testservice",
+		DisplayedName: "Test Service",
+	}
+
+	body, _ := json.Marshal(service)
+	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	server := &models.Server{
 		ID:       1,
@@ -1058,7 +1093,7 @@ func TestAddServiceSuccess(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -1072,20 +1107,6 @@ func TestAddServiceSuccess(t *testing.T) {
 	mockStorage.EXPECT().
 		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
 		Return(createdService, nil)
-
-	service := models.Service{
-		ServiceName:   "testservice",
-		DisplayedName: "Test Service",
-	}
-
-	body, _ := json.Marshal(service)
-	r := httptest.NewRequest(http.MethodPost, "/services", bytes.NewReader(body))
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.AddService(w, r)
 
@@ -1125,8 +1146,9 @@ func TestAddServiceNameNormalization(t *testing.T) {
 			mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 			mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+			mockWinRMPort := "5985"
 
-			handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+			handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 			mockStorage.EXPECT().
 				GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1167,8 +1189,9 @@ func TestDelServiceSuccess(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), int64(1), int64(1), int64(1)).
@@ -1199,8 +1222,9 @@ func TestDelServiceNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1236,8 +1260,9 @@ func TestDelServiceDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1267,8 +1292,9 @@ func TestGetServiceSuccess(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	service := &models.Service{
 		ID:            1,
@@ -1312,8 +1338,9 @@ func TestGetServiceNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1349,8 +1376,9 @@ func TestGetServiceDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1380,8 +1408,9 @@ func TestGetServicesListSuccess(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1422,8 +1451,9 @@ func TestGetServicesListEmpty(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), int64(1), int64(1)).
@@ -1458,8 +1488,9 @@ func TestGetServicesListServerNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1491,8 +1522,9 @@ func TestGetServicesListDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
 		ListServices(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1521,8 +1553,9 @@ func TestGetServicesListWithActualTrueServerNotFound(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1566,8 +1599,9 @@ func TestGetServicesListWithActualTrueDatabaseError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1607,8 +1641,17 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1634,16 +1677,8 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 
 	// сервер недоступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(false)
-
-	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
@@ -1668,8 +1703,17 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1695,21 +1739,13 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker не смог обновить статусы (возвращает false)
 	mockStatusesWorker.EXPECT().
 		CheckServicesStatuses(gomock.Any(), server, services).
 		Return(nil, false)
-
-	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
@@ -1734,8 +1770,17 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1766,7 +1811,7 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker успешно вернул обновлённые статусы
@@ -1778,14 +1823,6 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 	mockStorage.EXPECT().
 		BatchChangeServiceStatus(gomock.Any(), int64(1), updatedServices).
 		Return(errors.New("database error"))
-
-	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
@@ -1809,8 +1846,17 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
+	w := httptest.NewRecorder()
+
+	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
+	r = r.WithContext(ctx)
+
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1841,7 +1887,7 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker успешно вернул обновлённые статусы
@@ -1853,14 +1899,6 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 	mockStorage.EXPECT().
 		BatchChangeServiceStatus(gomock.Any(), int64(1), updatedServices).
 		Return(nil)
-
-	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
 
 	handler.GetServicesList(w, r)
 
@@ -1885,8 +1923,9 @@ func TestGetServicesListWithActualFalse(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	services := []*models.Service{
 		{ID: 1, ServiceName: "service1", DisplayedName: "Service 1", Status: "running"},
@@ -1936,8 +1975,9 @@ func TestGetServicesListWithActualTrueEmptyServices(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker)
+	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	// пустой список служб
 	services := []*models.Service{}

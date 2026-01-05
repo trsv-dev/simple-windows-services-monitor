@@ -1,7 +1,7 @@
 package netutils
 
 import (
-	"fmt"
+	"context"
 	"net"
 	"time"
 )
@@ -17,12 +17,16 @@ func NewNetworkChecker() *NetworkChecker {
 }
 
 // IsHostReachable Проверка доступности хоста. Если timeout <= 0 - используется DefaultHostTimeout.
-func (nc *NetworkChecker) IsHostReachable(address string, port int, timeout time.Duration) bool {
+func (nc *NetworkChecker) IsHostReachable(ctx context.Context, address string, port string, timeout time.Duration) bool {
 	if timeout <= 0 {
 		timeout = DefaultHostTimeout
 	}
 
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)), timeout)
+	dialer := net.Dialer{
+		Timeout: timeout,
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address, port))
 	if err != nil {
 		return false
 	}

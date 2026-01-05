@@ -72,6 +72,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     ####################################################################################
     DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
+    WINRM_PORT=5985
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key
@@ -127,6 +128,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     ####################################################################################
     DATABASE_URI=postgres://swsm:userpassword@db:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
+    WINRM_PORT=5985
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key

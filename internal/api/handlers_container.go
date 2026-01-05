@@ -17,7 +17,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
-// HandlersContainer Контейнер со всеми handlers приложения (и их зависимостями).
+// HandlersContainer Контейнер со всеми хендлерами приложения (и их зависимостями).
 type HandlersContainer struct {
 	ServerHandler        *server_handler.ServerHandler
 	ServiceHandler       *service_handler.ServiceHandler
@@ -28,20 +28,20 @@ type HandlersContainer struct {
 	AppHandler           *app_handler.AppHandler
 }
 
-// NewHandlersContainer Конструктор контейнера с зависимостями.
+// NewHandlersContainer Конструктор контейнера с зависимостями для хендлеров.
 func NewHandlersContainer(storage storage.Storage, srvConfig *config.Config, broadcaster broadcast.Broadcaster, tokenBuilder auth.TokenBuilder) *HandlersContainer {
 	clientFactory := service_control.NewWinRMClientFactory()
 	netChecker := netutils.NewNetworkChecker()
-	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker)
+	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker, srvConfig.WinRMPort)
 	servicesStatusesWorker := worker.NewServicesStatusesWorker(clientFactory)
 
 	serverHandler := server_handler.NewServerHandler(storage, fingerprinter)
-	serviceHandler := service_handler.NewServiceHandler(storage, clientFactory, netChecker, servicesStatusesWorker)
-	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker)
+	serviceHandler := service_handler.NewServiceHandler(storage, clientFactory, netChecker, servicesStatusesWorker, srvConfig.WinRMPort)
+	controlHandler := control_handler.NewControlHandler(storage, clientFactory, netChecker, srvConfig.WinRMPort)
 	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder,
 		srvConfig.JWTSecretKey, srvConfig.RegistrationKey, srvConfig.OpenRegistration)
 	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
-	healthHandler := health_handler.NewHealthHandler(storage)
+	healthHandler := health_handler.NewHealthHandler(storage, netChecker, srvConfig.WinRMPort)
 	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, tokenBuilder, broadcaster)
 
 	return &HandlersContainer{
