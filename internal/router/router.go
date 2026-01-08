@@ -2,12 +2,12 @@ package router
 
 import (
 	"github.com/go-chi/chi/v5"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/di_containers"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/middleware"
 )
 
 // Router Роутер.
-func Router(h *api.HandlersContainer) chi.Router {
+func Router(h *di_containers.HandlersContainer) chi.Router {
 	router := chi.NewRouter()
 
 	router.Use(middleware.CorsMiddleware)

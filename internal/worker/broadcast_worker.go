@@ -11,19 +11,19 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
-// BroadcastServiceStatuses Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
-func BroadcastServiceStatuses(ctx context.Context, storage storage.Storage, broadcaster broadcast.Broadcaster, interval time.Duration) {
+// BroadcastWorker Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
+func BroadcastWorker(ctx context.Context, storage storage.Storage, broadcaster broadcast.Broadcaster, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		if err := fetchAndPublish(ctx, storage, broadcaster); err != nil {
-			logger.Log.Error("ошибка воркера", logger.String("err", err.Error()))
+			logger.Log.Error("ошибка воркера BroadcastWorker", logger.String("err", err.Error()))
 		}
 
 		select {
 		case <-ctx.Done():
-			logger.Log.Info("Завершение работы воркера по контексту", logger.String("info", ctx.Err().Error()))
+			logger.Log.Info("Завершение работы воркера BroadcastWorker по контексту", logger.String("info", ctx.Err().Error()))
 			return
 		case <-ticker.C: // следующий цикл по таймеру
 		}

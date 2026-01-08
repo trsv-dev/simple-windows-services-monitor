@@ -26,6 +26,7 @@ func init() {
 	logger.InitLogger("error", "stdout")
 }
 
+// Создание контекста с данными о пользователе и сервере.
 func createContextWithCreds(login string, userID, serverID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)

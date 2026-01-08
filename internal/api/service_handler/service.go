@@ -25,17 +25,17 @@ type ServiceHandler struct {
 	storage                storage.Storage
 	clientFactory          service_control.ClientFactory
 	checker                netutils.Checker
-	servicesStatusesWorker worker.StatusesChecker
+	serviceStatusesChecker worker.StatusesChecker
 	winrmPort              string
 }
 
 // NewServiceHandler Конструктор ServiceHandler.
-func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, servicesStatusesWorker worker.StatusesChecker, winrmPort string) *ServiceHandler {
+func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, serviceStatusesChecker worker.StatusesChecker, winrmPort string) *ServiceHandler {
 	return &ServiceHandler{
 		storage:                storage,
 		clientFactory:          clientFactory,
 		checker:                checker,
-		servicesStatusesWorker: servicesStatusesWorker,
+		serviceStatusesChecker: serviceStatusesChecker,
 		winrmPort:              winrmPort,
 	}
 }
@@ -388,7 +388,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// опрашиваем службы через воркер, получаем слайс служб с обновленными данными и булево значение об успехе
-	updates, success := h.servicesStatusesWorker.CheckServicesStatuses(ctx, server, services)
+	updates, success := h.serviceStatusesChecker.CheckServiceStatuses(ctx, server, services)
 
 	if !success {
 		w.Header().Set("Content-Type", "application/json")

@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/di_containers"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/server"
+	storage "github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
@@ -55,11 +57,14 @@ func main() {
 	}
 
 	// инициализация хранилища (PostgreSQL) с переданным AES-ключом
-	storage, err := postgres.InitStorage(srvConfig.DatabaseURI, AESKeyBytes)
+	pgStorage, err := postgres.InitStorage(srvConfig.DatabaseURI, AESKeyBytes)
 	if err != nil {
 		logger.Log.Error("Не удалось инициировать хранилище (БД)", logger.String("err", err.Error()))
 		os.Exit(1)
 	}
+
+	var handlersStorage storage.Storage = pgStorage
+	var workersStorage storage.WorkerStorage = pgStorage
 
 	tokenBuilder := auth.NewJWTTokenBuilder()
 	var broadcaster broadcast.Broadcaster
@@ -69,7 +74,7 @@ func main() {
 		// используем r3labs/sse через адаптер, реализующий интерфейс SubscriberManager
 		// Используется для передачи событий во фронтенд.
 		// Если планируется использовать только API без фронтенда - broadcaster можно убрать из зависимостей AppHandler.
-		// Инициализировав broadcaster в main далее он используется в status_worker.
+		// Инициализировав broadcaster в main далее он используется в BroadcastWorker.
 		broadcaster = broadcast.NewR3labsSSEAdapter(
 			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey, tokenBuilder),
 		)
@@ -77,9 +82,12 @@ func main() {
 		broadcaster = broadcast.NewNoopAdapter(func(r *http.Request) (string, error) { return "noop", nil })
 	}
 
+	// создаем in-memory хранилище для мониторинга статусов серверов
+	statusCache := health_storage.NewStatusCache()
+
 	// создаём handlersContainer — контейнер зависимостей для всех хендлеров,
 	// передаём в него хранилище, JWT ключ и SSE адаптер
-	handlersContainer := api.NewHandlersContainer(storage, srvConfig, broadcaster, tokenBuilder)
+	handlersContainer := di_containers.NewHandlersContainer(handlersStorage, statusCache, srvConfig, broadcaster, tokenBuilder)
 
 	// запуск HTTP-сервера,
 	// передаём готовый handlersContainer, содержащий все зависимости
@@ -87,21 +95,28 @@ func main() {
 	// создаем сервер и запускаем его
 	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, handlersContainer)
 
-	// запускаем воркер в отдельной горутине,
-	// воркер периодически опрашивает БД и публикует обновления статусов служб через SSE
-	workerCtx, workerCtxCancel := context.WithCancel(context.Background())
+	// запускаем воркеры в отдельных горутинах:
+	// воркер worker.BroadcastWorker периодически опрашивает БД и публикует обновления статусов служб через SSE,
+	// воркер worker.ServerStatusWorker периодически достает из БД слайс всех серверов и получает их статус, сохраняя его в in-memory хранилище.
+	workersCtx, workersCtxCancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
 	var interval time.Duration = 5 * time.Second
 
-	// если работаем с web-интерфейсом - запускаем status worker
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, srvConfig.WinRMPort, interval)
+	}()
+
+	// если работаем с web-интерфейсом - запускаем воркер BroadcastWorker для публикации статусов служб через SSE
 	if srvConfig.WebInterface {
-		// запуск status worker
+		// запуск воркер BroadcastWorker
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.BroadcastServiceStatuses(workerCtx, storage, broadcaster, interval)
+			worker.BroadcastWorker(workersCtx, handlersStorage, broadcaster, interval)
 		}()
 	}
 
@@ -127,24 +142,21 @@ func main() {
 	// если произошло какое-то событие из select выше, считаем что сервер остановлен
 	// и останавливаем остальные части приложения:
 
-	// если работаем с web-интерфейсом - ждем завершения worker с таймаутом
-	if srvConfig.WebInterface {
-		// останавливаем status worker (если был запущен)
-		logger.Log.Info("Остановка status worker...")
-		workerCtxCancel()
+	// останавливаем воркеры
+	workersCtxCancel()
 
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
+	// ждём завершения всех воркеров с таймаутом
+	workersDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersDone)
+	}()
 
-		select {
-		case <-done:
-			logger.Log.Info("Status worker остановлен")
-		case <-time.After(5 * time.Second):
-			logger.Log.Warn("Таймаут остановки status worker")
-		}
+	select {
+	case <-workersDone:
+		logger.Log.Info("Воркеры остановлены")
+	case <-time.After(5 * time.Second):
+		logger.Log.Warn("Таймаут ожидания воркеров")
 	}
 
 	// безопасно закрываем broadcaster
@@ -168,7 +180,7 @@ func main() {
 
 	// закрытие соединения с БД
 	logger.Log.Info("Закрытие соединения с БД...")
-	if err = storage.Close(); err != nil {
+	if err = handlersStorage.Close(); err != nil {
 		logger.Log.Error("Ошибка закрытия соединения с БД", logger.String("err", err.Error()))
 	}
 	logger.Log.Info("Успешное закрытие соединения с БД")

@@ -25,7 +25,7 @@ func TestNewServicesStatusesWorker(t *testing.T) {
 
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 
 	assert.NotNil(t, worker)
 }
@@ -61,11 +61,11 @@ func TestCheckServicesStatusesSuccess(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
 	// реализация работает с мокированными зависимостями
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 2, len(updates))
@@ -96,10 +96,10 @@ func TestCheckServicesStatusesClientFactoryError(t *testing.T) {
 		CreateClient("192.168.1.100", "admin", "password").
 		Return(nil, errors.New("connection failed"))
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.False(t, success)
 	assert.Nil(t, updates)
@@ -133,10 +133,10 @@ func TestCheckServicesStatusesRunCommandError(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("", errors.New("PowerShell error"))
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.False(t, success)
 	assert.Nil(t, updates)
@@ -170,10 +170,10 @@ func TestCheckServicesStatusesEmptyArrayResponse(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("[]", nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 0, len(updates))
@@ -209,10 +209,10 @@ func TestCheckServicesStatusesSingleService(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 1, len(updates))
@@ -248,10 +248,10 @@ func TestCheckServicesStatusesMixedCase(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 1, len(updates))
@@ -288,10 +288,10 @@ func TestCheckServicesStatusesUnmarshalError(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.False(t, success)
 	assert.Nil(t, updates)
@@ -325,10 +325,10 @@ func TestCheckServicesStatusesEmptyResponse(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("", nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 0, len(updates))
@@ -366,10 +366,10 @@ func TestCheckServicesStatusesMultipleServicesPartialMatch(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 2, len(updates))
@@ -405,10 +405,10 @@ func TestCheckServicesStatusesServiceNameWithQuote(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(psResponse, nil)
 
-	worker := NewServicesStatusesWorker(mockFactory)
+	worker := NewServiceStatusesChecker(mockFactory)
 	ctx := context.Background()
 
-	updates, success := worker.CheckServicesStatuses(ctx, server, services)
+	updates, success := worker.CheckServiceStatuses(ctx, server, services)
 
 	assert.True(t, success)
 	assert.Equal(t, 1, len(updates))

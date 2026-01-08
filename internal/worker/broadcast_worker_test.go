@@ -325,7 +325,7 @@ func TestBroadcastServiceStatusesContextCancellation(t *testing.T) {
 	// запускаем воркер в горутине
 	done := make(chan bool)
 	go func() {
-		BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
+		BroadcastWorker(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
 		done <- true
 	}()
 
@@ -364,7 +364,7 @@ func TestBroadcastServiceStatusesInterval(t *testing.T) {
 		AnyTimes()
 
 	start := time.Now()
-	BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 100*time.Millisecond)
+	BroadcastWorker(ctx, mockStorage, mockBroadcaster, 100*time.Millisecond)
 	elapsed := time.Since(start)
 
 	// проверяем что воркер работал по крайней мере 100ms (интервал)
@@ -408,7 +408,7 @@ func TestBroadcastServiceStatusesMultipleUsers(t *testing.T) {
 			Return(nil)
 	}
 
-	BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
+	BroadcastWorker(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
 }
 
 // TestFetchAndPublishMultipleStatusesPerUser Проверяет несколько статусов для одного пользователя.

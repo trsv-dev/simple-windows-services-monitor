@@ -10,5 +10,5 @@ import (
 
 // StatusesChecker Интерфейс для проверки статусов служб на сервере.
 type StatusesChecker interface {
-	CheckServicesStatuses(ctx context.Context, server *models.Server, services []*models.Service) ([]*models.Service, bool)
+	CheckServiceStatuses(ctx context.Context, server *models.Server, services []*models.Service) ([]*models.Service, bool)
 }

@@ -1,4 +1,4 @@
-package health
+package health_storage
 
 import (
 	"sync"
@@ -8,13 +8,13 @@ import (
 
 // StatusCache Структура для хранения статуса сервера.
 type StatusCache struct {
-	mu    *sync.Mutex
+	mu    *sync.RWMutex
 	cache map[int64]models.ServerStatus
 }
 
 // NewStatusCache Конструктор StatusCache.
 func NewStatusCache() *StatusCache {
-	mu := new(sync.Mutex)
+	mu := new(sync.RWMutex)
 	cache := make(map[int64]models.ServerStatus)
 
 	return &StatusCache{
@@ -33,8 +33,8 @@ func (sc *StatusCache) Set(s models.ServerStatus) {
 
 // Get Метод для извлечения статуса сервера из in-memory хранилище.
 func (sc *StatusCache) Get(id int64) (models.ServerStatus, bool) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
 
 	v, ok := sc.cache[id]
 

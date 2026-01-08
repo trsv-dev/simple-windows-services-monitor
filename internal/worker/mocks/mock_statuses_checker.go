@@ -36,9 +36,9 @@ func (m *MockStatusesChecker) EXPECT() *MockStatusesCheckerMockRecorder {
 }
 
 // CheckServicesStatuses mocks base method.
-func (m *MockStatusesChecker) CheckServicesStatuses(arg0 context.Context, arg1 *models.Server, arg2 []*models.Service) ([]*models.Service, bool) {
+func (m *MockStatusesChecker) CheckServiceStatuses(arg0 context.Context, arg1 *models.Server, arg2 []*models.Service) ([]*models.Service, bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckServicesStatuses", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "CheckServiceStatuses", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]*models.Service)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
@@ -47,5 +47,5 @@ func (m *MockStatusesChecker) CheckServicesStatuses(arg0 context.Context, arg1 *
 // CheckServicesStatuses indicates an expected call of CheckServicesStatuses.
 func (mr *MockStatusesCheckerMockRecorder) CheckServicesStatuses(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckServicesStatuses", reflect.TypeOf((*MockStatusesChecker)(nil).CheckServicesStatuses), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckServiceStatuses", reflect.TypeOf((*MockStatusesChecker)(nil).CheckServiceStatuses), arg0, arg1, arg2)
 }

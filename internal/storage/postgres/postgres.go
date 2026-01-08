@@ -9,9 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
-
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres/utils"
@@ -697,34 +696,42 @@ func (pg *PgStorage) Close() error {
 	return nil
 }
 
-//func (pg *PgStorage) ListServersAddresses(ctx context.Context) ([]*models.ServerStatus, error) {
-//	query := `SELECT id, address FROM servers ORDER BY id`
+// ListServersAddresses Возвращает список всех зарегистрированных серверов
+// с минимально необходимыми данными — идентификатором и сетевым адресом.
 //
-//	rows, err := pg.DB.QueryContext(ctx, query)
-//	if err != nil {
-//		logger.Log.Error("Ошибка при получении списка всех серверов", logger.String("err", err.Error()))
-//		return nil, fmt.Errorf("ошибка при получении всех серверов: %w", err)
-//	}
-//	defer rows.Close()
+// Метод используется фоновыми воркерами для получения перечня серверов,
+// которые необходимо периодически опрашивать или мониторить.
 //
-//	var servers []*models.ServerStatus
-//
-//	for rows.Next() {
-//		var server models.ServerStatus
-//		err = rows.Scan(&server.ServerID, &server.Address)
-//		if err != nil {
-//			logger.Log.Error("ошибка парсинга запроса на получение всех серверов", logger.String("err", err.Error()))
-//			return nil, err
-//		}
-//
-//		servers = append(servers, &server)
-//	}
-//
-//	err = rows.Err()
-//	if err != nil {
-//		logger.Log.Error("Ошибка при обработке строк на получение информации о всех серверах", logger.String("err", err.Error()))
-//		return nil, err
-//	}
-//
-//	return servers, nil
-//}
+// Результат упорядочен по идентификатору сервера, чтобы обеспечить
+// детерминированный порядок обработки.
+func (pg *PgStorage) ListServersAddresses(ctx context.Context) ([]*models.ServerStatus, error) {
+	query := `SELECT id, address FROM servers ORDER BY id`
+
+	rows, err := pg.DB.QueryContext(ctx, query)
+	if err != nil {
+		logger.Log.Error("Ошибка при получении списка всех серверов", logger.String("err", err.Error()))
+		return nil, fmt.Errorf("ошибка при получении всех серверов: %w", err)
+	}
+	defer rows.Close()
+
+	var servers []*models.ServerStatus
+
+	for rows.Next() {
+		var server models.ServerStatus
+		err = rows.Scan(&server.ServerID, &server.Address)
+		if err != nil {
+			logger.Log.Error("ошибка парсинга запроса на получение всех серверов", logger.String("err", err.Error()))
+			return nil, err
+		}
+
+		servers = append(servers, &server)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logger.Log.Error("Ошибка при обработке строк на получение информации о всех серверах", logger.String("err", err.Error()))
+		return nil, err
+	}
+
+	return servers, nil
+}

@@ -4,35 +4,38 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
 // HealthHandler обрабатывает HTTP-запросы для проверки состояния сервиса.
 type HealthHandler struct {
-	storage   storage.Storage
-	checker   netutils.Checker
-	winrmPort string
+	storage     storage.Storage
+	statusCache health_storage.StatusCacheStorage
+	checker     netutils.Checker
+	winrmPort   string
 }
 
 // NewHealthHandler Конструктор HealthHandler.
-func NewHealthHandler(storage storage.Storage, checker netutils.Checker, winrmPort string) *HealthHandler {
+func NewHealthHandler(storage storage.Storage, statusCache health_storage.StatusCacheStorage, checker netutils.Checker, winrmPort string) *HealthHandler {
 	return &HealthHandler{
-		storage:   storage,
-		checker:   checker,
-		winrmPort: winrmPort,
+		storage:     storage,
+		statusCache: statusCache,
+		checker:     checker,
+		winrmPort:   winrmPort,
 	}
 }
 
-// GetHealth обрабатывает health_handler-check запрос и возвращает статус готовности сервиса.
+// GetHealth Обрабатывает health_handler-check запрос и возвращает статус готовности сервиса.
 // Возвращает HTTP 200, если база данных доступна, иначе HTTP 503.
 func (h *HealthHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -50,6 +53,7 @@ func (h *HealthHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// ServerStatus Возвращает статус сервера, получая его из кэша health_storage.StatusCache.
 func (h *HealthHandler) ServerStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -74,14 +78,17 @@ func (h *HealthHandler) ServerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	statusCtx, statusDone := context.WithTimeout(ctx, 3*time.Second)
-	defer statusDone()
+	// получаем статус сервера из кэша, в который их пишет воркер ServerStatusWorker
+	status, ok := h.statusCache.Get(server.ID)
 
-	statusCh := worker.ServerStatusWorker(statusCtx, h.checker, server, h.winrmPort)
+	if !ok {
+		logger.Log.Error(fmt.Sprintf("Статус сервера с ID=%d, Address=%s не найден", server.ID, server.Address))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err = json.NewEncoder(w).Encode(<-statusCh); err != nil {
+	if err = json.NewEncoder(w).Encode(status); err != nil {
 		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
 		return
