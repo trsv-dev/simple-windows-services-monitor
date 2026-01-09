@@ -192,8 +192,8 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceStopIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceStopIsHostReachableFalse(t *testing.T) {
+// TestServiceStopCheckTCPFalse Проверяет обработку недоступного хоста.
+func TestServiceStopCheckTCPFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -226,7 +226,7 @@ func TestServiceStopIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
@@ -280,7 +280,7 @@ func TestServiceStopCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -339,7 +339,7 @@ func TestServiceStopRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -403,7 +403,7 @@ func TestServiceStopRunCommandStopError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -472,7 +472,7 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -546,7 +546,7 @@ func TestServiceStopStoppedAlready(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -615,7 +615,7 @@ func TestServiceStopStopPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -680,7 +680,7 @@ func TestServiceStopPausePendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -745,7 +745,7 @@ func TestServiceStopPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -809,7 +809,7 @@ func TestServiceStopStartPendingSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -883,7 +883,7 @@ func TestServiceStopDbErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -958,7 +958,7 @@ func TestServiceStopDbErrorWhenStopped(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1169,8 +1169,8 @@ func TestServiceStartGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceStartIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceStartIsHostReachableFalse(t *testing.T) {
+// TestServiceStartCheckTCPFalse Проверяет обработку недоступного хоста.
+func TestServiceStartCheckTCPFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -1203,7 +1203,7 @@ func TestServiceStartIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
@@ -1257,7 +1257,7 @@ func TestServiceStartCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -1316,7 +1316,7 @@ func TestServiceStartRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1380,7 +1380,7 @@ func TestServiceStartRunCommandStartError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1449,7 +1449,7 @@ func TestServiceStartStoppedSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1523,7 +1523,7 @@ func TestServiceStartStopPendingSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1597,7 +1597,7 @@ func TestServiceStartRunningAlready(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1666,7 +1666,7 @@ func TestServiceStartStartPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1731,7 +1731,7 @@ func TestServiceStartPausePendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1796,7 +1796,7 @@ func TestServiceStartPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1860,7 +1860,7 @@ func TestServiceStartDbErrorAfterStart(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1935,7 +1935,7 @@ func TestServiceStartDbErrorWhenRunning(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2126,8 +2126,8 @@ func TestServiceRestartGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceRestartIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceRestartIsHostReachableFalse(t *testing.T) {
+// TestServiceRestartCheckTCPFalse Проверяет обработку недоступного хоста.
+func TestServiceRestartCheckTCPFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -2160,7 +2160,7 @@ func TestServiceRestartIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
@@ -2214,7 +2214,7 @@ func TestServiceRestartCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -2273,7 +2273,7 @@ func TestServiceRestartRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2337,7 +2337,7 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2410,7 +2410,7 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctxWithTimeout, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctxWithTimeout, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2490,7 +2490,7 @@ func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2569,7 +2569,7 @@ func TestServiceRestartRunCommandStartErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2656,7 +2656,7 @@ func TestServiceRestartRunCommandStartErrorFromStopped(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2726,7 +2726,7 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2806,7 +2806,7 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2889,7 +2889,7 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2963,7 +2963,7 @@ func TestServiceRestartStartPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3028,7 +3028,7 @@ func TestServiceRestartStopPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3093,7 +3093,7 @@ func TestServiceRestartPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3157,7 +3157,7 @@ func TestServiceRestartDbErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3242,7 +3242,7 @@ func TestServiceRestartDbErrorAfterStart(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно

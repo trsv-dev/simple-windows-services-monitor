@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage"
@@ -11,6 +12,26 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
+
+// Внутренний семафор пакета для ограничения числа одновременно работающих горутин с checkServerStatus.
+type semaphore struct {
+	semaCh chan struct{}
+}
+
+// NewSemaphore Возвращает новый семафор.
+func newSemaphore(capacity int) *semaphore {
+	return &semaphore{make(chan struct{}, capacity)}
+}
+
+// Acquire Отправляем пустую структуру в канал semaCh.
+func (s *semaphore) Acquire() {
+	s.semaCh <- struct{}{}
+}
+
+// Release Из канала semaCh убирается пустая структура.
+func (s *semaphore) Release() {
+	<-s.semaCh
+}
 
 // ServerStatusWorker Фоновый воркер, предназначенный для периодической
 // проверки сетевой доступности зарегистрированных серверов.
@@ -34,6 +55,7 @@ import (
 func ServerStatusWorker(ctx context.Context, storage storage.WorkerStorage, statusCache health_storage.StatusCacheStorage, winrmPort string, interval time.Duration) {
 	checker := netutils.NewNetworkChecker()
 
+	semaphore := newSemaphore(5)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -68,20 +90,46 @@ func ServerStatusWorker(ctx context.Context, storage storage.WorkerStorage, stat
 			// успешный вызов — сбрасываем интервал
 			retryAfter = 1 * time.Second
 
-			for _, server := range servers {
-				// проверяем доступность сервера, если недоступен - возвращаем ошибку
-				if !checker.IsHostReachable(ctx, server.Address, winrmPort, 0) {
-					logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен", server.Address, server.ServerID))
-					status := models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: "Unreachable"}
-					// если сервер недоступен, то кладем в кэш статусов модель со статусом "Unreachable"
-					statusCache.Set(status)
-					continue
-				}
+			var wg sync.WaitGroup
 
-				// если сервер нормально отвечает, то кладем в кэш статусов модель со статусом "ОК"
-				status := models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: "OK"}
-				statusCache.Set(status)
+			for _, server := range servers {
+				wg.Add(1)
+				s := server
+				go func(srv *models.ServerStatus) {
+					semaphore.Acquire()
+					defer wg.Done()
+					defer semaphore.Release()
+
+					// проверяем доступность сервера и записываем статус
+					checkServerStatus(ctx, srv, statusCache, checker, winrmPort)
+				}(s)
 			}
+
+			wg.Wait()
 		}
 	}
+}
+
+func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusCache health_storage.StatusCacheStorage, checker *netutils.NetworkChecker, winrmPort string) {
+	var status string
+
+	// вычисляем состояние один раз
+	tcpOK := checker.CheckTCP(ctx, server.Address, winrmPort, 0)
+	icmpOK := checker.CheckICMP(ctx, server.Address, 0)
+
+	switch {
+	case tcpOK && icmpOK:
+		status = "OK"
+	case !tcpOK && !icmpOK:
+		status = "Unreachable"
+	default:
+		// один из каналов (TCP или ICMP) не работает
+		status = "Degraded"
+	}
+
+	if status != "OK" {
+		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (tcp=%v icmp=%v)", server.Address, server.ServerID, status, tcpOK, icmpOK))
+	}
+
+	statusCache.Set(models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: status})
 }

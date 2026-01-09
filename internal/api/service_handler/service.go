@@ -68,7 +68,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.IsHostReachable(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckTCP(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -160,7 +160,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.IsHostReachable(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckTCP(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -373,7 +373,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !h.checker.IsHostReachable(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckTCP(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")

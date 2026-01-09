@@ -49,7 +49,7 @@ func TestGetFingerprintSuccess(t *testing.T) {
 	expectedGUID := "550e8400-e29b-41d4-a716-446655440000"
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -80,7 +80,7 @@ func TestGetFingerprintHostUnreachable(t *testing.T) {
 	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
@@ -104,7 +104,7 @@ func TestGetFingerprintClientFactoryError(t *testing.T) {
 	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -133,7 +133,7 @@ func TestGetFingerprintRunCommandError(t *testing.T) {
 	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -168,7 +168,7 @@ func TestGetFingerprintInvalidUUID(t *testing.T) {
 	invalidGUID := "not-a-valid-guid"
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -201,7 +201,7 @@ func TestGetFingerprintEmptyResponse(t *testing.T) {
 	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -248,7 +248,7 @@ func TestGetFingerprintDifferentGUIDs(t *testing.T) {
 			ctx := context.Background()
 
 			mockChecker.EXPECT().
-				IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
+				CheckTCP(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 				Return(true)
 
 			mockFactory.EXPECT().
@@ -291,7 +291,7 @@ func TestGetFingerprintContextTimeout(t *testing.T) {
 	cancel()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -328,7 +328,7 @@ func TestGetFingerprintMultipleServers(t *testing.T) {
 
 	// Первый сервер
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -341,7 +341,7 @@ func TestGetFingerprintMultipleServers(t *testing.T) {
 
 	// Второй сервер
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, "192.168.1.101", mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, "192.168.1.101", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -381,7 +381,7 @@ func TestGetFingerprintCredentials(t *testing.T) {
 	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable(ctx, expectedAddress, mockWinRMPort, time.Duration(0)).
+		CheckTCP(ctx, expectedAddress, mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
