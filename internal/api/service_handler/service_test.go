@@ -82,7 +82,7 @@ func TestListOfServicesSuccess(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -216,7 +216,7 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	handler.ListOfServices(w, r)
@@ -260,7 +260,7 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка создания клиента
@@ -310,7 +310,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -364,7 +364,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -426,7 +426,7 @@ func TestListOfServicesWhitespaceHandling(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -658,7 +658,7 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
 	handler.AddService(w, r)
@@ -709,7 +709,7 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка создания клиента
@@ -765,7 +765,7 @@ func TestAddServiceRunCommandError(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -825,7 +825,7 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -885,7 +885,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -953,7 +953,7 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -1021,7 +1021,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -1093,7 +1093,7 @@ func TestAddServiceSuccess(t *testing.T) {
 		Return(server, nil)
 
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockClientFactory.EXPECT().
@@ -1677,7 +1677,7 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 
 	// сервер недоступен
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(false)
 
 	handler.GetServicesList(w, r)
@@ -1739,12 +1739,12 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker не смог обновить статусы (возвращает false)
 	mockStatusesWorker.EXPECT().
-		CheckServicesStatuses(gomock.Any(), server, services).
+		CheckServiceStatuses(gomock.Any(), server, services).
 		Return(nil, false)
 
 	handler.GetServicesList(w, r)
@@ -1811,12 +1811,12 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker успешно вернул обновлённые статусы
 	mockStatusesWorker.EXPECT().
-		CheckServicesStatuses(gomock.Any(), server, services).
+		CheckServiceStatuses(gomock.Any(), server, services).
 		Return(updatedServices, true)
 
 	// BatchChangeServiceStatus возвращает ошибку
@@ -1887,12 +1887,12 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 
 	// сервер доступен
 	mockChecker.EXPECT().
-		CheckTCP(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 		Return(true)
 
 	// worker успешно вернул обновлённые статусы
 	mockStatusesWorker.EXPECT().
-		CheckServicesStatuses(gomock.Any(), server, services).
+		CheckServiceStatuses(gomock.Any(), server, services).
 		Return(updatedServices, true)
 
 	// BatchChangeServiceStatus успешен

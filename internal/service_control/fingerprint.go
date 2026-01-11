@@ -29,7 +29,7 @@ func NewWinRMFingerprinter(clientFactory ClientFactory, netChecker netutils.Chec
 // GetFingerprint Получение fingerprint (MachineGuid) с Windows сервера.
 func (wf *WinRMFingerprinter) GetFingerprint(ctx context.Context, address, username, password string) (uuid.UUID, error) {
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !wf.netChecker.CheckTCP(ctx, address, wf.winrmPort, 0) {
+	if !wf.netChecker.CheckWinRM(ctx, address, wf.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s недоступен", address))
 		return uuid.Nil, fmt.Errorf("сервер %s недоступен", address)
 	}

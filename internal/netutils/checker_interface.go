@@ -9,6 +9,6 @@ import (
 
 // Checker Интерфейс для проверки доступности сети.
 type Checker interface {
-	CheckTCP(ctx context.Context, address string, port string, timeout time.Duration) bool
+	CheckWinRM(ctx context.Context, address string, port string, timeout time.Duration) bool
 	CheckICMP(ctx context.Context, address string, timeout time.Duration) bool
 }

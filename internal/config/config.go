@@ -26,7 +26,7 @@ func InitConfig() *Config {
 
 	flag.StringVar(&config.RunAddress, "a", "127.0.0.1:8080", "HTTP server address and port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
-	flag.StringVar(&config.WinRMPort, "wp", "5985", "WinRM port (Default: 5985)")
+	flag.StringVar(&config.WinRMPort, "wp", "5985", "WinRM port (Default: 5985), alternative to https - 5986")
 	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error). Default level: Debug")
 	flag.StringVar(&config.LogOutput, "lo", "./logs/swsm.log", "Log output destination: 'stdout' for console or relative path to logfile `./path/to/file.log` for log file. Default: './logs/swsm.log'")
 	flag.StringVar(&config.JWTSecretKey, "s", "", "Secret key used for signing and verifying JWT tokens (example: UIfuBqY1crEUgzIem9)")
@@ -45,7 +45,12 @@ func InitConfig() *Config {
 	}
 
 	if value, ok := os.LookupEnv("WINRM_PORT"); ok {
-		config.WinRMPort = value
+		switch value {
+		case "5985", "5986":
+			config.WinRMPort = value
+		default:
+			config.WinRMPort = "5985"
+		}
 	}
 
 	if value, ok := os.LookupEnv("LOG_LEVEL"); ok {

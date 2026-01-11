@@ -49,16 +49,16 @@ func (mr *MockCheckerMockRecorder) CheckICMP(arg0, arg1, arg2 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckICMP", reflect.TypeOf((*MockChecker)(nil).CheckICMP), arg0, arg1, arg2)
 }
 
-// CheckTCP mocks base method.
-func (m *MockChecker) CheckTCP(arg0 context.Context, arg1, arg2 string, arg3 time.Duration) bool {
+// CheckWinRM mocks base method.
+func (m *MockChecker) CheckWinRM(arg0 context.Context, arg1, arg2 string, arg3 time.Duration) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckTCP", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "CheckWinRM", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// CheckTCP indicates an expected call of CheckTCP.
-func (mr *MockCheckerMockRecorder) CheckTCP(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+// CheckWinRM indicates an expected call of CheckWinRM.
+func (mr *MockCheckerMockRecorder) CheckWinRM(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckTCP", reflect.TypeOf((*MockChecker)(nil).CheckTCP), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckWinRM", reflect.TypeOf((*MockChecker)(nil).CheckWinRM), arg0, arg1, arg2, arg3)
 }

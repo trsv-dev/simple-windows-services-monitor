@@ -114,13 +114,13 @@ func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusC
 	var status string
 
 	// вычисляем состояние один раз
-	tcpOK := checker.CheckTCP(ctx, server.Address, winrmPort, 0)
+	winrmOK := checker.CheckWinRM(ctx, server.Address, winrmPort, 0)
 	icmpOK := checker.CheckICMP(ctx, server.Address, 0)
 
 	switch {
-	case tcpOK && icmpOK:
+	case winrmOK && icmpOK:
 		status = "OK"
-	case !tcpOK && !icmpOK:
+	case !winrmOK && !icmpOK:
 		status = "Unreachable"
 	default:
 		// один из каналов (TCP или ICMP) не работает
@@ -128,8 +128,10 @@ func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusC
 	}
 
 	if status != "OK" {
-		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (tcp=%v icmp=%v)", server.Address, server.ServerID, status, tcpOK, icmpOK))
+		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
 	}
+
+	logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
 
 	statusCache.Set(models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: status})
 }
