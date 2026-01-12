@@ -30,9 +30,8 @@ type HandlersContainer struct {
 }
 
 // NewHandlersContainer Конструктор контейнера с зависимостями для хендлеров.
-func NewHandlersContainer(storage storage.Storage, statusCache health_storage.StatusCacheStorage, srvConfig *config.Config, broadcaster broadcast.Broadcaster, tokenBuilder auth.TokenBuilder) *HandlersContainer {
+func NewHandlersContainer(storage storage.Storage, statusCache health_storage.StatusCacheStorage, srvConfig *config.Config, broadcaster broadcast.Broadcaster, tokenBuilder auth.TokenBuilder, netChecker netutils.Checker) *HandlersContainer {
 	clientFactory := service_control.NewWinRMClientFactory()
-	netChecker := netutils.NewNetworkChecker()
 	fingerprinter := service_control.NewWinRMFingerprinter(clientFactory, netChecker, srvConfig.WinRMPort)
 	serviceStatusesChecker := worker.NewServiceStatusesChecker(clientFactory)
 

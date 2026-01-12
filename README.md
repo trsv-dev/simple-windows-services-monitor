@@ -72,7 +72,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     ####################################################################################
     DATABASE_URI=postgres://swsm:userpassword@localhost:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
-    # Используйте 5985 или 5986 (https) порты
+    # Используйте 5985 (http) или 5986 (https) порты
     WINRM_PORT=5985
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
@@ -100,6 +100,10 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    ```bash
    cd ./cmd/swsm/
    go build -o "swsm"
+   # В ОС Linux перед запуском бинарника необходимо выполнить команду ниже чтобы
+   # разрешить работу с RAW-сокетами (например, для ICMP-проверок) без запуска от root.
+   # В ОС Windows это не требуется
+   sudo setcap cap_net_raw=+ep ./swsm
    ./swsm
    ```
    Бэкенд будет доступен по адресу, который вы указали в `RUN_ADDRESS`, например: http://127.0.0.1:8080
@@ -129,7 +133,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     ####################################################################################
     DATABASE_URI=postgres://swsm:userpassword@db:5432/swsm?sslmode=disable
     RUN_ADDRESS=127.0.0.1:8080
-    # Используйте 5985 или 5986 (https) порты
+    # Используйте 5985 (http) или 5986 (https) порты
     WINRM_PORT=5985
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log

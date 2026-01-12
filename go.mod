@@ -15,6 +15,7 @@ require (
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/r3labs/sse/v2 v2.10.0
 	github.com/stretchr/testify v1.10.0
+	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.46.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,24 +13,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	netutilsMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/netutils/mocks"
 	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
+
+// ============ Тесты базовой функциональности ServerStatusWorker ============
 
 // TestServerStatusWorker Проверяет работу фонового воркера получения статусов серверов.
 func TestServerStatusWorker(t *testing.T) {
 	tests := []struct {
-		name             string
-		interval         time.Duration
-		setupMock        func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage)
-		contextDuration  time.Duration
-		wantCacheCalls   int
-		wantStorageCalls int
-		wantSetStatuses  []models.ServerStatus
+		name            string
+		interval        time.Duration
+		setupMock       func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker)
+		contextDuration time.Duration
 	}{
 		{
 			name:     "Успешно получены статусы двух серверов",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				servers := []*models.ServerStatus{
 					{ServerID: 1, Address: "192.168.0.1"},
 					{ServerID: 2, Address: "192.168.0.2"},
@@ -38,18 +40,31 @@ func TestServerStatusWorker(t *testing.T) {
 					Return(servers, nil).
 					Times(1)
 
+				// оба сервера доступны
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), "192.168.0.1", "5985", time.Duration(0)).
+					Return(true)
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), "192.168.0.1", time.Duration(0)).
+					Return(true)
+
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), "192.168.0.2", "5985", time.Duration(0)).
+					Return(true)
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), "192.168.0.2", time.Duration(0)).
+					Return(true)
+
 				c.EXPECT().
 					Set(gomock.Any()).
 					Times(2)
 			},
-			contextDuration:  150 * time.Millisecond,
-			wantCacheCalls:   2,
-			wantStorageCalls: 1,
+			contextDuration: 150 * time.Millisecond,
 		},
 		{
 			name:     "Ошибка получения списка серверов - воркер продолжает работу",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				// первый вызов вернёт ошибку
 				s.EXPECT().
 					ListServersAddresses(gomock.Any()).
@@ -62,21 +77,29 @@ func TestServerStatusWorker(t *testing.T) {
 					Return([]*models.ServerStatus{
 						{ServerID: 1, Address: "192.168.0.1"},
 					}, nil).
-					AnyTimes() // может быть много вызовов
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
 
 				// минимум один сервер из успешных вызовов
 				c.EXPECT().
 					Set(gomock.Any()).
-					MinTimes(1) // минимум 1, может быть больше
+					MinTimes(1)
 			},
-			contextDuration:  3 * time.Second,
-			wantCacheCalls:   1,
-			wantStorageCalls: 2,
+			contextDuration: 3 * time.Second,
 		},
 		{
 			name:     "Пустой список серверов",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				s.EXPECT().
 					ListServersAddresses(gomock.Any()).
 					Return([]*models.ServerStatus{}, nil).
@@ -87,14 +110,12 @@ func TestServerStatusWorker(t *testing.T) {
 					Set(gomock.Any()).
 					Times(0)
 			},
-			contextDuration:  150 * time.Millisecond,
-			wantCacheCalls:   0,
-			wantStorageCalls: 1,
+			contextDuration: 150 * time.Millisecond,
 		},
 		{
 			name:     "Контекст отменен - воркер завершается",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				// ни один вызов ListServersAddresses не должен произойти
 				s.EXPECT().
 					ListServersAddresses(gomock.Any()).
@@ -104,14 +125,12 @@ func TestServerStatusWorker(t *testing.T) {
 					Set(gomock.Any()).
 					Times(0)
 			},
-			contextDuration:  0, // контекст отменяется сразу
-			wantCacheCalls:   0,
-			wantStorageCalls: 0,
+			contextDuration: 0, // контекст отменяется сразу
 		},
 		{
 			name:     "Несколько итераций - воркер получает статусы периодически",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				servers := []*models.ServerStatus{
 					{ServerID: 1, Address: "192.168.0.1"},
 				}
@@ -122,18 +141,26 @@ func TestServerStatusWorker(t *testing.T) {
 					Return(servers, nil).
 					MinTimes(2)
 
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
 				c.EXPECT().
 					Set(gomock.Any()).
 					MinTimes(2)
 			},
-			contextDuration:  250 * time.Millisecond,
-			wantCacheCalls:   2,
-			wantStorageCalls: 2,
+			contextDuration: 250 * time.Millisecond,
 		},
 		{
 			name:     "Большое количество серверов",
 			interval: 100 * time.Millisecond,
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				// создаём 10 серверов
 				var servers []*models.ServerStatus
 				for i := 1; i <= 10; i++ {
@@ -148,14 +175,22 @@ func TestServerStatusWorker(t *testing.T) {
 					Return(servers, nil).
 					Times(1)
 
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
 				// ожидаем 10 вызовов Set (по одному на сервер)
 				c.EXPECT().
 					Set(gomock.Any()).
 					Times(10)
 			},
-			contextDuration:  150 * time.Millisecond,
-			wantCacheCalls:   10,
-			wantStorageCalls: 1,
+			contextDuration: 150 * time.Millisecond,
 		},
 	}
 
@@ -166,8 +201,9 @@ func TestServerStatusWorker(t *testing.T) {
 
 			mockStorage := storageMocks.NewMockWorkerStorage(ctrl)
 			mockCache := mocks.NewMockStatusCacheStorage(ctrl)
+			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 
-			tt.setupMock(mockStorage, mockCache)
+			tt.setupMock(mockStorage, mockCache, mockChecker)
 
 			// создаём контекст, который будет отменен через tt.contextDuration
 			var ctx context.Context
@@ -182,7 +218,8 @@ func TestServerStatusWorker(t *testing.T) {
 			defer cancel()
 
 			// запускаем воркер в отдельной горутине
-			go ServerStatusWorker(ctx, mockStorage, mockCache, "5985", tt.interval)
+			//go serverStatusWorkerWithChecker(ctx, mockStorage, mockCache, mockChecker, "5985", tt.interval)
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", tt.interval)
 
 			// ждём завершения воркера
 			<-ctx.Done()
@@ -195,54 +232,43 @@ func TestServerStatusWorker(t *testing.T) {
 	}
 }
 
-// TestServerStatusWorker_SetStatuses Проверяет корректность статусов, которые попадают в кеш.
-func TestServerStatusWorker_SetStatuses(t *testing.T) {
+// ============ Тесты статусов серверов ============
+
+// TestServerStatusWorker_AllStatuses Проверяет корректность всех возможных статусов серверов.
+func TestServerStatusWorker_AllStatuses(t *testing.T) {
 	tests := []struct {
 		name            string
-		setupMock       func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage)
+		winrmOK         bool
+		icmpOK          bool
+		expectedStatus  string
 		contextDuration time.Duration
 	}{
 		{
-			name: "Статус содержит правильный ServerID и Address",
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
-				servers := []*models.ServerStatus{
-					{ServerID: 123, Address: "10.0.0.5"},
-				}
-				s.EXPECT().
-					ListServersAddresses(gomock.Any()).
-					Return(servers, nil).
-					Times(1)
-
-				c.EXPECT().
-					Set(gomock.Any()).
-					Do(func(status models.ServerStatus) {
-						// проверяем правильный ServerID и Address
-						assert.Equal(t, int64(123), status.ServerID)
-						assert.Equal(t, "10.0.0.5", status.Address)
-					}).
-					Times(1)
-			},
+			name:            "Статус OK - оба канала работают",
+			winrmOK:         true,
+			icmpOK:          true,
+			expectedStatus:  "OK",
 			contextDuration: 150 * time.Millisecond,
 		},
 		{
-			name: "Статус содержит поле Status (OK или Unreachable)",
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
-				servers := []*models.ServerStatus{
-					{ServerID: 1, Address: "192.168.0.1"},
-				}
-				s.EXPECT().
-					ListServersAddresses(gomock.Any()).
-					Return(servers, nil).
-					Times(1)
-
-				c.EXPECT().
-					Set(gomock.Any()).
-					Do(func(status models.ServerStatus) {
-						// проверяем Status, а не ServerID
-						assert.True(t, status.Status == "OK" || status.Status == "Unreachable")
-					}).
-					Times(1)
-			},
+			name:            "Статус Unreachable - оба канала недоступны",
+			winrmOK:         false,
+			icmpOK:          false,
+			expectedStatus:  "Unreachable",
+			contextDuration: 150 * time.Millisecond,
+		},
+		{
+			name:            "Статус Degraded - работает только WinRM",
+			winrmOK:         true,
+			icmpOK:          false,
+			expectedStatus:  "Degraded",
+			contextDuration: 150 * time.Millisecond,
+		},
+		{
+			name:            "Статус Degraded - работает только ICMP",
+			winrmOK:         false,
+			icmpOK:          true,
+			expectedStatus:  "Degraded",
 			contextDuration: 150 * time.Millisecond,
 		},
 	}
@@ -254,13 +280,39 @@ func TestServerStatusWorker_SetStatuses(t *testing.T) {
 
 			mockStorage := storageMocks.NewMockWorkerStorage(ctrl)
 			mockCache := mocks.NewMockStatusCacheStorage(ctrl)
+			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 
-			tt.setupMock(mockStorage, mockCache)
+			servers := []*models.ServerStatus{
+				{ServerID: 1, Address: "192.168.0.1"},
+			}
+
+			mockStorage.EXPECT().
+				ListServersAddresses(gomock.Any()).
+				Return(servers, nil).
+				Times(1)
+
+			mockChecker.EXPECT().
+				CheckWinRM(gomock.Any(), "192.168.0.1", "5985", time.Duration(0)).
+				Return(tt.winrmOK)
+
+			mockChecker.EXPECT().
+				CheckICMP(gomock.Any(), "192.168.0.1", time.Duration(0)).
+				Return(tt.icmpOK)
+
+			// Проверяем, что в кэш попадает правильный статус
+			mockCache.EXPECT().
+				Set(gomock.Any()).
+				Do(func(status models.ServerStatus) {
+					assert.Equal(t, int64(1), status.ServerID)
+					assert.Equal(t, "192.168.0.1", status.Address)
+					assert.Equal(t, tt.expectedStatus, status.Status)
+				}).
+				Times(1)
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextDuration)
 			defer cancel()
 
-			go ServerStatusWorker(ctx, mockStorage, mockCache, "5985", 100*time.Millisecond)
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond)
 
 			<-ctx.Done()
 			time.Sleep(50 * time.Millisecond)
@@ -268,17 +320,18 @@ func TestServerStatusWorker_SetStatuses(t *testing.T) {
 	}
 }
 
+// ============ Тесты retry логики ============
+
 // TestServerStatusWorker_RetryBehavior Проверяет поведение при ошибках и retry логику.
 func TestServerStatusWorker_RetryBehavior(t *testing.T) {
 	tests := []struct {
-		name             string
-		setupMock        func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage)
-		contextDuration  time.Duration
-		wantMinCallCount int
+		name            string
+		setupMock       func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker)
+		contextDuration time.Duration
 	}{
 		{
 			name: "После ошибки воркер продолжает попытки получить список серверов",
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				gomock.InOrder(
 					// первая попытка - ошибка (ровно 1 раз)
 					s.EXPECT().
@@ -292,20 +345,29 @@ func TestServerStatusWorker_RetryBehavior(t *testing.T) {
 						Return([]*models.ServerStatus{
 							{ServerID: 1, Address: "192.168.0.1"},
 						}, nil).
-						AnyTimes(), // может быть много вызовов
+						AnyTimes(),
 				)
+
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
 
 				// минимум один сервер из успешных вызовов
 				c.EXPECT().
 					Set(gomock.Any()).
-					MinTimes(1) // может быть много вызовов
+					MinTimes(1)
 			},
-			contextDuration:  3 * time.Second,
-			wantMinCallCount: 2,
+			contextDuration: 3 * time.Second,
 		},
 		{
 			name: "Успешный вызов сбрасывает интервал retry",
-			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage) {
+			setupMock: func(s *storageMocks.MockWorkerStorage, c *mocks.MockStatusCacheStorage, ch *netutilsMocks.MockChecker) {
 				servers := []*models.ServerStatus{
 					{ServerID: 1, Address: "192.168.0.1"},
 				}
@@ -316,12 +378,21 @@ func TestServerStatusWorker_RetryBehavior(t *testing.T) {
 					Return(servers, nil).
 					MinTimes(2)
 
+				ch.EXPECT().
+					CheckWinRM(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
+				ch.EXPECT().
+					CheckICMP(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(true).
+					AnyTimes()
+
 				c.EXPECT().
 					Set(gomock.Any()).
 					MinTimes(2)
 			},
-			contextDuration:  300 * time.Millisecond,
-			wantMinCallCount: 2,
+			contextDuration: 300 * time.Millisecond,
 		},
 	}
 
@@ -332,16 +403,189 @@ func TestServerStatusWorker_RetryBehavior(t *testing.T) {
 
 			mockStorage := storageMocks.NewMockWorkerStorage(ctrl)
 			mockCache := mocks.NewMockStatusCacheStorage(ctrl)
+			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 
-			tt.setupMock(mockStorage, mockCache)
+			tt.setupMock(mockStorage, mockCache, mockChecker)
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextDuration)
 			defer cancel()
 
-			go ServerStatusWorker(ctx, mockStorage, mockCache, "5985", 100*time.Millisecond)
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond)
 
 			<-ctx.Done()
 			time.Sleep(100 * time.Millisecond)
+		})
+	}
+}
+
+// ============ Тесты семафора ============
+
+// TestSemaphore_AcquireAndRelease Проверяет базовую функциональность семафора.
+func TestSemaphore_AcquireAndRelease(t *testing.T) {
+	capacity := 3
+	s := newSemaphore(capacity)
+
+	// проверяем, что можем захватить семафор нужное количество раз
+	for i := 0; i < capacity; i++ {
+		s.Acquire()
+	}
+
+	// проверяем, что семафор полный (попытка захватить будет блокировать)
+	done := make(chan bool)
+	go func() {
+		s.Acquire()
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("Acquire не должен был завершиться - семафор полный")
+	case <-time.After(100 * time.Millisecond):
+		// ожидаемое поведение - горутина заблокирована
+	}
+
+	// освобождаем один слот
+	s.Release()
+
+	// теперь Acquire должен завершиться
+	select {
+	case <-done:
+		// ожидаемое поведение
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Acquire должен был завершиться после Release")
+	}
+}
+
+// TestSemaphore_ConcurrentAcquireAndRelease Проверяет семафор при одновременных операциях.
+func TestSemaphore_ConcurrentAcquireAndRelease(t *testing.T) {
+	capacity := 5
+	s := newSemaphore(capacity)
+	var activeCount int32
+	var maxConcurrent int32
+
+	// запускаем 20 горутин, каждая захватывает и освобождает семафор
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Acquire()
+			defer s.Release()
+
+			// увеличиваем счетчик активных горутин
+			current := atomic.AddInt32(&activeCount, 1)
+
+			// обновляем максимум
+			for {
+				max := atomic.LoadInt32(&maxConcurrent)
+				if current <= max {
+					break
+				}
+				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
+					break
+				}
+			}
+
+			// имитируем работу
+			time.Sleep(10 * time.Millisecond)
+			atomic.AddInt32(&activeCount, -1)
+		}()
+	}
+
+	wg.Wait()
+
+	// проверяем, что максимум одновременных горутин не превышал capacity
+	assert.LessOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(capacity),
+		"Максимум одновременных операций должен быть <= capacity")
+}
+
+// TestSemaphore_StressTest Stress-тест семафора с большим числом горутин.
+func TestSemaphore_StressTest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping stress test in short mode")
+	}
+
+	capacity := 10
+	s := newSemaphore(capacity)
+	var activeCount int32
+	var maxConcurrent int32
+
+	var wg sync.WaitGroup
+	// Запускаем 1000 горутин
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Acquire()
+			defer s.Release()
+
+			current := atomic.AddInt32(&activeCount, 1)
+			defer atomic.AddInt32(&activeCount, -1)
+
+			// обновляем максимум
+			for {
+				max := atomic.LoadInt32(&maxConcurrent)
+				if current <= max {
+					break
+				}
+				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
+					break
+				}
+			}
+
+			// минимальная работа
+			time.Sleep(1 * time.Millisecond)
+		}()
+	}
+
+	wg.Wait()
+
+	assert.LessOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(capacity),
+		"Максимум одновременных операций должен быть <= capacity")
+}
+
+// ============ Тесты checkServerStatus ============
+
+// TestCheckServerStatus_AllCombinations Тестирует все комбинации доступности каналов.
+func TestCheckServerStatus_AllCombinations(t *testing.T) {
+	tests := []struct {
+		name           string
+		winrmOK        bool
+		icmpOK         bool
+		expectedStatus string
+	}{
+		{"OK - оба доступны", true, true, "OK"},
+		{"Unreachable - оба недоступны", false, false, "Unreachable"},
+		{"Degraded - только WinRM", true, false, "Degraded"},
+		{"Degraded - только ICMP", false, true, "Degraded"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			checker := netutilsMocks.NewMockChecker(ctrl)
+			cache := mocks.NewMockStatusCacheStorage(ctrl)
+
+			srv := &models.ServerStatus{ServerID: 1, Address: "10.0.0.1"}
+
+			checker.EXPECT().
+				CheckWinRM(gomock.Any(), "10.0.0.1", "5985", time.Duration(0)).
+				Return(tt.winrmOK)
+
+			checker.EXPECT().
+				CheckICMP(gomock.Any(), "10.0.0.1", time.Duration(0)).
+				Return(tt.icmpOK)
+
+			cache.EXPECT().
+				Set(gomock.AssignableToTypeOf(models.ServerStatus{})).
+				Do(func(st models.ServerStatus) {
+					assert.Equal(t, tt.expectedStatus, st.Status)
+				})
+
+			err := checkServerStatus(context.Background(), srv, cache, checker, "5985")
+			assert.NoError(t, err)
 		})
 	}
 }

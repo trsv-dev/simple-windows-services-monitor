@@ -52,12 +52,24 @@ func (s *semaphore) Release() {
 // Взаимодействие с хранилищем осуществляется через узкий интерфейс WorkerStorage,
 // что позволяет изолировать воркер от конкретной реализации хранилища
 // и упростить тестирование.
-func ServerStatusWorker(ctx context.Context, storage storage.WorkerStorage, statusCache health_storage.StatusCacheStorage, winrmPort string, interval time.Duration) {
-	checker := netutils.NewNetworkChecker()
+func ServerStatusWorker(ctx context.Context,
+	storage storage.WorkerStorage,
+	statusCache health_storage.StatusCacheStorage,
+	netChecker netutils.Checker,
+	winrmPort string,
+	interval time.Duration,
+) {
+	//checker := netutils.NewNetworkChecker()
 
 	semaphore := newSemaphore(5)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	var wg sync.WaitGroup
+
+	defer func() {
+		wg.Wait()
+	}()
 
 	retryAfter := 1 * time.Second
 	maxRetry := 30 * time.Second
@@ -90,32 +102,46 @@ func ServerStatusWorker(ctx context.Context, storage storage.WorkerStorage, stat
 			// успешный вызов — сбрасываем интервал
 			retryAfter = 1 * time.Second
 
-			var wg sync.WaitGroup
-
-			for _, server := range servers {
-				wg.Add(1)
-				s := server
-				go func(srv *models.ServerStatus) {
-					semaphore.Acquire()
-					defer wg.Done()
-					defer semaphore.Release()
-
-					// проверяем доступность сервера и записываем статус
-					checkServerStatus(ctx, srv, statusCache, checker, winrmPort)
-				}(s)
+			if len(servers) <= 0 {
+				continue
 			}
 
-			wg.Wait()
+			for _, server := range servers {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					wg.Add(1)
+					s := server
+					go func(srv *models.ServerStatus) {
+						semaphore.Acquire()
+						defer wg.Done()
+						defer semaphore.Release()
+
+						// проверяем доступность сервера и записываем статус
+						// если из checkServerStatus вернулась ошибка - пропускаем сервер
+						if checkServerErr := checkServerStatus(ctx, srv, statusCache, netChecker, winrmPort); checkServerErr != nil {
+							logger.Log.Debug("Ошибка проверки статуса сервера",
+								logger.Int64("server_id", srv.ServerID),
+								logger.String("address", srv.Address),
+								logger.String("error", checkServerErr.Error()),
+							)
+							return
+						}
+					}(s)
+				}
+			}
 		}
 	}
 }
 
-func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusCache health_storage.StatusCacheStorage, checker *netutils.NetworkChecker, winrmPort string) {
+// Вычисление статуса сервера (CheckWinRM, CheckICMP) и запись модели статуса сервера в in-memory хранилище статусов.
+func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusCache health_storage.StatusCacheStorage, netChecker netutils.Checker, winrmPort string) error {
 	var status string
 
 	// вычисляем состояние один раз
-	winrmOK := checker.CheckWinRM(ctx, server.Address, winrmPort, 0)
-	icmpOK := checker.CheckICMP(ctx, server.Address, 0)
+	winrmOK := netChecker.CheckWinRM(ctx, server.Address, winrmPort, 0)
+	icmpOK := netChecker.CheckICMP(ctx, server.Address, 0)
 
 	switch {
 	case winrmOK && icmpOK:
@@ -131,7 +157,12 @@ func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusC
 		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
 	}
 
-	logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
+	serverStatus := models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: status}
 
-	statusCache.Set(models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: status})
+	if err := serverStatus.ValidateStatus(status); err != nil {
+		return err
+	}
+
+	statusCache.Set(serverStatus)
+	return nil
 }

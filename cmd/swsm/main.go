@@ -19,6 +19,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/di_containers"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/netutils"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/server"
 	storage "github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres"
@@ -85,9 +86,12 @@ func main() {
 	// создаем in-memory хранилище для мониторинга статусов серверов
 	statusCache := health_storage.NewStatusCache()
 
+	// создаем сетевой чекер
+	netChecker := netutils.NewNetworkChecker()
+
 	// создаём handlersContainer — контейнер зависимостей для всех хендлеров,
-	// передаём в него хранилище, JWT ключ и SSE адаптер
-	handlersContainer := di_containers.NewHandlersContainer(handlersStorage, statusCache, srvConfig, broadcaster, tokenBuilder)
+	// передаём в него хранилище, JWT ключ, SSE адаптер и инструмент проверки серверов по сети
+	handlersContainer := di_containers.NewHandlersContainer(handlersStorage, statusCache, srvConfig, broadcaster, tokenBuilder, netChecker)
 
 	// запуск HTTP-сервера,
 	// передаём готовый handlersContainer, содержащий все зависимости
@@ -106,7 +110,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, srvConfig.WinRMPort, interval)
+		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, netChecker, srvConfig.WinRMPort, interval)
 	}()
 
 	// если работаем с web-интерфейсом - запускаем воркер BroadcastWorker для публикации статусов служб через SSE

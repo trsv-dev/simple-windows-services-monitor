@@ -148,7 +148,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 				mockStatus := models.ServerStatus{
 					ServerID: 1,
 					Address:  "192.168.0.1",
-					Status:   "online",
+					Status:   "OK",
 				}
 				m.EXPECT().
 					GetServer(gomock.Any(), int64(1), int64(1)).
@@ -164,7 +164,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			wantStatusContent: models.ServerStatus{
 				ServerID: 1,
 				Address:  "192.168.0.1",
-				Status:   "online",
+				Status:   "OK",
 			},
 			wantErr: false,
 		},
@@ -224,7 +224,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 				mockStatus := models.ServerStatus{
 					ServerID: 1,
 					Address:  "10.0.0.1",
-					Status:   "offline",
+					Status:   "Unreachable",
 				}
 				m.EXPECT().
 					GetServer(gomock.Any(), int64(1), int64(1)).
@@ -240,7 +240,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			wantStatusContent: models.ServerStatus{
 				ServerID: 1,
 				Address:  "10.0.0.1",
-				Status:   "offline",
+				Status:   "Unreachable",
 			},
 			wantErr: false,
 		},
