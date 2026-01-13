@@ -61,6 +61,20 @@ func (mr *MockStatusCacheStorageMockRecorder) Get(arg0 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockStatusCacheStorage)(nil).Get), arg0)
 }
 
+// GetAllServerStatusesByUser mocks base method.
+func (m *MockStatusCacheStorage) GetAllServerStatusesByUser(arg0 int64) []models.ServerStatus {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllServerStatusesByUser", arg0)
+	ret0, _ := ret[0].([]models.ServerStatus)
+	return ret0
+}
+
+// GetAllServerStatusesByUser indicates an expected call of GetAllServerStatusesByUser.
+func (mr *MockStatusCacheStorageMockRecorder) GetAllServerStatusesByUser(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllServerStatusesByUser", reflect.TypeOf((*MockStatusCacheStorage)(nil).GetAllServerStatusesByUser), arg0)
+}
+
 // Set mocks base method.
 func (m *MockStatusCacheStorage) Set(arg0 models.ServerStatus) {
 	m.ctrl.T.Helper()

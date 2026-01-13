@@ -8,17 +8,15 @@ import (
 
 // StatusCache Структура для хранения статуса сервера.
 type StatusCache struct {
-	mu    *sync.RWMutex
+	mu    sync.RWMutex
 	cache map[int64]models.ServerStatus
 }
 
 // NewStatusCache Конструктор StatusCache.
 func NewStatusCache() *StatusCache {
-	mu := new(sync.RWMutex)
 	cache := make(map[int64]models.ServerStatus)
 
 	return &StatusCache{
-		mu:    mu,
 		cache: cache,
 	}
 }
@@ -27,6 +25,11 @@ func NewStatusCache() *StatusCache {
 func (sc *StatusCache) Set(s models.ServerStatus) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
+
+	old, ok := sc.cache[s.ServerID]
+	if ok && old.Status == s.Status {
+		return
+	}
 
 	sc.cache[s.ServerID] = s
 }
@@ -47,4 +50,20 @@ func (sc *StatusCache) Delete(id int64) {
 	defer sc.mu.Unlock()
 
 	delete(sc.cache, id)
+}
+
+// GetAllServerStatusesByUser Получение всех статусов серверов пользователя.
+func (sc *StatusCache) GetAllServerStatusesByUser(userID int64) []models.ServerStatus {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+
+	var res []models.ServerStatus
+
+	for _, s := range sc.cache {
+		if s.UserID == userID {
+			res = append(res, s)
+		}
+	}
+
+	return res
 }

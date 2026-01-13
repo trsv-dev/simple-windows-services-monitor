@@ -157,7 +157,7 @@ func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusC
 		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
 	}
 
-	serverStatus := models.ServerStatus{ServerID: server.ServerID, Address: server.Address, Status: status}
+	serverStatus := models.ServerStatus{ServerID: server.ServerID, UserID: server.UserID, Address: server.Address, Status: status}
 
 	if err := serverStatus.ValidateStatus(status); err != nil {
 		return err

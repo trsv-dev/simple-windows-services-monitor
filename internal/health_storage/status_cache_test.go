@@ -31,7 +31,7 @@ func TestNewStatusCache(t *testing.T) {
 
 	// проверяем, что кэш и его поля инициализированы корректно
 	assert.NotNil(t, cache, "statusCache не должен быть nil")
-	assert.NotNil(t, cache.mu, "mutex не должен быть nil")
+	//assert.NotNil(t, cache.mu, "mutex не должен быть nil")
 	assert.NotNil(t, cache.cache, "кэш не должен быть nil")
 	assert.Empty(t, cache.cache, "кэш должен быть пустым при создании")
 }
@@ -231,6 +231,112 @@ func TestStatusCacheEmptyStatus(t *testing.T) {
 	assert.Equal(t, "192.168.1.10", retrieved.Address)
 }
 
+// TestStatusCacheGetAllServerStatusesByUser_EmptyCache
+// Проверяет, что для пустого кэша возвращается пустой слайс.
+func TestStatusCacheGetAllServerStatusesByUser_EmptyCache(t *testing.T) {
+	cache := NewStatusCache()
+
+	res := cache.GetAllServerStatusesByUser(1)
+
+	assert.Empty(t, res)
+}
+
+// TestStatusCacheGetAllServerStatusesByUser_NoMatch
+// В кэше есть элементы, но ни один не принадлежит указанному пользователю.
+func TestStatusCacheGetAllServerStatusesByUser_NoMatch(t *testing.T) {
+	cache := NewStatusCache()
+
+	cache.Set(models.ServerStatus{ServerID: 1, UserID: 10, Address: "192.168.1.10", Status: "OK"})
+	cache.Set(models.ServerStatus{ServerID: 2, UserID: 20, Address: "192.168.1.20", Status: "OK"})
+
+	res := cache.GetAllServerStatusesByUser(999)
+
+	assert.Empty(t, res)
+}
+
+// TestStatusCacheGetAllServerStatusesByUser_SingleMatch
+// В кэше несколько статусов, но только один принадлежит пользователю.
+func TestStatusCacheGetAllServerStatusesByUser_SingleMatch(t *testing.T) {
+	cache := NewStatusCache()
+
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 2, Address: "192.168.1.20", Status: "Unreachable"}
+
+	cache.Set(s1)
+	cache.Set(s2)
+
+	res := cache.GetAllServerStatusesByUser(1)
+
+	require.Len(t, res, 1)
+	assert.Equal(t, s1, res[0])
+}
+
+// TestStatusCacheGetAllServerStatusesByUser_MultipleMatch
+// Для пользователя несколько серверов, проверяем, что возвращаются все.
+func TestStatusCacheGetAllServerStatusesByUser_MultipleMatch(t *testing.T) {
+	cache := NewStatusCache()
+
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "Unreachable"}
+	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: "OK"}
+
+	cache.Set(s1)
+	cache.Set(s2)
+	cache.Set(s3)
+
+	res := cache.GetAllServerStatusesByUser(1)
+
+	// порядок итерации по мапе не гарантирован, поэтому лучше собрать id в map/set
+	require.Len(t, res, 2)
+
+	ids := make(map[int64]struct{})
+	for _, s := range res {
+		require.Equal(t, int64(1), s.UserID)
+		ids[s.ServerID] = struct{}{}
+	}
+
+	_, ok1 := ids[1]
+	_, ok2 := ids[2]
+	assert.True(t, ok1)
+	assert.True(t, ok2)
+}
+
+// TestStatusCacheGetAllServerStatusesByUser_AfterUpdatesAndDeletes
+// Проверяет корректность результата после обновлений и удалений.
+func TestStatusCacheGetAllServerStatusesByUser_AfterUpdatesAndDeletes(t *testing.T) {
+	cache := NewStatusCache()
+
+	// два сервера пользователя 1
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "OK"}
+	// сервер другого пользователя
+	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: "Unreachable"}
+
+	cache.Set(s1)
+	cache.Set(s2)
+	cache.Set(s3)
+
+	// обновляем статус одного сервера пользователя 1
+	updatedS2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "Unreachable"}
+	cache.Set(updatedS2)
+
+	// удаляем сервер другого пользователя
+	cache.Delete(3)
+
+	res := cache.GetAllServerStatusesByUser(1)
+
+	require.Len(t, res, 2)
+
+	// аналогично, проверяем по id, т.к. порядок не гарантирован
+	byID := make(map[int64]models.ServerStatus)
+	for _, s := range res {
+		byID[s.ServerID] = s
+	}
+
+	assert.Equal(t, s1, byID[1])
+	assert.Equal(t, updatedS2, byID[2])
+}
+
 // ============================================================================
 // ТЕСТЫ КОНКУРЕНТНОСТИ
 // ============================================================================
@@ -422,6 +528,44 @@ func TestStatusCacheGetSetConcurrent(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, int64(1), finalStatus.ServerID)
 	assert.Equal(t, "192.168.1.10", finalStatus.Address)
+}
+
+// TestStatusCacheGetAllServerStatusesByUser_ConcurrentAccess
+// Проверяет конкурентное чтение GetAllServerStatusesByUser при одновременных Set.
+func TestStatusCacheGetAllServerStatusesByUser_ConcurrentAccess(t *testing.T) {
+	cache := NewStatusCache()
+	userID := int64(1)
+	iterations := 100
+
+	var wg sync.WaitGroup
+
+	// писатели
+	for i := 0; i < iterations; i++ {
+		wg.Add(1)
+		go func(id int64) {
+			defer wg.Done()
+			cache.Set(models.ServerStatus{
+				ServerID: id,
+				UserID:   userID,
+				Address:  "192.168.1.10",
+				Status:   "OK",
+			})
+		}(int64(i))
+	}
+
+	// читатели
+	for i := 0; i < iterations; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = cache.GetAllServerStatusesByUser(userID)
+		}()
+	}
+
+	wg.Wait()
+
+	res := cache.GetAllServerStatusesByUser(userID)
+	assert.True(t, len(res) <= iterations)
 }
 
 // ============================================================================
@@ -787,6 +931,76 @@ func TestMockComplexWorkflow(t *testing.T) {
 	assert.Equal(t, status2, st2)
 	assert.False(t, f2After)
 	assert.Equal(t, models.ServerStatus{}, st2After)
+}
+
+// TestMockGetAllServerStatusesByUser_Basic
+// Проверяет базовый вызов метода GetAllServerStatusesByUser у мока.
+func TestMockGetAllServerStatusesByUser_Basic(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
+
+	userID := int64(1)
+	statuses := []models.ServerStatus{
+		{ServerID: 1, UserID: userID, Address: "192.168.1.10", Status: "OK"},
+		{ServerID: 2, UserID: userID, Address: "192.168.1.20", Status: "Unreachable"},
+	}
+
+	mockStorage.EXPECT().
+		GetAllServerStatusesByUser(gomock.Eq(userID)).
+		Return(statuses).
+		Times(1)
+
+	res := mockStorage.GetAllServerStatusesByUser(userID)
+
+	assert.Equal(t, statuses, res)
+}
+
+// TestMockGetAllServerStatusesByUser_Empty
+// Проверяет, что мок может возвращать пустой слайс.
+func TestMockGetAllServerStatusesByUser_Empty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
+
+	userID := int64(999)
+
+	mockStorage.EXPECT().
+		GetAllServerStatusesByUser(gomock.Eq(userID)).
+		Return([]models.ServerStatus{}).
+		Times(1)
+
+	res := mockStorage.GetAllServerStatusesByUser(userID)
+
+	assert.Empty(t, res)
+}
+
+// TestMockGetAllServerStatusesByUser_AnyUserID
+// Проверяет вызовы с любым userID.
+func TestMockGetAllServerStatusesByUser_AnyUserID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
+
+	statuses := []models.ServerStatus{
+		{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"},
+	}
+
+	mockStorage.EXPECT().
+		GetAllServerStatusesByUser(gomock.Any()).
+		Return(statuses).
+		Times(3)
+
+	res1 := mockStorage.GetAllServerStatusesByUser(1)
+	res2 := mockStorage.GetAllServerStatusesByUser(2)
+	res3 := mockStorage.GetAllServerStatusesByUser(999)
+
+	assert.Equal(t, statuses, res1)
+	assert.Equal(t, statuses, res2)
+	assert.Equal(t, statuses, res3)
 }
 
 // ============================================================================

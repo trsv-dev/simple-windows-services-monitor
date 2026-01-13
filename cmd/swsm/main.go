@@ -75,7 +75,7 @@ func main() {
 		// используем r3labs/sse через адаптер, реализующий интерфейс SubscriberManager
 		// Используется для передачи событий во фронтенд.
 		// Если планируется использовать только API без фронтенда - broadcaster можно убрать из зависимостей AppHandler.
-		// Инициализировав broadcaster в main далее он используется в BroadcastWorker.
+		// Инициализировав broadcaster в main далее он используется в ServiceBroadcastWorker.
 		broadcaster = broadcast.NewR3labsSSEAdapter(
 			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey, tokenBuilder),
 		)
@@ -85,6 +85,14 @@ func main() {
 
 	// создаем in-memory хранилище для мониторинга статусов серверов
 	statusCache := health_storage.NewStatusCache()
+
+	// "прогрев" in-memory хранилища: загрузка существующих в БД серверов в in-memory кэш
+	ctx, done := context.WithCancel(context.Background())
+	defer done()
+
+	if warmUpErr := health_storage.WarmUpStatusCache(ctx, workersStorage, statusCache); warmUpErr != nil {
+		log.Fatal(warmUpErr.Error())
+	}
 
 	// создаем сетевой чекер
 	netChecker := netutils.NewNetworkChecker()
@@ -100,8 +108,10 @@ func main() {
 	srv, serverErrorCh := server.RunServer(srvConfig.RunAddress, handlersContainer)
 
 	// запускаем воркеры в отдельных горутинах:
-	// воркер worker.BroadcastWorker периодически опрашивает БД и публикует обновления статусов служб через SSE,
-	// воркер worker.ServerStatusWorker периодически достает из БД слайс всех серверов и получает их статус, сохраняя его в in-memory хранилище.
+	// - воркер worker.ServiceBroadcastWorker периодически опрашивает БД и публикует обновления статусов служб через SSE,
+	// - воркер worker.ServerStatusWorker периодически достает из БД слайс всех серверов и получает их статус, сохраняя его в in-memory хранилище,
+	// - воркер worker.StatusBroadcastWorker периодически "дергает" in-memory хранилище статусов серверов
+	// и публикует статусы серверов пользователей через через SSE
 	workersCtx, workersCtxCancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
@@ -113,14 +123,21 @@ func main() {
 		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, netChecker, srvConfig.WinRMPort, interval)
 	}()
 
-	// если работаем с web-интерфейсом - запускаем воркер BroadcastWorker для публикации статусов служб через SSE
+	// если работаем с web-интерфейсом - запускаем воркер ServiceBroadcastWorker для публикации статусов служб через SSE
+	// и StatusBroadcastWorker для публикации статусов серверов через SSE
 	if srvConfig.WebInterface {
-		// запуск воркер BroadcastWorker
-
+		// запуск воркер ServiceBroadcastWorker
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.BroadcastWorker(workersCtx, handlersStorage, broadcaster, interval)
+			worker.ServiceBroadcastWorker(workersCtx, handlersStorage, broadcaster, interval)
+		}()
+
+		// запуск воркер StatusBroadcastWorker
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			worker.StatusBroadcastWorker(workersCtx, handlersStorage, statusCache, broadcaster, interval)
 		}()
 	}
 

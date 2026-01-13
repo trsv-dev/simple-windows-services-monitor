@@ -8,4 +8,5 @@ type StatusCacheStorage interface {
 	Set(s models.ServerStatus)
 	Get(id int64) (models.ServerStatus, bool)
 	Delete(id int64)
+	GetAllServerStatusesByUser(userID int64) []models.ServerStatus
 }

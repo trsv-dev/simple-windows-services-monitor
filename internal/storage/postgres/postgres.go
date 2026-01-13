@@ -697,7 +697,7 @@ func (pg *PgStorage) Close() error {
 }
 
 // ListServersAddresses Возвращает список всех зарегистрированных серверов
-// с минимально необходимыми данными — идентификатором и сетевым адресом.
+// с минимально необходимыми данными — id сервера, id пользователя и сетевым адресом.
 //
 // Метод используется фоновыми воркерами для получения перечня серверов,
 // которые необходимо периодически опрашивать или мониторить.
@@ -705,7 +705,7 @@ func (pg *PgStorage) Close() error {
 // Результат упорядочен по идентификатору сервера, чтобы обеспечить
 // детерминированный порядок обработки.
 func (pg *PgStorage) ListServersAddresses(ctx context.Context) ([]*models.ServerStatus, error) {
-	query := `SELECT id, address FROM servers ORDER BY id`
+	query := `SELECT id, address, user_id FROM servers ORDER BY id`
 
 	rows, err := pg.DB.QueryContext(ctx, query)
 	if err != nil {
@@ -718,7 +718,7 @@ func (pg *PgStorage) ListServersAddresses(ctx context.Context) ([]*models.Server
 
 	for rows.Next() {
 		var server models.ServerStatus
-		err = rows.Scan(&server.ServerID, &server.Address)
+		err = rows.Scan(&server.ServerID, &server.Address, &server.UserID)
 		if err != nil {
 			logger.Log.Error("ошибка парсинга запроса на получение всех серверов", logger.String("err", err.Error()))
 			return nil, err
