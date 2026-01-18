@@ -25,6 +25,19 @@ func MakeJWTTopicResolver(JWTSecretKey string, tokenBuilder auth.TokenBuilder) T
 			return "", errors.New("неверный id пользователя")
 		}
 
-		return fmt.Sprintf("user-%d", claims.ID), nil
+		// тип потока (servers / services)
+		stream := r.URL.Query().Get("stream")
+		if stream == "" {
+			return "", errors.New("параметр запроса stream обязателен")
+		}
+
+		switch stream {
+		case "servers", "services":
+			// OK
+		default:
+			return "", errors.New("неизвестный тип потока")
+		}
+
+		return fmt.Sprintf("user-%d:%s", claims.ID, stream), nil
 	}
 }

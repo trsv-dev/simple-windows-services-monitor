@@ -48,7 +48,7 @@ func publishServerStatuses(ctx context.Context, storage storage.Storage, statusC
 			return err
 		}
 
-		topic := fmt.Sprintf("user-%d", user.ID)
+		topic := fmt.Sprintf("user-%d:servers", user.ID)
 		if err := publisher.Publish(topic, b); err != nil {
 			return err
 		}

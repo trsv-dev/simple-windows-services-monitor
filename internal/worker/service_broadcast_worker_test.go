@@ -59,12 +59,12 @@ func TestFetchAndPublishSuccess(t *testing.T) {
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(nil)
 
 	// Publish для второго пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-2", gomock.Any()).
+		Publish("user-2:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -129,7 +129,7 @@ func TestFetchAndPublishGetUserServiceStatusesError(t *testing.T) {
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -168,7 +168,7 @@ func TestFetchAndPublishPublishError(t *testing.T) {
 
 	// Publish возвращает ошибку
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(errors.New("publish error"))
 
 	ctx := context.Background()
@@ -248,7 +248,7 @@ func TestFetchAndPublishTopicFormat(t *testing.T) {
 
 	// проверяем что топик имеет правильный формат: "user-{id}"
 	mockBroadcaster.EXPECT().
-		Publish("user-123", gomock.Any()).
+		Publish("user-123:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -285,7 +285,7 @@ func TestFetchAndPublishJsonEncoding(t *testing.T) {
 
 	// проверяем что данные корректно закодированы
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)
@@ -439,7 +439,7 @@ func TestFetchAndPublishMultipleStatusesPerUser(t *testing.T) {
 		Return(statuses, nil)
 
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)

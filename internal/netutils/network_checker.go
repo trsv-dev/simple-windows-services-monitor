@@ -13,7 +13,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 )
 
-const DefaultHostTimeout = 2 * time.Second
+const DefaultHostTimeout = 1 * time.Second
 
 // NetworkChecker Реализация проверки доступности.
 type NetworkChecker struct{}
@@ -118,7 +118,8 @@ func (nc *NetworkChecker) CheckICMP(ctx context.Context, address string, timeout
 
 	pinger.SetPrivileged(true)
 
-	pinger.Count = 3
+	pinger.Count = 1
+	pinger.Interval = 200 * time.Millisecond
 	pinger.Timeout = timeout
 
 	// создаем канал булевых значений ёмкостью 1

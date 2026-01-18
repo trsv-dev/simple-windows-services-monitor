@@ -61,6 +61,11 @@ let servicePollingInterval = null;
 let sseReconnectAttempts = 0;
 let sseConnectionStatus = 'closed'; // 'closed', 'connecting', 'open'
 
+let serverEventsSource = null;
+let serverPollingInterval = null;
+let serverSseReconnectTimerId = null;
+let serverSseReconnectAttempts = 0;
+
 // Rate limiting map (actionName -> timestamp)
 const REQUEST_RATE_LIMIT = new Map();
 
@@ -123,6 +128,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (currentUser) {
         showMainApp();
+
+        // Всегда подписываемся на события серверов
+        subscribeServerEvents();
 
         if (currentServerId) {
             currentServerId = parseInt(currentServerId);
@@ -196,6 +204,17 @@ function getMinItemsForPagination(type) {
         return isMobile ? CONFIG.MIN_SERVERS_PAGINATION_MOBILE : CONFIG.MIN_SERVERS_PAGINATION_DESKTOP;
     }
     return 0;
+}
+
+function getServerStatusClass(status) {
+    const normalized = (status || '').toUpperCase();
+    switch (normalized) {
+        case 'OK': return 'server-status-ok';
+        case 'DEGRADED': return 'server-status-degraded';
+        case 'DOWN':
+        case 'UNREACHABLE': return 'server-status-down';
+        default: return 'server-status-pending';
+    }
 }
 
 // named resize handler so we can reason about it
@@ -446,7 +465,7 @@ function subscribeServiceEvents(serverId) {
         sseReconnectTimerId = null;
     }
 
-    const url = `${API_BASE}/user/broadcasting`;
+    const url = `${API_BASE}/user/broadcasting?stream=services`;
 
     try {
         serviceEventsSource = new EventSource(url, { withCredentials: true });
@@ -510,6 +529,111 @@ function subscribeServiceEvents(serverId) {
     };
 }
 
+function subscribeServerEvents() {
+    if (isMobileDevice()) {
+        startServerPolling();
+        return;
+    }
+
+    if (serverEventsSource &&
+        (serverEventsSource.readyState === EventSource.OPEN ||
+            serverEventsSource.readyState === EventSource.CONNECTING)) {
+        return;
+    }
+
+    if (serverEventsSource) {
+        try { serverEventsSource.close(); } catch (e) {}
+        serverEventsSource = null;
+    }
+
+    if (serverSseReconnectTimerId) {
+        try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(serverSseReconnectTimerId);
+        serverSseReconnectTimerId = null;
+    }
+
+    const url = `${API_BASE}/user/broadcasting?stream=servers`;
+
+    try {
+        serverEventsSource = new EventSource(url, { withCredentials: true });
+    } catch (e) {
+        console.error('Не удалось создать EventSource для серверов:', e);
+        // Если SSE не работает, запускаем поллинг как fallback
+        startServerPolling();
+        return;
+    }
+
+    serverSseReconnectAttempts = 0;
+
+    serverEventsSource.onopen = function () {
+        serverSseReconnectAttempts = 0;
+        if (serverSseReconnectTimerId) {
+            try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+            AppTimers.timeouts.delete(serverSseReconnectTimerId);
+            serverSseReconnectTimerId = null;
+        }
+    };
+
+    serverEventsSource.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+
+            // Если мы в деталях сервера - фильтруем только текущий сервер
+            if (!serversListView.classList.contains('hidden') && serverDetailView.classList.contains('hidden')) {
+                // В списке серверов - обновляем все
+                updateServersStatus(data);
+            } else {
+                // В деталях сервера - фильтруем только текущий
+                if (currentServerId) {
+                    const filtered = data.filter(s => s.server_id === currentServerId);
+                    if (filtered.length > 0) {
+                        updateServersStatus(filtered);
+                    }
+                }
+            }
+            serverSseReconnectAttempts = 0;
+        } catch (err) {
+            console.error('Ошибка разбора данных SSE (servers):', err);
+        }
+    };
+
+    serverEventsSource.onerror = function (err) {
+        console.error('Ошибка SSE (servers):', err);
+        if (serverSseReconnectAttempts >= CONFIG.SSE_MAX_RECONNECTS) {
+            try { serverEventsSource.close(); } catch (e) {}
+            serverEventsSource = null;
+            // При неудаче переключаемся на поллинг
+            startServerPolling();
+
+            // Очищаем таймер переподключения
+            if (serverSseReconnectTimerId) {
+                try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+                AppTimers.timeouts.delete(serverSseReconnectTimerId);
+                serverSseReconnectTimerId = null;
+            }
+            return;
+        }
+
+        const delay = CONFIG.SSE_RECONNECT_DELAYS[serverSseReconnectAttempts] || 30000;
+        serverSseReconnectAttempts++;
+
+        if (serverSseReconnectTimerId) {
+            try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+            AppTimers.timeouts.delete(serverSseReconnectTimerId);
+            serverSseReconnectTimerId = null;
+        }
+
+        serverSseReconnectTimerId = setTimeout(() => {
+            // Сохраняем ссылку на текущий ID перед очисткой
+            const timerId = serverSseReconnectTimerId;
+            AppTimers.timeouts.delete(timerId);
+            serverSseReconnectTimerId = null;
+            subscribeServerEvents();
+        }, delay);
+        AppTimers.addTimeout(serverSseReconnectTimerId);
+    };
+}
+
 function startServicePolling(serverId) {
     stopServicePolling();
 
@@ -563,7 +687,7 @@ function updateServicesStatus(statuses) {
 
     // Обновляем ТОЛЬКО статусы в уже загруженных данных
     // НЕ добавляем новые!
-    const statusMap = new Map(statuses.map(s => [s.id, s]));
+    const statusMap = new Map(statuses.map(s => [s.server_id, s]));
 
     // Обновление в памяти
     allServices.forEach(service => {
@@ -599,6 +723,101 @@ function updateServicesStatus(statuses) {
 
     // Обновляем метку времени последнего обновления
     lastServicesUpdateAt = Date.now();
+}
+
+function startServerPolling() {
+    stopServerPolling();
+
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
+
+    const id = setInterval(async () => {
+        if (document.hidden) {
+            return;
+        }
+
+        try {
+            // Если мы в списке серверов
+            if (!serversListView.classList.contains('hidden') && serverDetailView.classList.contains('hidden')) {
+                // Используем новый endpoint для получения статусов всех серверов
+                const statuses = await apiRequest('/user/servers/statuses');
+                if (Array.isArray(statuses)) {
+                    updateServersStatus(statuses);
+                    consecutiveErrors = 0;
+                }
+            } else {
+                // Мы в деталях сервера - поллим только текущий сервер
+                if (currentServerId) {
+                    try {
+                        const statusResponse = await apiRequest(`/user/servers/${currentServerId}/status`);
+                        updateServersStatus([{
+                            server_id: currentServerId,
+                            status: statusResponse.status || 'UNKNOWN'
+                        }]);
+                        consecutiveErrors = 0;
+                    } catch (error) {
+                        consecutiveErrors++;
+                        console.error(`Ошибка полинга текущего сервера (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
+
+                        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                            console.warn('Слишком много ошибок полинга текущего сервера. Остановка полинга.');
+                            stopServerPolling();
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            consecutiveErrors++;
+            console.error(`Ошибка полинга серверов (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
+
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                console.warn('Слишком много ошибок полинга серверов. Остановка полинга.');
+                stopServerPolling();
+            }
+        }
+    }, CONFIG.POLLING_INTERVAL);
+    AppTimers.addInterval(id);
+    serverPollingInterval = id;
+}
+
+function stopServerPolling() {
+    if (serverPollingInterval) {
+        try { clearInterval(serverPollingInterval); } catch (e) {}
+        AppTimers.intervals.delete(serverPollingInterval);
+        serverPollingInterval = null;
+    }
+}
+
+// ============================================
+// SERVER STATUS INDICATOR HELPER
+// ============================================
+function updateServerStatusIndicator(el, status) {
+    el.classList.remove(
+        'server-status-ok',
+        'server-status-degraded',
+        'server-status-down',
+        'server-status-pending'
+    );
+
+    if (!status) {
+        el.classList.add('server-status-pending');
+        return;
+    }
+
+    switch (status.toUpperCase()) {
+        case 'OK':
+            el.classList.add('server-status-ok');
+            break;
+        case 'DEGRADED':
+            el.classList.add('server-status-degraded');
+            break;
+        case 'DOWN':
+        case 'UNREACHABLE':
+            el.classList.add('server-status-down');
+            break;
+        default:
+            el.classList.add('server-status-pending');
+    }
 }
 
 // ============================================
@@ -645,6 +864,7 @@ async function handleLogin(event) {
         // Загружаем список серверов (не детали сервера)
         setTimeout(() => {
             showServersList();
+            subscribeServerEvents();
         }, 100);
 
     } catch (error) {
@@ -710,7 +930,20 @@ function cleanupOnLogout() {
         try { serviceEventsSource.close(); } catch (e) {}
         serviceEventsSource = null;
     }
+
+    if (serverSseReconnectTimerId) {
+        try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(serverSseReconnectTimerId);
+        serverSseReconnectTimerId = null;
+    }
+
+    if (serverEventsSource) {
+        try { serverEventsSource.close(); } catch (e) {}
+        serverEventsSource = null;
+    }
+
     stopServicePolling();
+    stopServerPolling();
     AppTimers.clearAll();
 
     // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
@@ -747,8 +980,33 @@ async function loadServersList() {
     showLoading();
 
     try {
+        // Получаем список серверов
         const servers = await apiRequest('/user/servers');
         allServers = (servers || []).slice(0, CONFIG.MAX_SERVERS_CACHE);
+
+        // Получаем статусы всех серверов
+        const statuses = await apiRequest('/user/servers/statuses');
+        if (Array.isArray(statuses)) {
+            // Обновляем статусы в allServers
+            const statusMap = new Map();
+            statuses.forEach(status => {
+                const serverId = Number(status.server_id);
+                if (!isNaN(serverId)) {
+                    statusMap.set(serverId, status);
+                }
+            });
+
+            allServers.forEach(server => {
+                const sid = Number(server.id || server.server_id);
+                if (!isNaN(sid)) {
+                    const status = statusMap.get(sid);
+                    if (status) {
+                        server.status = status.status || 'UNKNOWN';
+                    }
+                }
+            });
+        }
+
         serversCurrentPage = parseInt(localStorage.getItem(LS_SERVERS_PAGE_KEY) || '1', 10);
 
         // Проверяем, что сохранённая страница не выходит за границы
@@ -760,6 +1018,7 @@ async function loadServersList() {
         }
 
         renderServersCurrentPage();
+        subscribeServerEvents();
     } catch (error) {
         if (!(error instanceof SessionExpiredError)) {
             showToast('Ошибка', 'Не удалось загрузить список серверов', 'error');
@@ -775,11 +1034,9 @@ function renderServersList(servers) {
 
     if (!servers || servers.length === 0) {
         serversList.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-info text-center">
-                    <i class="bi bi-info-circle me-2"></i>
-                    Серверы не добавлены. Нажмите "Добавить сервер" для начала работы.
-                </div>
+            <div class="alert alert-info text-center">
+                <i class="bi bi-info-circle me-2"></i>
+                Серверы не добавлены. Нажмите "Добавить сервер" для начала работы.
             </div>
         `;
         return;
@@ -790,20 +1047,36 @@ function renderServersList(servers) {
         col.className = 'col-md-6 col-lg-4';
 
         const card = document.createElement('div');
-        card.className = 'card h-100 shadow-sm service-card';
+        card.className = 'card h-100 shadow-sm service-card server-card';
+        card.setAttribute('data-server-id', server.id);
 
         const body = document.createElement('div');
         body.className = 'card-body';
 
+        // Заголовок: лампочка + иконка + имя/адрес
         const title = document.createElement('h5');
-        title.className = 'card-title';
-        // иконка как HTML, данные через textContent
-        title.innerHTML = `<i class="bi bi-server me-2"></i>`;
-        const titleText = document.createTextNode(server.name || '');
+        title.className = 'card-title mb-2';
+
+        const indicator = document.createElement('span');
+        indicator.className = 'server-status-indicator me-2';
+        // привязка индикатора к id — полезно, но не обязательна
+        indicator.setAttribute('data-server-id', server.id);
+        // установить начальный цвет лампочки
+        updateServerStatusIndicator(indicator, server.status);
+
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-server me-2';
+
+        const titleText = document.createTextNode(server.name || server.address || '');
+
+        title.appendChild(indicator); // лампочка слева от имени
+        title.appendChild(icon);
         title.appendChild(titleText);
 
+        // Информационные строки (адрес, пользователь, дата, отпечаток)
         const p = document.createElement('p');
         p.className = 'card-text';
+
         const addr = document.createElement('small');
         addr.className = 'text-muted d-block';
         addr.innerHTML = `<i class="bi bi-geo-alt me-1"></i>`;
@@ -847,7 +1120,6 @@ function renderServersList(servers) {
         card.appendChild(body);
         card.appendChild(footer);
         col.appendChild(card);
-
         serversList.appendChild(col);
     });
 }
@@ -914,12 +1186,142 @@ async function loadServerDetail(serverId) {
 }
 
 function renderServerDetail(server) {
-    document.getElementById('serverBreadcrumb').textContent = server.name;
-    document.getElementById('serverDetailName').textContent = server.name;
-    document.getElementById('serverDetailAddress').textContent = server.address;
-    document.getElementById('serverDetailUsername').textContent = server.username;
-    document.getElementById('serverDetailCreated').textContent = new Date(server.created_at).toLocaleDateString('ru-RU');
-    document.getElementById('serverDetailFingerprint').textContent = server.fingerprint;
+    document.getElementById('serverBreadcrumb').textContent = server.name || '';
+
+    const nameEl = document.getElementById('serverDetailName');
+    if (nameEl) {
+        nameEl.textContent = '';
+
+        // Лампочка статуса
+        const indicator = document.createElement('span');
+        indicator.id = 'serverDetailIndicator';
+        indicator.className = 'server-status-indicator me-2';
+
+        // Устанавливаем статус из данных сервера
+        updateServerStatusIndicator(indicator, server.status || 'UNKNOWN');
+
+        // Иконка сервера
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-server me-2';
+
+        // Название сервера
+        const nameText = document.createTextNode(server.name || server.address || '');
+
+        nameEl.appendChild(indicator);
+        nameEl.appendChild(icon);
+        nameEl.appendChild(nameText);
+    }
+
+    // Текстовый статус
+    const detailStatusText = document.getElementById('serverDetailStatus') ||
+        document.querySelector('#serverDetailName .server-status-text');
+    if (detailStatusText) {
+        detailStatusText.textContent = server.status || '—';
+    }
+
+    const addrEl = document.getElementById('serverDetailAddress');
+    if (addrEl) addrEl.textContent = server.address || '';
+
+    const userEl = document.getElementById('serverDetailUsername');
+    if (userEl) userEl.textContent = server.username || '';
+
+    const createdEl = document.getElementById('serverDetailCreated');
+    if (createdEl) {
+        try {
+            createdEl.textContent = new Date(server.created_at).toLocaleDateString('ru-RU');
+        } catch {
+            createdEl.textContent = '';
+        }
+    }
+
+    const fpEl = document.getElementById('serverDetailFingerprint');
+    if (fpEl) fpEl.textContent = server.fingerprint || '';
+
+    currentServerId = server.id || server.server_id || null;
+}
+
+// updateServersStatus — принимает массив statuses (из SSE) и обновляет:
+// - in-memory allServers (если есть)
+// - карточки списка (.server-card)
+// - детальную карточку (если текущая открыта)
+function updateServersStatus(statuses) {
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+        return;
+    }
+
+    // Новый endpoint возвращает массив объектов ServerStatus
+    // Пример структуры: [{server_id: 1, status: "OK", ...}, ...]
+    const statusMap = new Map();
+    statuses.forEach(status => {
+        const serverId = Number(status.server_id);
+        if (!isNaN(serverId)) {
+            statusMap.set(serverId, status);
+        }
+    });
+
+    // 1) Обновляем in-memory кэш allServers
+    if (Array.isArray(allServers)) {
+        allServers.forEach(server => {
+            const sid = Number(server.id || server.server_id);
+            if (!isNaN(sid)) {
+                const updated = statusMap.get(sid);
+                if (updated) {
+                    server.status = updated.status || 'UNKNOWN';
+                    server.updated_at = updated.updated_at || server.updated_at;
+                }
+            }
+        });
+    }
+
+    // 2) Обновляем DOM-список: ищем все карточки .server-card
+    try {
+        document.querySelectorAll('.server-card').forEach(card => {
+            const attr = card.getAttribute('data-server-id');
+            const serverId = parseInt(attr, 10);
+            if (!Number.isFinite(serverId)) return;
+
+            const updated = statusMap.get(serverId);
+            if (!updated) return;
+
+            // Обновление текстового статуса (если есть элемент)
+            const statusEl = card.querySelector('.server-status-text');
+            if (statusEl && statusEl.textContent !== updated.status) {
+                statusEl.textContent = updated.status || '—';
+            }
+
+            // Обновление лампочки внутри карточки
+            const indicator = card.querySelector('.server-status-indicator');
+            if (indicator) {
+                updateServerStatusIndicator(indicator, updated.status);
+            }
+        });
+    } catch (e) {
+        console.error('updateServersStatus: error updating list DOM', e);
+    }
+
+    // 3) Обновляем карточку детального просмотра (если открыта)
+    try {
+        if (typeof currentServerId !== 'undefined' && currentServerId !== null) {
+            const cid = Number(currentServerId);
+            if (Number.isFinite(cid)) {
+                const updated = statusMap.get(cid);
+                if (updated) {
+                    const indicator = document.getElementById('serverDetailIndicator');
+                    if (indicator) {
+                        updateServerStatusIndicator(indicator, updated.status);
+                    }
+
+                    const detailStatusText = document.getElementById('serverDetailStatus') ||
+                        document.querySelector('#serverDetailName .server-status-text');
+                    if (detailStatusText) {
+                        detailStatusText.textContent = updated.status || '—';
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('updateServersStatus: error updating detail view', e);
+    }
 }
 
 async function handleDeleteServer() {
@@ -1595,6 +1997,21 @@ function setupEventListeners() {
     }
 }
 
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        handlePageBackground();
+        // Закрываем SSE для серверов
+        if (serverEventsSource) {
+            try { serverEventsSource.close(); } catch (e) {}
+            serverEventsSource = null;
+        }
+    } else {
+        handlePageResume();
+        // Переподключаемся к серверам
+        subscribeServerEvents();
+    }
+}, false);
+
 // ==========================================
 // PAGE VISIBILITY OPTIMIZATION (single handler)
 // ==========================================
@@ -1617,6 +2034,20 @@ function handlePageBackground() {
     }
 
     stopServicePolling();
+    stopServerPolling();
+
+    // Закрываем SSE для серверов
+    if (serverEventsSource) {
+        try { serverEventsSource.close(); } catch (e) {}
+        serverEventsSource = null;
+    }
+
+    // Очищаем таймер переподключения для серверов
+    if (serverSseReconnectTimerId) {
+        try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(serverSseReconnectTimerId);
+        serverSseReconnectTimerId = null;
+    }
 }
 
 const MIN_RESUME_INTERVAL = 1000;
@@ -1627,7 +2058,11 @@ function handlePageResume() {
     if (now - lastResumeTime < MIN_RESUME_INTERVAL) return;
     lastResumeTime = now;
 
+    // Если пользователь не авторизован - ничего не делаем
     if (!currentUser || !currentServerId) return;
+
+    // Переподключаемся к серверам (SSE или поллинг в зависимости от устройства)
+    subscribeServerEvents();
 
     // Попытка переподключиться к SSE
     if (!serviceEventsSource || (serviceEventsSource && serviceEventsSource.readyState === EventSource.CLOSED)) {
@@ -1658,15 +2093,6 @@ function handlePageResume() {
         }, 1200);
     }
 }
-
-document.addEventListener('visibilitychange', () => {
-    isPageVisible = !document.hidden;
-    if (document.hidden) {
-        handlePageBackground();
-    } else {
-        handlePageResume();
-    }
-}, false);
 
 // ============================================
 // SHOW/HIDE FUNCTIONS
@@ -1724,18 +2150,17 @@ function showServersList() {
     serversCurrentPage = 1;
     serversTotalPages = 1;
 
-    // Закрытие SSE
-    if (serviceEventsSource) {
-        try { serviceEventsSource.close(); } catch (e) {}
-        serviceEventsSource = null;
-        sseConnectionStatus = 'closed';
-    }
-
-    // Остановка полинга
+    // Остановка полинга служб
     stopServicePolling();
+
+    // Перезапускаем поллинг серверов (он теперь будет поллить все серверы)
+    stopServerPolling();
 
     // Загрузка списка серверов
     loadServersList();
+
+    // Подписываемся на события серверов (для мобильных - поллинг, для десктопа - SSE)
+    subscribeServerEvents();
 }
 
 function showServerDetail(serverId) {
@@ -1745,7 +2170,52 @@ function showServerDetail(serverId) {
     currentServerId = serverId;
     localStorage.setItem('swsm_current_server_id', serverId);
 
-    loadServerDetail(serverId);
+    // Подписываемся на обновления статусов серверов.
+    // Обратите внимание: для мобильных устройств это запустит поллинг,
+    // который теперь учитывает, что мы в деталях и будет поллить только текущий сервер
+    subscribeServerEvents();
+
+    // Попытка взять объект сервера из кеша allServers
+    let cached = null;
+    if (Array.isArray(allServers)) {
+        cached = allServers.find(s => Number(s.id || s.server_id) === Number(serverId));
+    }
+
+    if (cached) {
+        // используем кеш для немедленного рендера (включая статус)
+        currentServerData = cached;
+        renderServerDetail(cached);
+
+        // загружаем список служб без спиннера (silent = true)
+        loadServicesList(serverId, true).catch(err => {
+            console.warn('Ошибка загрузки служб при открытии деталки (silent):', err);
+            // fallback: запустим поллинг как запасной вариант
+            startServicePolling(serverId);
+        });
+
+        // Фоновый апдейт деталей сервера
+        let lastServerDetailRequestId = 0;
+        const requestId = ++lastServerDetailRequestId;
+
+        (async () => {
+            try {
+                const fresh = await apiRequest(`/user/servers/${serverId}`);
+                // Проверяем, актуален ли еще этот запрос
+                if (requestId === lastServerDetailRequestId && currentServerId === serverId) {
+                    fresh.status = cached.status || fresh.status;
+                    currentServerData = Object.assign({}, cached, fresh);
+                    renderServerDetail(currentServerData);
+                }
+            } catch (e) {
+                console.debug('Фоновый апдейт детальки не удался:', e);
+            }
+        })();
+    } else {
+        // если в кеше нет — делаем обычный запрос и рендерим как раньше
+        loadServerDetail(serverId);
+    }
+
+    // Подписываемся на SSE для служб этого сервера
     subscribeServiceEvents(serverId);
 }
 

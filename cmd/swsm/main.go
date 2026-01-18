@@ -111,33 +111,38 @@ func main() {
 	// - воркер worker.ServiceBroadcastWorker периодически опрашивает БД и публикует обновления статусов служб через SSE,
 	// - воркер worker.ServerStatusWorker периодически достает из БД слайс всех серверов и получает их статус, сохраняя его в in-memory хранилище,
 	// - воркер worker.StatusBroadcastWorker периодически "дергает" in-memory хранилище статусов серверов
-	// и публикует статусы серверов пользователей через через SSE
+	// и публикует статусы серверов пользователей через SSE
 	workersCtx, workersCtxCancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 
-	var interval time.Duration = 5 * time.Second
+	var statusWorkerInterval time.Duration = 60 * time.Second
+	poolSize := 100
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, netChecker, srvConfig.WinRMPort, interval)
+		worker.ServerStatusWorker(workersCtx, workersStorage, statusCache, netChecker, srvConfig.WinRMPort, statusWorkerInterval, poolSize)
 	}()
 
 	// если работаем с web-интерфейсом - запускаем воркер ServiceBroadcastWorker для публикации статусов служб через SSE
 	// и StatusBroadcastWorker для публикации статусов серверов через SSE
 	if srvConfig.WebInterface {
 		// запуск воркер ServiceBroadcastWorker
+		var serviceBroadcastInterval time.Duration = 5 * time.Second
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.ServiceBroadcastWorker(workersCtx, handlersStorage, broadcaster, interval)
+			worker.ServiceBroadcastWorker(workersCtx, handlersStorage, broadcaster, serviceBroadcastInterval)
 		}()
 
 		// запуск воркер StatusBroadcastWorker
+		statusBroadcastInterval := 2 * time.Second
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			worker.StatusBroadcastWorker(workersCtx, handlersStorage, statusCache, broadcaster, interval)
+			worker.StatusBroadcastWorker(workersCtx, handlersStorage, statusCache, broadcaster, statusBroadcastInterval)
 		}()
 	}
 

@@ -94,3 +94,38 @@ func (h *HealthHandler) ServerStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// ServersStatuses Возвращает массив статусов серверов пользователя, получая его из кэша health_storage.StatusCache.
+func (h *HealthHandler) ServersStatuses(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	creds := models.GetContextCreds(ctx)
+
+	servers, err := h.storage.ListServers(ctx, creds.UserID)
+
+	// если серверов у пользователя нет - возвращаем пустой срез серверов
+	if len(servers) == 0 {
+		servers = []*models.Server{}
+	}
+
+	// получаем статусы серверов из кэша, в который их пишет воркер ServerStatusWorker
+	statuses := make([]models.ServerStatus, 0, len(servers))
+
+	for _, server := range servers {
+		status, ok := h.statusCache.Get(server.ID)
+		if !ok {
+			logger.Log.Error(fmt.Sprintf("Статус сервера с ID=%d, Address=%s не найден", server.ID, server.Address))
+			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			continue
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err = json.NewEncoder(w).Encode(statuses); err != nil {
+		logger.Log.Error("Ошибка кодирования JSON", logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+		return
+	}
+}

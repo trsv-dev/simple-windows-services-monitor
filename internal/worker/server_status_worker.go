@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/health_storage"
@@ -13,27 +12,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
-// Внутренний семафор пакета для ограничения числа одновременно работающих горутин с checkServerStatus.
-type semaphore struct {
-	semaCh chan struct{}
-}
-
-// NewSemaphore Возвращает новый семафор.
-func newSemaphore(capacity int) *semaphore {
-	return &semaphore{make(chan struct{}, capacity)}
-}
-
-// Acquire Отправляем пустую структуру в канал semaCh.
-func (s *semaphore) Acquire() {
-	s.semaCh <- struct{}{}
-}
-
-// Release Из канала semaCh убирается пустая структура.
-func (s *semaphore) Release() {
-	<-s.semaCh
-}
-
-// ServerStatusWorker Фоновый воркер, предназначенный для периодической
+// ServerStatusWorker Фоновый воркер с пулом, предназначенный для периодической
 // проверки сетевой доступности зарегистрированных серверов.
 //
 // Воркер с заданным интервалом:
@@ -58,18 +37,31 @@ func ServerStatusWorker(ctx context.Context,
 	netChecker netutils.Checker,
 	winrmPort string,
 	interval time.Duration,
+	poolSize int,
 ) {
-	//checker := netutils.NewNetworkChecker()
+	// создаем пул воркеров
+	workerFunc := func(ctx context.Context, serverStatus *models.ServerStatus) {
+		if checkServerErr := checkServerStatus(ctx, serverStatus, statusCache, netChecker, winrmPort); checkServerErr != nil {
+			// проверяем доступность сервера и записываем статус
+			// если из checkServerStatus вернулась ошибка - пропускаем сервер
+			logger.Log.Debug("Ошибка проверки статуса сервера",
+				logger.Int64("server_id", serverStatus.ServerID),
+				logger.String("address", serverStatus.Address),
+				logger.String("error", checkServerErr.Error()),
+			)
+			return
+		}
+	}
 
-	semaphore := newSemaphore(5)
+	pool := NewStatusWorkerPool(poolSize, workerFunc)
+
+	// запускаем пул воркеров
+	pool.Start(ctx)
+	defer pool.Stop()
+
+	//semaphore := newSemaphore(20)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-
-	var wg sync.WaitGroup
-
-	defer func() {
-		wg.Wait()
-	}()
 
 	retryAfter := 1 * time.Second
 	maxRetry := 30 * time.Second
@@ -106,30 +98,26 @@ func ServerStatusWorker(ctx context.Context,
 				continue
 			}
 
-			for _, server := range servers {
+			// отправляем задачи в пул
+			var skipped int
+			for _, serverStatus := range servers {
 				select {
 				case <-ctx.Done():
 					return
 				default:
-					wg.Add(1)
-					s := server
-					go func(srv *models.ServerStatus) {
-						semaphore.Acquire()
-						defer wg.Done()
-						defer semaphore.Release()
-
-						// проверяем доступность сервера и записываем статус
-						// если из checkServerStatus вернулась ошибка - пропускаем сервер
-						if checkServerErr := checkServerStatus(ctx, srv, statusCache, netChecker, winrmPort); checkServerErr != nil {
-							logger.Log.Debug("Ошибка проверки статуса сервера",
-								logger.Int64("server_id", srv.ServerID),
-								logger.String("address", srv.Address),
-								logger.String("error", checkServerErr.Error()),
-							)
-							return
-						}
-					}(s)
+					if !pool.Submit(serverStatus) {
+						skipped++
+					}
 				}
+			}
+
+			if skipped > 0 {
+				total := len(servers)
+				submitted := total - skipped
+				logger.Log.Debug("Результат отправки задач",
+					logger.Int("total", total),
+					logger.Int("submitted", submitted),
+					logger.Int("skipped", skipped))
 			}
 		}
 	}
@@ -137,20 +125,24 @@ func ServerStatusWorker(ctx context.Context,
 
 // Вычисление статуса сервера (CheckWinRM, CheckICMP) и запись модели статуса сервера в in-memory хранилище статусов.
 func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusCache health_storage.StatusCacheStorage, netChecker netutils.Checker, winrmPort string) error {
+	// ограничиваем суммарное время проверки одного сервера
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	var status string
 
-	// вычисляем состояние один раз
-	winrmOK := netChecker.CheckWinRM(ctx, server.Address, winrmPort, 0)
-	icmpOK := netChecker.CheckICMP(ctx, server.Address, 0)
+	var winrmOK, icmpOK bool
 
-	switch {
-	case winrmOK && icmpOK:
-		status = "OK"
-	case !winrmOK && !icmpOK:
+	icmpOK = netChecker.CheckICMP(checkCtx, server.Address, 0)
+	if !icmpOK {
 		status = "Unreachable"
-	default:
-		// один из каналов (TCP или ICMP) не работает
-		status = "Degraded"
+	} else {
+		winrmOK = netChecker.CheckWinRM(checkCtx, server.Address, winrmPort, 0)
+		if winrmOK {
+			status = "OK"
+		} else {
+			status = "Degraded"
+		}
 	}
 
 	if status != "OK" {

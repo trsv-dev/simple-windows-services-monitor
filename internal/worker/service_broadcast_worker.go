@@ -56,7 +56,7 @@ func fetchAndPublish(ctx context.Context, storage storage.Storage, publisher bro
 		}
 
 		// топик для конкретного пользователя создается в методе HTTPHandler()
-		topic := fmt.Sprintf("user-%d", user.ID)
+		topic := fmt.Sprintf("user-%d:services", user.ID)
 		if err = publisher.Publish(topic, b); err != nil {
 			return err
 		}

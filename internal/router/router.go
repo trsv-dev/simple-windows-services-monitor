@@ -32,9 +32,9 @@ func Router(h *di_containers.HandlersContainer) chi.Router {
 		r.Handle("/broadcasting", h.AppHandler.Broadcaster.HTTPHandler())
 
 		// маршруты БЕЗ ServerID параметра
-		r.Post("/servers", h.ServerHandler.AddServer)    // создание сервера
-		r.Get("/servers", h.ServerHandler.GetServerList) // список серверов пользователя
-		//r.Get("/servers/statuses", h.HealthHandler.ServersStatuses) // статусы серверов пользователя
+		r.Post("/servers", h.ServerHandler.AddServer)               // создание сервера
+		r.Get("/servers", h.ServerHandler.GetServerList)            // список серверов пользователя
+		r.Get("/servers/statuses", h.HealthHandler.ServersStatuses) // статусы серверов пользователя
 
 		// маршруты С serverID параметром
 		r.Route("/servers/{serverID}", func(r chi.Router) {

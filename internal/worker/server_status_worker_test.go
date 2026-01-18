@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -218,8 +216,8 @@ func TestServerStatusWorker(t *testing.T) {
 			defer cancel()
 
 			// запускаем воркер в отдельной горутине
-			//go serverStatusWorkerWithChecker(ctx, mockStorage, mockCache, mockChecker, "5985", tt.interval)
-			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", tt.interval)
+			poolSize := 100
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", tt.interval, poolSize)
 
 			// ждём завершения воркера
 			<-ctx.Done()
@@ -234,7 +232,6 @@ func TestServerStatusWorker(t *testing.T) {
 
 // ============ Тесты статусов серверов ============
 
-// TestServerStatusWorker_AllStatuses Проверяет корректность всех возможных статусов серверов.
 func TestServerStatusWorker_AllStatuses(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -244,28 +241,21 @@ func TestServerStatusWorker_AllStatuses(t *testing.T) {
 		contextDuration time.Duration
 	}{
 		{
-			name:            "Статус OK - оба канала работают",
+			name:            "Статус OK - icmp и winrm работают",
 			winrmOK:         true,
 			icmpOK:          true,
 			expectedStatus:  "OK",
 			contextDuration: 150 * time.Millisecond,
 		},
 		{
-			name:            "Статус Unreachable - оба канала недоступны",
-			winrmOK:         false,
+			name:            "Статус Unreachable - icmp недоступен",
+			winrmOK:         false, // winrm не должен быть вызван
 			icmpOK:          false,
 			expectedStatus:  "Unreachable",
 			contextDuration: 150 * time.Millisecond,
 		},
 		{
-			name:            "Статус Degraded - работает только WinRM",
-			winrmOK:         true,
-			icmpOK:          false,
-			expectedStatus:  "Degraded",
-			contextDuration: 150 * time.Millisecond,
-		},
-		{
-			name:            "Статус Degraded - работает только ICMP",
+			name:            "Статус Degraded - icmp доступен, winrm недоступен",
 			winrmOK:         false,
 			icmpOK:          true,
 			expectedStatus:  "Degraded",
@@ -291,15 +281,18 @@ func TestServerStatusWorker_AllStatuses(t *testing.T) {
 				Return(servers, nil).
 				Times(1)
 
-			mockChecker.EXPECT().
-				CheckWinRM(gomock.Any(), "192.168.0.1", "5985", time.Duration(0)).
-				Return(tt.winrmOK)
-
+			// Порядок вызовов: сначала ICMP
 			mockChecker.EXPECT().
 				CheckICMP(gomock.Any(), "192.168.0.1", time.Duration(0)).
 				Return(tt.icmpOK)
 
-			// Проверяем, что в кэш попадает правильный статус
+			// WinRM дергаем только если icmpOK == true
+			if tt.icmpOK {
+				mockChecker.EXPECT().
+					CheckWinRM(gomock.Any(), "192.168.0.1", "5985", time.Duration(0)).
+					Return(tt.winrmOK)
+			}
+
 			mockCache.EXPECT().
 				Set(gomock.Any()).
 				Do(func(status models.ServerStatus) {
@@ -312,7 +305,8 @@ func TestServerStatusWorker_AllStatuses(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextDuration)
 			defer cancel()
 
-			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond)
+			poolSize := 100
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond, poolSize)
 
 			<-ctx.Done()
 			time.Sleep(50 * time.Millisecond)
@@ -410,138 +404,13 @@ func TestServerStatusWorker_RetryBehavior(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.contextDuration)
 			defer cancel()
 
-			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond)
+			poolSize := 100
+			go ServerStatusWorker(ctx, mockStorage, mockCache, mockChecker, "5985", 100*time.Millisecond, poolSize)
 
 			<-ctx.Done()
 			time.Sleep(100 * time.Millisecond)
 		})
 	}
-}
-
-// ============ Тесты семафора ============
-
-// TestSemaphore_AcquireAndRelease Проверяет базовую функциональность семафора.
-func TestSemaphore_AcquireAndRelease(t *testing.T) {
-	capacity := 3
-	s := newSemaphore(capacity)
-
-	// проверяем, что можем захватить семафор нужное количество раз
-	for i := 0; i < capacity; i++ {
-		s.Acquire()
-	}
-
-	// проверяем, что семафор полный (попытка захватить будет блокировать)
-	done := make(chan bool)
-	go func() {
-		s.Acquire()
-		done <- true
-	}()
-
-	select {
-	case <-done:
-		t.Fatal("Acquire не должен был завершиться - семафор полный")
-	case <-time.After(100 * time.Millisecond):
-		// ожидаемое поведение - горутина заблокирована
-	}
-
-	// освобождаем один слот
-	s.Release()
-
-	// теперь Acquire должен завершиться
-	select {
-	case <-done:
-		// ожидаемое поведение
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("Acquire должен был завершиться после Release")
-	}
-}
-
-// TestSemaphore_ConcurrentAcquireAndRelease Проверяет семафор при одновременных операциях.
-func TestSemaphore_ConcurrentAcquireAndRelease(t *testing.T) {
-	capacity := 5
-	s := newSemaphore(capacity)
-	var activeCount int32
-	var maxConcurrent int32
-
-	// запускаем 20 горутин, каждая захватывает и освобождает семафор
-	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.Acquire()
-			defer s.Release()
-
-			// увеличиваем счетчик активных горутин
-			current := atomic.AddInt32(&activeCount, 1)
-
-			// обновляем максимум
-			for {
-				max := atomic.LoadInt32(&maxConcurrent)
-				if current <= max {
-					break
-				}
-				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
-					break
-				}
-			}
-
-			// имитируем работу
-			time.Sleep(10 * time.Millisecond)
-			atomic.AddInt32(&activeCount, -1)
-		}()
-	}
-
-	wg.Wait()
-
-	// проверяем, что максимум одновременных горутин не превышал capacity
-	assert.LessOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(capacity),
-		"Максимум одновременных операций должен быть <= capacity")
-}
-
-// TestSemaphore_StressTest Stress-тест семафора с большим числом горутин.
-func TestSemaphore_StressTest(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping stress test in short mode")
-	}
-
-	capacity := 10
-	s := newSemaphore(capacity)
-	var activeCount int32
-	var maxConcurrent int32
-
-	var wg sync.WaitGroup
-	// Запускаем 1000 горутин
-	for i := 0; i < 1000; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.Acquire()
-			defer s.Release()
-
-			current := atomic.AddInt32(&activeCount, 1)
-			defer atomic.AddInt32(&activeCount, -1)
-
-			// обновляем максимум
-			for {
-				max := atomic.LoadInt32(&maxConcurrent)
-				if current <= max {
-					break
-				}
-				if atomic.CompareAndSwapInt32(&maxConcurrent, max, current) {
-					break
-				}
-			}
-
-			// минимальная работа
-			time.Sleep(1 * time.Millisecond)
-		}()
-	}
-
-	wg.Wait()
-
-	assert.LessOrEqual(t, atomic.LoadInt32(&maxConcurrent), int32(capacity),
-		"Максимум одновременных операций должен быть <= capacity")
 }
 
 // ============ Тесты checkServerStatus ============
@@ -554,10 +423,9 @@ func TestCheckServerStatus_AllCombinations(t *testing.T) {
 		icmpOK         bool
 		expectedStatus string
 	}{
-		{"OK - оба доступны", true, true, "OK"},
-		{"Unreachable - оба недоступны", false, false, "Unreachable"},
-		{"Degraded - только WinRM", true, false, "Degraded"},
-		{"Degraded - только ICMP", false, true, "Degraded"},
+		{"OK - icmp и winrm", true, true, "OK"},
+		{"Unreachable - icmp=false, winrm не вызывается", false, false, "Unreachable"},
+		{"Degraded - icmp=true, winrm=false", false, true, "Degraded"},
 	}
 
 	for _, tt := range tests {
@@ -570,13 +438,16 @@ func TestCheckServerStatus_AllCombinations(t *testing.T) {
 
 			srv := &models.ServerStatus{ServerID: 1, Address: "10.0.0.1"}
 
-			checker.EXPECT().
-				CheckWinRM(gomock.Any(), "10.0.0.1", "5985", time.Duration(0)).
-				Return(tt.winrmOK)
-
+			// порядок вызовов сейчас: сначала ICMP, потом (опционально) WinRM
 			checker.EXPECT().
 				CheckICMP(gomock.Any(), "10.0.0.1", time.Duration(0)).
 				Return(tt.icmpOK)
+
+			if tt.icmpOK {
+				checker.EXPECT().
+					CheckWinRM(gomock.Any(), "10.0.0.1", "5985", time.Duration(0)).
+					Return(tt.winrmOK)
+			}
 
 			cache.EXPECT().
 				Set(gomock.AssignableToTypeOf(models.ServerStatus{})).
