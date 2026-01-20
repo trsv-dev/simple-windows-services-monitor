@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
@@ -21,6 +22,7 @@ type StatusWorkerPool struct {
 	workerFunc func(ctx context.Context, serverStatus *models.ServerStatus)
 	poolSize   int
 	wg         sync.WaitGroup
+	closed     atomic.Bool
 }
 
 func NewStatusWorkerPool(poolSize int, workerFunc func(ctx context.Context, serverStatus *models.ServerStatus)) *StatusWorkerPool {
@@ -39,11 +41,18 @@ func (wp *StatusWorkerPool) Start(ctx context.Context) {
 }
 
 func (wp *StatusWorkerPool) Stop() {
+	// устанавливаем флаг до закрытия канала
+	wp.closed.Store(true)
 	close(wp.tasks)
 	wp.wg.Wait()
 }
 
 func (wp *StatusWorkerPool) Submit(server *models.ServerStatus) bool {
+	// проверяем, не закрыл ли уже канал (не вызван ли уже Stop())
+	if wp.closed.Load() {
+		return false
+	}
+
 	select {
 	case wp.tasks <- server:
 		return true

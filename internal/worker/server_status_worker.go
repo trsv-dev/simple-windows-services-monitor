@@ -59,7 +59,6 @@ func ServerStatusWorker(ctx context.Context,
 	pool.Start(ctx)
 	defer pool.Stop()
 
-	//semaphore := newSemaphore(20)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

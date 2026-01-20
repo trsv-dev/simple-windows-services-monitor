@@ -72,12 +72,15 @@ const REQUEST_RATE_LIMIT = new Map();
 // Page size cache
 let cachedPageSize = null;
 let lastWindowWidth = window.innerWidth;
+let resizeDebounceTimer = null;
 
 // Toast history for deduplication
 let toastHistory = [];
 
 // Session expired flag
 window._sessionExpiredNotified = false;
+
+let lastMobileView = null;
 
 // helper timestamps
 let lastServicesUpdateAt = 0; // timestamp (ms) последнего успешного обновления статусов
@@ -86,6 +89,7 @@ let sseReconnectTimerId = null;
 // ============================================
 // App timers registry (to prevent leaks)
 // ============================================
+
 const AppTimers = {
     intervals: new Set(),
     timeouts: new Set(),
@@ -185,7 +189,11 @@ function canPerformAction(actionName) {
 }
 
 function isMobileDevice() {
-    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    // Проверяем и User Agent, и ширину окна для более точного определения
+    const isMobileByUA = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isMobileByWidth = window.innerWidth < 768;
+
+    return isMobileByUA || isMobileByWidth;
 }
 
 function getPageSize() {
@@ -195,6 +203,76 @@ function getPageSize() {
     }
     return cachedPageSize;
 }
+
+// 111111111111111111
+function switchConnectionsMode() {
+    if (!currentUser) return;
+
+    // Определяем текущий режим
+    const isMobileView = isMobileDevice();
+
+    // Если режим не изменился - ничего не делаем
+    if (lastMobileView === isMobileView) {
+        return;
+    }
+
+    lastMobileView = isMobileView;
+
+    // Закрываем все текущие соединения для служб
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) { /* noop */ }
+        serviceEventsSource = null;
+    }
+    stopServicePolling();
+
+    // Закрываем все текущие соединения для серверов
+    if (serverEventsSource) {
+        try { serverEventsSource.close(); } catch (e) { /* noop */ }
+        serverEventsSource = null;
+    }
+    stopServerPolling();
+
+    // Переподключаемся в зависимости от текущего режима
+    subscribeServerEvents();
+    if (currentServerId) {
+        subscribeServiceEvents(currentServerId);
+    }
+}
+// function switchConnectionsMode() {
+//     if (!currentUser) return;
+//
+//     // Фиксируем текущий режим (мобильный или десктопный)
+//     const isMobileView = window.innerWidth < 768;
+//     const wasMobileView = lastWindowWidth < 768;
+//
+//     // Переключаем только если режим изменился
+//     if (isMobileView !== wasMobileView) {
+//         console.log('Режим изменился с', wasMobileView ? 'мобильного' : 'десктопного', 'на', isMobileView ? 'мобильный' : 'десктопный');
+//
+//         // Закрываем все текущие соединения для служб
+//         if (serviceEventsSource) {
+//             try { serviceEventsSource.close(); } catch (e) { /* noop */ }
+//             serviceEventsSource = null;
+//         }
+//         stopServicePolling();
+//
+//         // Закрываем все текущие соединения для серверов
+//         if (serverEventsSource) {
+//             try { serverEventsSource.close(); } catch (e) { /* noop */ }
+//             serverEventsSource = null;
+//         }
+//         stopServerPolling();
+//
+//         // Перезаписываем lastWindowWidth после изменения
+//         lastWindowWidth = window.innerWidth;
+//
+//         // Переподключаемся в зависимости от текущего режима
+//         subscribeServerEvents();
+//         if (currentServerId) {
+//             subscribeServiceEvents(currentServerId);
+//         }
+//     }
+// }
 
 function getMinItemsForPagination(type) {
     const isMobile = window.innerWidth < 768;
@@ -218,9 +296,40 @@ function getServerStatusClass(status) {
 }
 
 // named resize handler so we can reason about it
+// 2222222222222222222222
+
 function onWindowResize() {
     cachedPageSize = null;
+
+    // Добавляем дебаунсинг для переключения режима
+    if (resizeDebounceTimer) {
+        clearTimeout(resizeDebounceTimer);
+        AppTimers.timeouts.delete(resizeDebounceTimer);
+    }
+
+    resizeDebounceTimer = setTimeout(() => {
+        AppTimers.timeouts.delete(resizeDebounceTimer);
+        resizeDebounceTimer = null;
+        switchConnectionsMode();
+    }, 300);
+
+    AppTimers.addTimeout(resizeDebounceTimer);
 }
+
+// function onWindowResize() {
+//     cachedPageSize = null;
+//
+//     // Добавляем дебаунсинг для переключения режима
+//     if (resizeDebounceTimer) {
+//         clearTimeout(resizeDebounceTimer);
+//     }
+//     resizeDebounceTimer = setTimeout(switchConnectionsMode, 300);
+// }
+
+// function onWindowResize() {
+//     cachedPageSize = null;
+// }
+
 window.addEventListener('resize', onWindowResize);
 
 // ============================================
@@ -298,6 +407,7 @@ function showToast(title, message, type = 'success') {
 // ============================================
 // THEME MANAGEMENT
 // ============================================
+
 function initTheme() {
     applyTheme(isDarkMode);
 }
@@ -518,9 +628,11 @@ function subscribeServiceEvents(serverId) {
             AppTimers.timeouts.delete(sseReconnectTimerId);
             sseReconnectTimerId = null;
         }
+
         sseReconnectTimerId = setTimeout(() => {
+            const timerId = sseReconnectTimerId;
+            AppTimers.timeouts.delete(timerId);
             sseReconnectTimerId = null;
-            AppTimers.timeouts.delete(sseReconnectTimerId);
             if (currentServerId) {
                 subscribeServiceEvents(currentServerId);
             }
@@ -535,15 +647,11 @@ function subscribeServerEvents() {
         return;
     }
 
-    if (serverEventsSource &&
-        (serverEventsSource.readyState === EventSource.OPEN ||
-            serverEventsSource.readyState === EventSource.CONNECTING)) {
-        return;
-    }
-
     if (serverEventsSource) {
-        try { serverEventsSource.close(); } catch (e) {}
-        serverEventsSource = null;
+        try {
+            serverEventsSource.close();
+            serverEventsSource = null;
+        } catch (e) {}
     }
 
     if (serverSseReconnectTimerId) {
@@ -640,13 +748,9 @@ function startServicePolling(serverId) {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 3;
 
-    const id = setInterval(async () => {
-        // НЕ создавать полинг, если страница скрыта
-        if (document.hidden) {
-            return;
-        }
-
-        // Проверка контекста
+    // Функция для выполнения запроса
+    const poll = async () => {
+        if (document.hidden) return;
         if (currentServerId !== serverId) {
             stopServicePolling();
             return;
@@ -661,13 +765,16 @@ function startServicePolling(serverId) {
         } catch (error) {
             consecutiveErrors++;
             console.error(`Ошибка полинга (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}):`, error);
-
             if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                console.warn('Слишком много ошибок полинга. Остановка полинга.');
                 stopServicePolling();
             }
         }
-    }, CONFIG.POLLING_INTERVAL);
+    };
+
+    // Немедленный запрос при запуске
+    poll();
+
+    const id = setInterval(poll, CONFIG.POLLING_INTERVAL);
     AppTimers.addInterval(id);
     servicePollingInterval = id;
 }
@@ -685,21 +792,29 @@ function updateServicesStatus(statuses) {
         return;
     }
 
-    // Обновляем ТОЛЬКО статусы в уже загруженных данных
-    // НЕ добавляем новые!
-    const statusMap = new Map(statuses.map(s => [s.server_id, s]));
+    // Исправлено: создаем карту по ID службы, а не сервера
+    const statusMap = new Map();
+    statuses.forEach(s => {
+        // Используем id службы
+        const serviceId = s.id;
+        if (serviceId) {
+            statusMap.set(Number(serviceId), s);
+        }
+    });
 
     // Обновление в памяти
     allServices.forEach(service => {
         const updatedStatus = statusMap.get(service.id);
         if (updatedStatus) {
-            // Внешний API может вернуть разные варианты имени поля времени.
             service.status = updatedStatus.status;
-            service.updated_at = updatedStatus.updated_at || updatedStatus.updatedat || updatedStatus.updatedAt || service.updated_at;
+            service.updated_at = updatedStatus.updated_at ||
+                updatedStatus.updatedat ||
+                updatedStatus.updatedAt ||
+                service.updated_at;
         }
     });
 
-    // Обновление в DOM только видимых элементов
+    // Обновление в DOM
     document.querySelectorAll('.service-card').forEach(card => {
         const serviceId = parseInt(card.getAttribute('data-service-id'));
         const status = statusMap.get(serviceId);
@@ -709,23 +824,27 @@ function updateServicesStatus(statuses) {
         const statusElement = card.querySelector('.service-status');
         const updatedElement = card.querySelector('.service-updated');
 
-        if (statusElement && statusElement.textContent !== status.status) {
-            statusElement.textContent = status.status;
+        if (statusElement) {
+            statusElement.textContent = status.status || '—';
         }
 
-        if (updatedElement && (status.updated_at || status.updatedat || status.updatedAt)) {
-            const newDate = new Date(status.updated_at || status.updatedat || status.updatedAt).toLocaleString('ru-RU');
-            if (updatedElement.textContent !== newDate) {
+        if (updatedElement) {
+            const updatedTime = status.updated_at || status.updatedat || status.updatedAt;
+            if (updatedTime) {
+                const newDate = new Date(updatedTime).toLocaleString('ru-RU');
                 updatedElement.textContent = newDate;
             }
         }
     });
 
-    // Обновляем метку времени последнего обновления
     lastServicesUpdateAt = Date.now();
 }
 
 function startServerPolling() {
+    if (serverPollingInterval) {
+        return; // Уже запущен
+    }
+
     stopServerPolling();
 
     let consecutiveErrors = 0;
@@ -791,6 +910,7 @@ function stopServerPolling() {
 // ============================================
 // SERVER STATUS INDICATOR HELPER
 // ============================================
+
 function updateServerStatusIndicator(el, status) {
     el.classList.remove(
         'server-status-ok',
@@ -924,6 +1044,7 @@ async function handleRegister(event) {
     }
 }
 
+// 333333333333333333333333
 function cleanupOnLogout() {
     // Закрываем SSE, останавливаем поллинг, очищаем таймеры
     if (serviceEventsSource) {
@@ -938,8 +1059,19 @@ function cleanupOnLogout() {
     }
 
     if (serverEventsSource) {
+        // ОБНУЛЯЕМ обработчики перед закрытием
+        serverEventsSource.onopen = null;
+        serverEventsSource.onmessage = null;
+        serverEventsSource.onerror = null;
         try { serverEventsSource.close(); } catch (e) {}
         serverEventsSource = null;
+    }
+
+    // Очищаем дебаунс ресайза
+    if (resizeDebounceTimer) {
+        try { clearTimeout(resizeDebounceTimer); } catch (e) {}
+        AppTimers.timeouts.delete(resizeDebounceTimer);
+        resizeDebounceTimer = null;
     }
 
     stopServicePolling();
@@ -948,6 +1080,35 @@ function cleanupOnLogout() {
 
     // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
 }
+
+// function cleanupOnLogout() {
+//     // Закрываем SSE, останавливаем поллинг, очищаем таймеры
+//     if (serviceEventsSource) {
+//         try { serviceEventsSource.close(); } catch (e) {}
+//         serviceEventsSource = null;
+//     }
+//
+//     if (serverSseReconnectTimerId) {
+//         try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+//         AppTimers.timeouts.delete(serverSseReconnectTimerId);
+//         serverSseReconnectTimerId = null;
+//     }
+//
+//     if (serverEventsSource) {
+//         // ОБНУЛЯЕМ обработчики перед закрытием
+//         serverEventsSource.onopen = null;
+//         serverEventsSource.onmessage = null;
+//         serverEventsSource.onerror = null;
+//         try { serverEventsSource.close(); } catch (e) {}
+//         serverEventsSource = null;
+//     }
+//
+//     stopServicePolling();
+//     stopServerPolling();
+//     AppTimers.clearAll();
+//
+//     // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
+// }
 
 function handleLogout() {
     // Cleanup runtime resources
@@ -1082,6 +1243,22 @@ function renderServersList(servers) {
         addr.innerHTML = `<i class="bi bi-geo-alt me-1"></i>`;
         addr.appendChild(document.createTextNode(server.address || ''));
 
+        const status = document.createElement('small');
+        status.className = 'text-muted d-block';
+        status.innerHTML = `<i class="bi bi-hdd-network me-1"></i>`;
+        const statusSpan = document.createElement('span');
+        statusSpan.textContent = server.status || 'UNKNOWN';
+        statusSpan.className = 'server-status-text';
+        statusSpan.setAttribute('data-status', (server.status || 'UNKNOWN').toUpperCase());
+        status.appendChild(statusSpan);
+
+        // const status = document.createElement('small');
+        // status.className = 'text-muted d-block';
+        // status.innerHTML = `<i class="bi bi-hdd-network me-1"></i>`;
+        // const statusSpan = document.createElement('span');
+        // statusSpan.textContent = server.status || 'UNKNOWN';
+        // status.appendChild(statusSpan);
+
         const user = document.createElement('small');
         user.className = 'text-muted d-block';
         user.innerHTML = `<i class="bi bi-person me-1"></i>`;
@@ -1089,7 +1266,7 @@ function renderServersList(servers) {
 
         const created = document.createElement('small');
         created.className = 'text-muted d-block';
-        created.innerHTML = `<i class="bi bi-calendar me-1"></i>`;
+        created.innerHTML = `<i class="bi bi-calendar-check me-1"></i>`;
         try {
             created.appendChild(document.createTextNode(new Date(server.created_at).toLocaleDateString('ru-RU')));
         } catch (e) {
@@ -1098,10 +1275,11 @@ function renderServersList(servers) {
 
         const fp = document.createElement('small');
         fp.className = 'text-muted d-block';
-        fp.innerHTML = `<i class="bi bi-fingerprint me-1"></i>`;
+        fp.innerHTML = `<i class="bi bi-tags me-1"></i>`;
         fp.appendChild(document.createTextNode(server.fingerprint || ''));
 
         p.appendChild(addr);
+        p.appendChild(status);
         p.appendChild(user);
         p.appendChild(created);
         p.appendChild(fp);
@@ -1217,6 +1395,7 @@ function renderServerDetail(server) {
         document.querySelector('#serverDetailName .server-status-text');
     if (detailStatusText) {
         detailStatusText.textContent = server.status || '—';
+        detailStatusText.setAttribute('data-status', (server.status || 'UNKNOWN').toUpperCase());
     }
 
     const addrEl = document.getElementById('serverDetailAddress');
@@ -1249,8 +1428,6 @@ function updateServersStatus(statuses) {
         return;
     }
 
-    // Новый endpoint возвращает массив объектов ServerStatus
-    // Пример структуры: [{server_id: 1, status: "OK", ...}, ...]
     const statusMap = new Map();
     statuses.forEach(status => {
         const serverId = Number(status.server_id);
@@ -1283,16 +1460,17 @@ function updateServersStatus(statuses) {
             const updated = statusMap.get(serverId);
             if (!updated) return;
 
-            // Обновление текстового статуса (если есть элемент)
-            const statusEl = card.querySelector('.server-status-text');
-            if (statusEl && statusEl.textContent !== updated.status) {
-                statusEl.textContent = updated.status || '—';
-            }
-
             // Обновление лампочки внутри карточки
             const indicator = card.querySelector('.server-status-indicator');
             if (indicator) {
                 updateServerStatusIndicator(indicator, updated.status);
+            }
+
+            // Обновление текстового статуса (ДОБАВЛЕНО)
+            const statusSpan = card.querySelector('.server-status-text');
+            if (statusSpan) {
+                statusSpan.textContent = updated.status || 'UNKNOWN';
+                statusSpan.setAttribute('data-status', (updated.status || 'UNKNOWN').toUpperCase());
             }
         });
     } catch (e) {
@@ -1315,6 +1493,7 @@ function updateServersStatus(statuses) {
                         document.querySelector('#serverDetailName .server-status-text');
                     if (detailStatusText) {
                         detailStatusText.textContent = updated.status || '—';
+                        detailStatusText.setAttribute('data-status', (updated.status || 'UNKNOWN').toUpperCase());
                     }
                 }
             }
@@ -1510,7 +1689,6 @@ function renderServicesList(services) {
     if (refreshBtn) refreshBtn.style.display = 'inline-block';
 }
 
-
 async function handleAddService(event) {
     event.preventDefault();
 
@@ -1675,6 +1853,7 @@ async function handleRefreshFromServer() {
 // ============================================
 // AVAILABLE SERVICES LOADING
 // ============================================
+
 let availableServices = [];
 
 async function loadAvailableServices(serverId) {
@@ -2055,43 +2234,35 @@ let lastResumeTime = 0;
 
 function handlePageResume() {
     const now = Date.now();
-    if (now - lastResumeTime < MIN_RESUME_INTERVAL) return;
+    if (now - lastResumeTime < 300) return; // Уменьшено с 1000 до 300мс
     lastResumeTime = now;
 
-    // Если пользователь не авторизован - ничего не делаем
-    if (!currentUser || !currentServerId) return;
-
-    // Переподключаемся к серверам (SSE или поллинг в зависимости от устройства)
-    subscribeServerEvents();
-
-    // Попытка переподключиться к SSE
-    if (!serviceEventsSource || (serviceEventsSource && serviceEventsSource.readyState === EventSource.CLOSED)) {
-        subscribeServiceEvents(currentServerId);
+    if (!currentUser || !currentServerId || document.hidden) {
+        return;
     }
 
-    // Решаем, нужно ли явно запрашивать полный список:
-    // - если данных совсем нет
-    // - или если данные устарели по таймауту (например, >10s)
-    const DATA_STALE_MS = 10 * 1000; // можно подстроить под реальность
+    switchConnectionsMode();
 
-    const hasData = Array.isArray(allServices) && allServices.length > 0;
-    const isStale = (lastServicesUpdateAt === 0) || (Date.now() - lastServicesUpdateAt > DATA_STALE_MS);
-
-    if (!hasData || isStale) {
-        // silent = true — чтобы не показывать спиннер, если возвращаемся из фонового режима
+    // Для мобильных устройств - немедленно обновляем данные
+    if (isMobileDevice()) {
+        // Немедленный запрос актуальных данных
         loadServicesList(currentServerId, true).catch(err => {
-            console.warn('Не удалось подгрузить данные при возврате на вкладку:', err);
-            // в случае ошибки — попытка запустить поллинг как fallback
-            startServicePolling(currentServerId);
+            console.warn('Ошибка при обновлении данных:', err);
         });
+
+        // Запускаем поллинг (включая немедленный запрос)
+        if (!servicePollingInterval) {
+            startServicePolling(currentServerId);
+        }
     } else {
-        // Данные свежие — запустим поллинг как резерв, если SSE не откроется
-        setTimeout(() => {
-            if (!serviceEventsSource || serviceEventsSource.readyState !== EventSource.OPEN) {
-                startServicePolling(currentServerId);
-            }
-        }, 1200);
+        // Для десктопа - обычная логика
+        if (!serviceEventsSource || serviceEventsSource.readyState === EventSource.CLOSED) {
+            subscribeServiceEvents(currentServerId);
+        }
     }
+
+    // Всегда переподключаемся к серверам
+    subscribeServerEvents();
 }
 
 // ============================================
@@ -2230,10 +2401,64 @@ function hideLoading() {
 // ============================================
 // Before unload - make sure timers are cleared
 // ============================================
+
 window.addEventListener('beforeunload', () => {
     AppTimers.clearAll();
     if (serviceEventsSource) {
         try { serviceEventsSource.close(); } catch (e) {}
         serviceEventsSource = null;
     }
+
+    cleanupOnLogout();
 });
+
+// ============================================
+// Cleanup on page unload
+// ============================================
+
+window.addEventListener('beforeunload', () => {
+    AppTimers.clearAll();
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) {}
+        serviceEventsSource = null;
+    }
+    if (serverEventsSource) {
+        try { serverEventsSource.close(); } catch (e) {}
+        serverEventsSource = null;
+    }
+
+    // Очищаем все таймеры
+    if (resizeDebounceTimer) {
+        try { clearTimeout(resizeDebounceTimer); } catch (e) {}
+        resizeDebounceTimer = null;
+    }
+
+    if (sseReconnectTimerId) {
+        try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+        sseReconnectTimerId = null;
+    }
+
+    if (serverSseReconnectTimerId) {
+        try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
+        serverSseReconnectTimerId = null;
+    }
+});
+
+// ============================================
+// Cleanup on page hide (for SPA navigation if implemented later)
+// ============================================
+
+function cleanupApp() {
+    cleanupOnLogout();
+
+    // Очищаем массивы
+    allServers = [];
+    allServices = [];
+    toastHistory = [];
+    REQUEST_RATE_LIMIT.clear();
+    AppTimers.clearAll();
+
+    // Очищаем обработчики событий
+    window.removeEventListener('resize', onWindowResize);
+    document.removeEventListener('visibilitychange', handlePageBackground);
+}
