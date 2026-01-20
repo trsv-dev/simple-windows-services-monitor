@@ -11,26 +11,26 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 )
 
-// BroadcastServiceStatuses Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
-func BroadcastServiceStatuses(ctx context.Context, storage storage.Storage, broadcaster broadcast.Broadcaster, interval time.Duration) {
+// ServiceBroadcastWorker Периодически "дергает" БД и публикует статусы служб пользователей через Publisher.
+func ServiceBroadcastWorker(ctx context.Context, storage storage.Storage, publisher broadcast.Broadcaster, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
-		if err := fetchAndPublish(ctx, storage, broadcaster); err != nil {
-			logger.Log.Error("ошибка воркера", logger.String("err", err.Error()))
+		if err := fetchAndPublish(ctx, storage, publisher); err != nil {
+			logger.Log.Error("ошибка воркера ServiceBroadcastWorker", logger.String("err", err.Error()))
 		}
 
 		select {
 		case <-ctx.Done():
-			logger.Log.Info("Завершение работы воркера по контексту", logger.String("info", ctx.Err().Error()))
+			logger.Log.Info("Завершение работы воркера ServiceBroadcastWorker по контексту", logger.String("info", ctx.Err().Error()))
 			return
 		case <-ticker.C: // следующий цикл по таймеру
 		}
 	}
 }
 
-// fetchAndPublish Получает статусы служб каждого пользователя из БД и публикует их через Publisher.
+// Получает статусы служб каждого пользователя из БД и публикует их через Publisher.
 func fetchAndPublish(ctx context.Context, storage storage.Storage, publisher broadcast.Broadcaster) error {
 	fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -56,7 +56,7 @@ func fetchAndPublish(ctx context.Context, storage storage.Storage, publisher bro
 		}
 
 		// топик для конкретного пользователя создается в методе HTTPHandler()
-		topic := fmt.Sprintf("user-%d", user.ID)
+		topic := fmt.Sprintf("user-%d:services", user.ID)
 		if err = publisher.Publish(topic, b); err != nil {
 			return err
 		}

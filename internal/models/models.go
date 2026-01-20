@@ -138,6 +138,24 @@ type ServiceStatus struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
+// ServerStatus Модель статуса сервера.
+type ServerStatus struct {
+	ServerID int64  `json:"server_id"`
+	UserID   int64  `json:"user_id"`
+	Address  string `json:"address"`
+	Status   string `json:"status,omitempty"`
+}
+
+// ValidateStatus Валидация статусов сервера.
+func (s *ServerStatus) ValidateStatus(serverStatus string) error {
+	switch serverStatus {
+	case "OK", "Degraded", "Unreachable":
+		return nil
+	default:
+		return errors.New("неожиданный статус сервера")
+	}
+}
+
 // RegisterRequest Модель для тела запроса регистрации пользователя.
 type RegisterRequest struct {
 	ID              int64  `json:"id,omitempty"`

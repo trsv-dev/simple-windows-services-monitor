@@ -25,16 +25,18 @@ type ServiceHandler struct {
 	storage                storage.Storage
 	clientFactory          service_control.ClientFactory
 	checker                netutils.Checker
-	servicesStatusesWorker worker.StatusesChecker
+	serviceStatusesChecker worker.StatusesChecker
+	winrmPort              string
 }
 
 // NewServiceHandler Конструктор ServiceHandler.
-func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, servicesStatusesWorker worker.StatusesChecker) *ServiceHandler {
+func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, serviceStatusesChecker worker.StatusesChecker, winrmPort string) *ServiceHandler {
 	return &ServiceHandler{
 		storage:                storage,
 		clientFactory:          clientFactory,
 		checker:                checker,
-		servicesStatusesWorker: servicesStatusesWorker,
+		serviceStatusesChecker: serviceStatusesChecker,
+		winrmPort:              winrmPort,
 	}
 }
 
@@ -66,7 +68,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -158,7 +160,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -371,7 +373,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !h.checker.IsHostReachable(server.Address, 5985, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -386,7 +388,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// опрашиваем службы через воркер, получаем слайс служб с обновленными данными и булево значение об успехе
-	updates, success := h.servicesStatusesWorker.CheckServicesStatuses(ctx, server, services)
+	updates, success := h.serviceStatusesChecker.CheckServiceStatuses(ctx, server, services)
 
 	if !success {
 		w.Header().Set("Content-Type", "application/json")

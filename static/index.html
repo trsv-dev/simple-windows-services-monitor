@@ -142,6 +142,60 @@
             background-color: #3d3d3d;
         }
 
+        .server-status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            border: 1px solid rgba(0,0,0,0.2);
+            vertical-align: middle;
+        }
+
+        /* ============================================
+           SERVER STATUS INDICATOR STYLES
+           ============================================ */
+        .server-status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+            background: #9ca3af;
+        }
+
+        /* === Пульсация (серый, ожидание) === */
+        @keyframes pulse-gray {
+            0%   { opacity: 0.4; transform: scale(1); }
+            50%  { opacity: 1;   transform: scale(1.25); }
+            100% { opacity: 0.4; transform: scale(1); }
+        }
+
+        .server-status-pending {
+            background: #9ca3af;
+            animation: pulse-gray 1.4s infinite;
+        }
+
+        /* === Нормальные статусы === */
+        .server-status-ok {
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
+            animation: none;
+        }
+
+        .server-status-degraded {
+            background: #facc15;
+            box-shadow: 0 0 6px #facc15;
+            animation: none;
+        }
+
+        .server-status-down {
+            background: #ef4444;
+            box-shadow: 0 0 6px #ef4444;
+            animation: none;
+        }
+
         /* ============================================ */
         /* OTHER STYLES */
         /* ============================================ */
@@ -187,6 +241,11 @@
 
         .loading-spinner {
             display: none;
+        }
+
+        .system-id span {
+            white-space: normal;
+            overflow-wrap: anywhere;
         }
     </style>
 
@@ -322,7 +381,6 @@
                 <div class="card mb-4">
                     <div class="card-header server-header text-white d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">
-                            <i class="bi bi-server me-2"></i>
                             <span id="serverDetailName"></span>
                         </h4>
                         <div>
@@ -337,16 +395,56 @@
                             </button>
                         </div>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>Адрес:</strong> <span id="serverDetailAddress"></span></p>
-                                <p><strong>Пользователь:</strong> <span id="serverDetailUsername"></span></p>
+
+                    <div class="card-body p-2">
+                        <div class="row gx-1 gy-1">
+
+                            <!-- Левая колонка -->
+                            <div class="col-12 col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-geo-alt-fill fs-6 text-primary me-1 flex-shrink-0"></i>
+                                    <div class="text-truncate">
+                                        <small class="text-muted me-1">Адрес:</small>
+                                        <span id="serverDetailAddress" class="fw-medium"></span>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-hdd-network-fill fs-6 text-primary me-1 flex-shrink-0"></i>
+                                    <div class="text-truncate">
+                                        <small class="text-muted me-1">Статус:</small>
+                                        <span id="serverDetailStatus" class="fw-medium"></span>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-person-fill fs-6 text-success me-1 flex-shrink-0"></i>
+                                    <div class="text-truncate">
+                                        <small class="text-muted me-1">Пользователь:</small>
+                                        <span id="serverDetailUsername" class="fw-medium"></span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <p><strong>Создан:</strong> <span id="serverDetailCreated"></span></p>
-                                <p><strong>SystemID:</strong> <span id="serverDetailFingerprint"></span></p>
+
+                            <!-- Правая колонка -->
+                            <div class="col-12 col-md-6">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="bi bi-calendar-check-fill fs-6 text-warning me-1 flex-shrink-0"></i>
+                                    <div class="text-truncate">
+                                        <small class="text-muted me-1">Создан:</small>
+                                        <span id="serverDetailCreated" class="fw-medium"></span>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex align-items-center">
+                                    <i class="bi bi-tags-fill fs-6 text-secondary me-1 flex-shrink-0"></i>
+                                    <div class="system-id">
+                                        <small class="text-muted me-1">SystemID:</small>
+                                        <span id="serverDetailFingerprint" class="fw-medium"></span>
+                                    </div>
+                                </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
@@ -583,6 +681,7 @@
     <!-- config.js contains API_BASE_URL -->
     <script src="config.js"></script>
     <script src="app.min.js"></script>
+<!--    <script src="app.js"></script>-->
 
     <!-- Footer -->
     <footer class="text-center py-2 border-top">

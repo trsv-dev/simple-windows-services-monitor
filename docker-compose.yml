@@ -33,6 +33,9 @@ services:
       - "8080:8080"
     volumes:
       - backend_logs:/app/logs
+    # даёт контейнеру право создавать raw-сокеты, без которых ICMP (ping) работать не может.
+    cap_add:
+      - NET_RAW
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

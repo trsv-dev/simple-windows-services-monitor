@@ -4,13 +4,13 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/api"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/di_containers"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/router"
 )
 
 // NewServer Создание нового сервера.
-func NewServer(runAddress string, handlers *api.HandlersContainer) *http.Server {
+func NewServer(runAddress string, handlers *di_containers.HandlersContainer) *http.Server {
 	mux := router.Router(handlers)
 
 	server := &http.Server{
@@ -22,7 +22,7 @@ func NewServer(runAddress string, handlers *api.HandlersContainer) *http.Server 
 }
 
 // RunServer Запускает сервер в горутине и возвращает сам сервер и канал ошибок.
-func RunServer(runAddress string, handlers *api.HandlersContainer) (*http.Server, chan error) {
+func RunServer(runAddress string, handlers *di_containers.HandlersContainer) (*http.Server, chan error) {
 	server := NewServer(runAddress, handlers)
 
 	// канал ошибок сервера

@@ -48,13 +48,14 @@ func TestServiceStopErrServerNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// возвращаем ErrServerNotFound
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	// создаём запрос с контекстом пользователя
 	ctx := createContextWithCreds("user", 1, 100, 10)
@@ -81,13 +82,14 @@ func TestServiceStopGetServerGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// generic ошибка (не специфичная ErrServerNotFound)
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errors.New("database connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
@@ -112,6 +114,7 @@ func TestServiceStopErrServiceNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -129,7 +132,7 @@ func TestServiceStopErrServiceNotFound(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
@@ -154,6 +157,7 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -171,7 +175,7 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errors.New("database read error"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
@@ -188,14 +192,17 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceStopIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceStopIsHostReachableFalse(t *testing.T) {
+// TestServiceStopCheckWinRMFalse Проверяет обработку недоступного хоста.
+func TestServiceStopCheckWinRMFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -219,12 +226,11 @@ func TestServiceStopIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -248,6 +254,9 @@ func TestServiceStopCreateClientError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -271,7 +280,7 @@ func TestServiceStopCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -279,9 +288,8 @@ func TestServiceStopCreateClientError(t *testing.T) {
 		CreateClient("192.168.1.1", "admin", "password").
 		Return(nil, errors.New("authentication failed"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -305,6 +313,9 @@ func TestServiceStopRunCommandStatusError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -328,7 +339,7 @@ func TestServiceStopRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -341,9 +352,8 @@ func TestServiceStopRunCommandStatusError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("", errors.New("WinRM connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -367,6 +377,9 @@ func TestServiceStopRunCommandStopError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -390,7 +403,7 @@ func TestServiceStopRunCommandStopError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -408,9 +421,8 @@ func TestServiceStopRunCommandStopError(t *testing.T) {
 			Return("", errors.New("access denied")),
 	)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -434,6 +446,9 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -457,7 +472,7 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -480,9 +495,8 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -506,6 +520,9 @@ func TestServiceStopStoppedAlready(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -529,7 +546,7 @@ func TestServiceStopStoppedAlready(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -547,9 +564,8 @@ func TestServiceStopStoppedAlready(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -573,6 +589,9 @@ func TestServiceStopStopPendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -596,7 +615,7 @@ func TestServiceStopStopPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -609,9 +628,8 @@ func TestServiceStopStopPendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 3 STOP_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -636,6 +654,9 @@ func TestServiceStopPausePendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -659,7 +680,7 @@ func TestServiceStopPausePendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -672,9 +693,8 @@ func TestServiceStopPausePendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 6 PAUSE_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -699,6 +719,9 @@ func TestServiceStopPausedDefaultError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -722,7 +745,7 @@ func TestServiceStopPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -735,9 +758,8 @@ func TestServiceStopPausedDefaultError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 7 PAUSED", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -761,6 +783,9 @@ func TestServiceStopStartPendingSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -784,7 +809,7 @@ func TestServiceStopStartPendingSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -807,9 +832,8 @@ func TestServiceStopStartPendingSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -833,6 +857,9 @@ func TestServiceStopDbErrorAfterStop(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -856,7 +883,7 @@ func TestServiceStopDbErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -879,9 +906,8 @@ func TestServiceStopDbErrorAfterStop(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(errors.New("database write error"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -906,6 +932,9 @@ func TestServiceStopDbErrorWhenStopped(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -929,7 +958,7 @@ func TestServiceStopDbErrorWhenStopped(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -947,9 +976,8 @@ func TestServiceStopDbErrorWhenStopped(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(errors.New("database connection lost"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -973,9 +1001,10 @@ func TestNewControlHandler(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// создаём handler через конструктор
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	// проверяем инициализацию всех полей
 	assert.NotNil(t, handler)
@@ -996,13 +1025,14 @@ func TestServiceStartErrServerNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// возвращаем ErrServerNotFound
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	// создаём запрос с контекстом пользователя
 	ctx := createContextWithCreds("user", 1, 100, 10)
@@ -1029,13 +1059,14 @@ func TestServiceStartGetServerGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// generic ошибка (не специфичная ErrServerNotFound)
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errors.New("database connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
@@ -1060,6 +1091,7 @@ func TestServiceStartErrServiceNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1077,7 +1109,7 @@ func TestServiceStartErrServiceNotFound(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
@@ -1102,6 +1134,7 @@ func TestServiceStartGetServiceGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1119,7 +1152,7 @@ func TestServiceStartGetServiceGenericError(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errors.New("database read error"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
@@ -1136,14 +1169,17 @@ func TestServiceStartGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceStartIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceStartIsHostReachableFalse(t *testing.T) {
+// TestServiceStartCheckWinRMFalse Проверяет обработку недоступного хоста.
+func TestServiceStartCheckWinRMFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1167,12 +1203,11 @@ func TestServiceStartIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1196,6 +1231,9 @@ func TestServiceStartCreateClientError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1219,7 +1257,7 @@ func TestServiceStartCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -1227,9 +1265,8 @@ func TestServiceStartCreateClientError(t *testing.T) {
 		CreateClient("192.168.1.1", "admin", "password").
 		Return(nil, errors.New("authentication failed"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1253,6 +1290,9 @@ func TestServiceStartRunCommandStatusError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1276,7 +1316,7 @@ func TestServiceStartRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1289,9 +1329,8 @@ func TestServiceStartRunCommandStatusError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("", errors.New("WinRM connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1315,6 +1354,9 @@ func TestServiceStartRunCommandStartError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1338,7 +1380,7 @@ func TestServiceStartRunCommandStartError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1356,9 +1398,8 @@ func TestServiceStartRunCommandStartError(t *testing.T) {
 			Return("", errors.New("access denied")),
 	)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1382,6 +1423,9 @@ func TestServiceStartStoppedSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1405,7 +1449,7 @@ func TestServiceStartStoppedSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1428,9 +1472,8 @@ func TestServiceStartStoppedSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1454,6 +1497,9 @@ func TestServiceStartStopPendingSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1477,7 +1523,7 @@ func TestServiceStartStopPendingSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1500,9 +1546,8 @@ func TestServiceStartStopPendingSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1526,6 +1571,9 @@ func TestServiceStartRunningAlready(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1549,7 +1597,7 @@ func TestServiceStartRunningAlready(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1567,9 +1615,8 @@ func TestServiceStartRunningAlready(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1593,6 +1640,9 @@ func TestServiceStartStartPendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1616,7 +1666,7 @@ func TestServiceStartStartPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1629,9 +1679,8 @@ func TestServiceStartStartPendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 2 START_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1656,6 +1705,9 @@ func TestServiceStartPausePendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1679,7 +1731,7 @@ func TestServiceStartPausePendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1692,9 +1744,8 @@ func TestServiceStartPausePendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 6 PAUSE_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1719,6 +1770,9 @@ func TestServiceStartPausedDefaultError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1742,7 +1796,7 @@ func TestServiceStartPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1755,9 +1809,8 @@ func TestServiceStartPausedDefaultError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 7 PAUSED", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1781,6 +1834,9 @@ func TestServiceStartDbErrorAfterStart(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1804,7 +1860,7 @@ func TestServiceStartDbErrorAfterStart(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1827,9 +1883,8 @@ func TestServiceStartDbErrorAfterStart(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(errors.New("database write error"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1854,6 +1909,9 @@ func TestServiceStartDbErrorWhenRunning(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -1877,7 +1935,7 @@ func TestServiceStartDbErrorWhenRunning(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -1895,9 +1953,8 @@ func TestServiceStartDbErrorWhenRunning(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(errors.New("database connection lost"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/start", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -1925,13 +1982,14 @@ func TestServiceRestartErrServerNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// возвращаем ErrServerNotFound
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	// создаём запрос с контекстом пользователя
 	ctx := createContextWithCreds("user", 1, 100, 10)
@@ -1958,13 +2016,14 @@ func TestServiceRestartGetServerGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// generic ошибка (не специфичная ErrServerNotFound)
 	mockStorage.EXPECT().
 		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
 		Return(nil, errors.New("database connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
@@ -1989,6 +2048,7 @@ func TestServiceRestartErrServiceNotFound(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2006,7 +2066,7 @@ func TestServiceRestartErrServiceNotFound(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
@@ -2031,6 +2091,7 @@ func TestServiceRestartGetServiceGenericError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2048,7 +2109,7 @@ func TestServiceRestartGetServiceGenericError(t *testing.T) {
 		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
 		Return(nil, errors.New("database read error"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
@@ -2065,14 +2126,17 @@ func TestServiceRestartGetServiceGenericError(t *testing.T) {
 	assert.Equal(t, "Ошибка при получении информации о службе", got.Message)
 }
 
-// TestServiceRestartIsHostReachableFalse Проверяет обработку недоступного хоста.
-func TestServiceRestartIsHostReachableFalse(t *testing.T) {
+// TestServiceRestartCheckWinRMFalse Проверяет обработку недоступного хоста.
+func TestServiceRestartCheckWinRMFalse(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2096,12 +2160,11 @@ func TestServiceRestartIsHostReachableFalse(t *testing.T) {
 
 	// хост недоступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2125,6 +2188,9 @@ func TestServiceRestartCreateClientError(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2148,7 +2214,7 @@ func TestServiceRestartCreateClientError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// ошибка при создании WinRM клиента
@@ -2156,9 +2222,8 @@ func TestServiceRestartCreateClientError(t *testing.T) {
 		CreateClient("192.168.1.1", "admin", "password").
 		Return(nil, errors.New("authentication failed"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2182,6 +2247,9 @@ func TestServiceRestartRunCommandStatusError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2205,7 +2273,7 @@ func TestServiceRestartRunCommandStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2218,9 +2286,8 @@ func TestServiceRestartRunCommandStatusError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("", errors.New("WinRM connection timeout"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2244,6 +2311,9 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2267,7 +2337,7 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2285,9 +2355,8 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 			Return("", errors.New("access denied")),
 	)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2311,6 +2380,13 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	// используем контекст с КОРОТКИМ таймаутом
+	ctx := createContextWithCreds("user", 1, 100, 10)
+	// добавляем таймаут 100ms для ожидания остановки, чтобы тест выполнялся быстро
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2334,7 +2410,7 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctxWithTimeout, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2362,13 +2438,7 @@ func TestServiceRestartWaitForStatusError(t *testing.T) {
 		MinTimes(1).
 		MaxTimes(3)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
-
-	// используем контекст с КОРОТКИМ таймаутом
-	ctx := createContextWithCreds("user", 1, 100, 10)
-	// добавляем таймаут 100ms для ожидания остановки, чтобы тест выполнялся быстро
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-	defer cancel()
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctxWithTimeout)
 	w := httptest.NewRecorder()
@@ -2394,6 +2464,9 @@ func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2417,7 +2490,7 @@ func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2444,9 +2517,8 @@ func TestServiceRestartWaitForStatusRunCommandError(t *testing.T) {
 		Return("", errors.New("WinRM connection lost")).
 		Times(1)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2471,6 +2543,9 @@ func TestServiceRestartRunCommandStartErrorAfterStop(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2494,7 +2569,7 @@ func TestServiceRestartRunCommandStartErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2529,9 +2604,8 @@ func TestServiceRestartRunCommandStartErrorAfterStop(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2556,6 +2630,9 @@ func TestServiceRestartRunCommandStartErrorFromStopped(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2579,7 +2656,7 @@ func TestServiceRestartRunCommandStartErrorFromStopped(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2598,9 +2675,8 @@ func TestServiceRestartRunCommandStartErrorFromStopped(t *testing.T) {
 		Return("", errors.New("access denied")).
 		Times(1)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2624,6 +2700,9 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2647,7 +2726,7 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2676,9 +2755,8 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Остановлена").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2702,6 +2780,9 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2725,7 +2806,7 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2757,9 +2838,8 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2783,6 +2863,9 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2806,7 +2889,7 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2829,9 +2912,8 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2855,6 +2937,9 @@ func TestServiceRestartStartPendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2878,7 +2963,7 @@ func TestServiceRestartStartPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2891,9 +2976,8 @@ func TestServiceRestartStartPendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 2 START_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2918,6 +3002,9 @@ func TestServiceRestartStopPendingConflict(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -2941,7 +3028,7 @@ func TestServiceRestartStopPendingConflict(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -2954,9 +3041,8 @@ func TestServiceRestartStopPendingConflict(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 3 STOP_PENDING", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -2981,6 +3067,9 @@ func TestServiceRestartPausedDefaultError(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -3004,7 +3093,7 @@ func TestServiceRestartPausedDefaultError(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3017,9 +3106,8 @@ func TestServiceRestartPausedDefaultError(t *testing.T) {
 		RunCommand(gomock.Any(), `sc query "TestService"`).
 		Return("STATE : 7 PAUSED", nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -3043,6 +3131,9 @@ func TestServiceRestartDbErrorAfterStop(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -3066,7 +3157,7 @@ func TestServiceRestartDbErrorAfterStop(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3099,9 +3190,8 @@ func TestServiceRestartDbErrorAfterStop(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(nil)
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -3126,6 +3216,9 @@ func TestServiceRestartDbErrorAfterStart(t *testing.T) {
 	mockChecker := netutilsMock.NewMockChecker(ctrl)
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := createContextWithCreds("user", 1, 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
@@ -3149,7 +3242,7 @@ func TestServiceRestartDbErrorAfterStart(t *testing.T) {
 
 	// хост доступен
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.1", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.1", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	// клиент создан успешно
@@ -3172,9 +3265,8 @@ func TestServiceRestartDbErrorAfterStart(t *testing.T) {
 		ChangeServiceStatus(gomock.Any(), int64(100), "TestService", "Работает").
 		Return(errors.New("database connection lost"))
 
-	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker)
+	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/restart", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 

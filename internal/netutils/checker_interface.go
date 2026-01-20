@@ -1,10 +1,14 @@
 package netutils
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 //go:generate mockgen -destination=mocks/mock_network_checker.go -package=mocks . Checker
 
-// Checker Интерфейс для проверки доступности сети.
+// Checker Интерфейс для проверки доступности серверов по сети.
 type Checker interface {
-	IsHostReachable(address string, port int, timeout time.Duration) bool
+	CheckWinRM(ctx context.Context, address string, port string, timeout time.Duration) bool
+	CheckICMP(ctx context.Context, address string, timeout time.Duration) bool
 }

@@ -27,8 +27,9 @@ func TestNewWinRMFingerprinter(t *testing.T) {
 
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	assert.NotNil(t, fp)
 }
@@ -41,11 +42,14 @@ func TestGetFingerprintSuccess(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	expectedGUID := "550e8400-e29b-41d4-a716-446655440000"
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -56,8 +60,7 @@ func TestGetFingerprintSuccess(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(expectedGUID, nil)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -72,13 +75,15 @@ func TestGetFingerprintHostUnreachable(t *testing.T) {
 
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(false)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -94,17 +99,19 @@ func TestGetFingerprintClientFactoryError(t *testing.T) {
 
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
 		CreateClient("192.168.1.100", "admin", "password").
 		Return(nil, errors.New("authentication failed"))
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -121,9 +128,12 @@ func TestGetFingerprintRunCommandError(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -134,8 +144,7 @@ func TestGetFingerprintRunCommandError(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("", errors.New("PowerShell error"))
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -152,11 +161,14 @@ func TestGetFingerprintInvalidUUID(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	invalidGUID := "not-a-valid-guid"
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -167,8 +179,7 @@ func TestGetFingerprintInvalidUUID(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(invalidGUID, nil)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -185,9 +196,12 @@ func TestGetFingerprintEmptyResponse(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -198,8 +212,7 @@ func TestGetFingerprintEmptyResponse(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("", nil)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -230,9 +243,12 @@ func TestGetFingerprintDifferentGUIDs(t *testing.T) {
 			mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 			mockClient := serviceControlMocks.NewMockClient(ctrl)
 			mockChecker := netutisMocks.NewMockChecker(ctrl)
+			mockWinRMPort := "5985"
+
+			ctx := context.Background()
 
 			mockChecker.EXPECT().
-				IsHostReachable("192.168.1.100", 5985, gomock.Any()).
+				CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, gomock.Any()).
 				Return(true)
 
 			mockFactory.EXPECT().
@@ -243,8 +259,7 @@ func TestGetFingerprintDifferentGUIDs(t *testing.T) {
 				RunCommand(gomock.Any(), gomock.Any()).
 				Return(tt.guid, nil)
 
-			fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-			ctx := context.Background()
+			fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 			fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -270,9 +285,13 @@ func TestGetFingerprintContextTimeout(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -283,10 +302,7 @@ func TestGetFingerprintContextTimeout(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("", context.DeadlineExceeded)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint, err := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 
@@ -303,13 +319,16 @@ func TestGetFingerprintMultipleServers(t *testing.T) {
 	mockClient1 := serviceControlMocks.NewMockClient(ctrl)
 	mockClient2 := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
+
+	ctx := context.Background()
 
 	guid1 := "550e8400-e29b-41d4-a716-446655440001"
 	guid2 := "550e8400-e29b-41d4-a716-446655440002"
 
 	// Первый сервер
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.100", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -322,7 +341,7 @@ func TestGetFingerprintMultipleServers(t *testing.T) {
 
 	// Второй сервер
 	mockChecker.EXPECT().
-		IsHostReachable("192.168.1.101", 5985, time.Duration(0)).
+		CheckWinRM(ctx, "192.168.1.101", mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -333,8 +352,7 @@ func TestGetFingerprintMultipleServers(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return(guid2, nil)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	fingerprint1, err1 := fp.GetFingerprint(ctx, "192.168.1.100", "admin", "password")
 	fingerprint2, err2 := fp.GetFingerprint(ctx, "192.168.1.101", "admin", "password")
@@ -354,13 +372,16 @@ func TestGetFingerprintCredentials(t *testing.T) {
 	mockFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockChecker := netutisMocks.NewMockChecker(ctrl)
+	mockWinRMPort := "5985"
 
 	expectedAddress := "192.168.1.100"
 	expectedUsername := "domain\\admin"
 	expectedPassword := "P@ssw0rd!"
 
+	ctx := context.Background()
+
 	mockChecker.EXPECT().
-		IsHostReachable(expectedAddress, 5985, time.Duration(0)).
+		CheckWinRM(ctx, expectedAddress, mockWinRMPort, time.Duration(0)).
 		Return(true)
 
 	mockFactory.EXPECT().
@@ -371,8 +392,7 @@ func TestGetFingerprintCredentials(t *testing.T) {
 		RunCommand(gomock.Any(), gomock.Any()).
 		Return("550e8400-e29b-41d4-a716-446655440000", nil)
 
-	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker)
-	ctx := context.Background()
+	fp := service_control.NewWinRMFingerprinter(mockFactory, mockChecker, mockWinRMPort)
 
 	_, err := fp.GetFingerprint(ctx, expectedAddress, expectedUsername, expectedPassword)
 

@@ -59,12 +59,12 @@ func TestFetchAndPublishSuccess(t *testing.T) {
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(nil)
 
 	// Publish для второго пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-2", gomock.Any()).
+		Publish("user-2:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -129,7 +129,7 @@ func TestFetchAndPublishGetUserServiceStatusesError(t *testing.T) {
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -168,7 +168,7 @@ func TestFetchAndPublishPublishError(t *testing.T) {
 
 	// Publish возвращает ошибку
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		Return(errors.New("publish error"))
 
 	ctx := context.Background()
@@ -248,7 +248,7 @@ func TestFetchAndPublishTopicFormat(t *testing.T) {
 
 	// проверяем что топик имеет правильный формат: "user-{id}"
 	mockBroadcaster.EXPECT().
-		Publish("user-123", gomock.Any()).
+		Publish("user-123:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -285,7 +285,7 @@ func TestFetchAndPublishJsonEncoding(t *testing.T) {
 
 	// проверяем что данные корректно закодированы
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)
@@ -325,7 +325,7 @@ func TestBroadcastServiceStatusesContextCancellation(t *testing.T) {
 	// запускаем воркер в горутине
 	done := make(chan bool)
 	go func() {
-		BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
+		ServiceBroadcastWorker(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
 		done <- true
 	}()
 
@@ -364,7 +364,7 @@ func TestBroadcastServiceStatusesInterval(t *testing.T) {
 		AnyTimes()
 
 	start := time.Now()
-	BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 100*time.Millisecond)
+	ServiceBroadcastWorker(ctx, mockStorage, mockBroadcaster, 100*time.Millisecond)
 	elapsed := time.Since(start)
 
 	// проверяем что воркер работал по крайней мере 100ms (интервал)
@@ -408,7 +408,7 @@ func TestBroadcastServiceStatusesMultipleUsers(t *testing.T) {
 			Return(nil)
 	}
 
-	BroadcastServiceStatuses(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
+	ServiceBroadcastWorker(ctx, mockStorage, mockBroadcaster, 1*time.Hour)
 }
 
 // TestFetchAndPublishMultipleStatusesPerUser Проверяет несколько статусов для одного пользователя.
@@ -439,7 +439,7 @@ func TestFetchAndPublishMultipleStatusesPerUser(t *testing.T) {
 		Return(statuses, nil)
 
 	mockBroadcaster.EXPECT().
-		Publish("user-1", gomock.Any()).
+		Publish("user-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)

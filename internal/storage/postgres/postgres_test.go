@@ -2236,3 +2236,123 @@ func TestClose(t *testing.T) {
 		})
 	}
 }
+
+// TestListServersAddresses Проверяет корректность работы метода PgStorage.ListServersAddresses.
+func TestListServersAddresses(t *testing.T) {
+	query := `SELECT id, address, user_id FROM servers ORDER BY id`
+
+	tests := []struct {
+		name           string
+		mockSetup      func(mock sqlmock.Sqlmock)
+		expectError    bool
+		errorAssertion func(t *testing.T, err error)
+		validate       func(t *testing.T, result []*models.ServerStatus)
+	}{
+		{
+			name: "успешное получение списка серверов",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				// порядок колонок должен соответствовать порядку Scan:
+				// Scan(&server.ServerID, &server.UserID, &server.Address)
+				rows := sqlmock.NewRows([]string{"id", "user_id", "address"}).
+					AddRow(int64(1), "10.0.0.1", int64(10)).
+					AddRow(int64(2), "10.0.0.2", int64(20)).
+					AddRow(int64(3), "10.0.0.3", int64(30))
+
+				mock.ExpectQuery(regexp.QuoteMeta(query)).
+					WillReturnRows(rows)
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*models.ServerStatus) {
+				require.NotNil(t, result)
+				assert.Len(t, result, 3)
+
+				assert.Equal(t, int64(1), result[0].ServerID)
+				assert.Equal(t, int64(10), result[0].UserID)
+				assert.Equal(t, "10.0.0.1", result[0].Address)
+
+				assert.Equal(t, int64(2), result[1].ServerID)
+				assert.Equal(t, int64(20), result[1].UserID)
+				assert.Equal(t, "10.0.0.2", result[1].Address)
+
+				assert.Equal(t, int64(3), result[2].ServerID)
+				assert.Equal(t, int64(30), result[2].UserID)
+				assert.Equal(t, "10.0.0.3", result[2].Address)
+			},
+		},
+		{
+			name: "пустой список серверов",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				// те же три колонки, но без строк
+				rows := sqlmock.NewRows([]string{"id", "user_id", "address"})
+				mock.ExpectQuery(regexp.QuoteMeta(query)).
+					WillReturnRows(rows)
+			},
+			expectError: false,
+			validate: func(t *testing.T, result []*models.ServerStatus) {
+				assert.Empty(t, result)
+			},
+		},
+		{
+			name: "ошибка выполнения запроса к БД",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(regexp.QuoteMeta(query)).
+					WillReturnError(errors.New("database error"))
+			},
+			expectError: true,
+			errorAssertion: func(t *testing.T, err error) {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "ошибка при получении всех серверов")
+			},
+			validate: func(t *testing.T, result []*models.ServerStatus) {
+				assert.Nil(t, result)
+			},
+		},
+		{
+			name: "ошибка парсинга строки (неправильный тип id)",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				// три колонки, но id как строка — Scan в int64 упадет
+				rows := sqlmock.NewRows([]string{"id", "user_id", "address"}).
+					AddRow("not-int", int64(10), "10.0.0.1")
+				mock.ExpectQuery(regexp.QuoteMeta(query)).
+					WillReturnRows(rows)
+			},
+			expectError: true,
+			errorAssertion: func(t *testing.T, err error) {
+				assert.Error(t, err)
+			},
+			validate: func(t *testing.T, result []*models.ServerStatus) {
+				assert.Nil(t, result)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+
+			tt.mockSetup(mock)
+
+			pg := &PgStorage{DB: db}
+
+			result, err := pg.ListServersAddresses(context.Background())
+
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errorAssertion != nil {
+					tt.errorAssertion(t, err)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+
+			if tt.validate != nil {
+				tt.validate(t, result)
+			}
+
+			// убеждаемся, что все ожидания моков выполнены
+			assert.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

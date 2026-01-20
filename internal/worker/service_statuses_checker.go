@@ -13,20 +13,20 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control/utils"
 )
 
-// ServicesStatusesWorker Структура ServicesStatusesWorker.
-type ServicesStatusesWorker struct {
+// ServiceStatusesChecker Структура ServiceStatusesChecker.
+type ServiceStatusesChecker struct {
 	clientFactory service_control.ClientFactory
 }
 
-// NewServicesStatusesWorker Конструктор ServicesStatusesWorker.
-func NewServicesStatusesWorker(clientFactory service_control.ClientFactory) *ServicesStatusesWorker {
-	return &ServicesStatusesWorker{
+// NewServiceStatusesChecker Конструктор ServiceStatusesChecker.
+func NewServiceStatusesChecker(clientFactory service_control.ClientFactory) *ServiceStatusesChecker {
+	return &ServiceStatusesChecker{
 		clientFactory: clientFactory,
 	}
 }
 
-// CheckServicesStatuses Получение с сервера статусов запрашиваемого слайса служб.
-func (cs ServicesStatusesWorker) CheckServicesStatuses(ctx context.Context, server *models.Server, services []*models.Service) ([]*models.Service, bool) {
+// CheckServiceStatuses Получение с сервера статусов запрашиваемого слайса служб.
+func (cs ServiceStatusesChecker) CheckServiceStatuses(ctx context.Context, server *models.Server, services []*models.Service) ([]*models.Service, bool) {
 	// создаём WinRM клиент
 	client, err := cs.clientFactory.CreateClient(server.Address, server.Username, server.Password)
 
