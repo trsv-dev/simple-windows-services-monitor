@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,6 +20,23 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
+
+// Скомпилированный regex для функции isServiceManageable().
+var servicePattern = regexp.MustCompile(`_[0-9a-f]{6,8}$`)
+
+// Системные сервисы, которыми не должен управлять пользователь.
+// OneCore/ConnectUX/DevicesFlow, суффиксы вида _cd63f6, _15e2238.
+var systemServicePatterns = []string{
+	"ConsentUX",
+	"DevicePicker",
+	"DevicesFlow",
+	"CaptureService",
+	"DiagTrack",
+	"dmwappushservice",
+	"WaaSMedicSvc",
+	"DoSvc",
+	"OneSyncSvc",
+}
 
 // ServiceHandler Обработчик для управления службами.
 type ServiceHandler struct {
@@ -102,7 +120,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 
 	for _, service := range strings.Split(services, "\n") {
 		trimmed := strings.TrimSpace(service)
-		if trimmed != "" {
+		if trimmed != "" && isServiceManageable(trimmed) {
 			listOfServices = append(listOfServices, trimmed)
 		}
 	}
@@ -438,4 +456,22 @@ func isServiceExists(result string) bool {
 
 	// если ничего не понятно - считаем что такой службы нет на сервере
 	return false
+}
+
+// Вспомогательная служба. Определяет, может ли быть управляемой служба.
+func isServiceManageable(name string) bool {
+	// эвристики для вычисления системных служб по имени
+
+	if servicePattern.MatchString(name) {
+		return false
+	}
+
+	for _, pattern := range systemServicePatterns {
+		if strings.Contains(name, pattern) {
+			return false
+		}
+	}
+
+	// все остальные считаем управляемыми
+	return true
 }

@@ -122,10 +122,33 @@ func (h *ControlHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 		stopCtx, cancelStop := context.WithTimeout(ctx, 30*time.Second)
 		defer cancelStop()
 
-		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
+		var stdout string
+
+		// получаем вывод после выполнения команды остановки
+		if stdout, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось остановить службу")
+			return
+		}
+
+		// проверяем вывод на FAILED, .т.е на ошибку остановки службы
+		// (если exit code != 0, то в выводе точно будет FAILED)
+		if serviceErr := errs.ParseServiceError(stdout); serviceErr != nil {
+			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", serviceErr.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, serviceErr.Error())
+			return
+		}
+
+		// контекст для ожидания остановки
+		waitStopCtx, cancelWaitStop := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWaitStop()
+
+		// ждём остановки с контекстом и экспоненциальной задержкой
+		if waitErr := h.waitForServiceStatus(waitStopCtx, client, service.ServiceName, utils.ServiceStopped); waitErr != nil {
+			response.ErrorJSON(w, http.StatusInternalServerError,
+				fmt.Sprintf("Служба `%s` не остановилась в ожидаемое время", service.DisplayedName))
 			return
 		}
 
@@ -255,10 +278,33 @@ func (h *ControlHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
 		defer cancelStart()
 
-		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
+		var stdout string
+
+		// получаем вывод после выполнения команды запуска
+		if stdout, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось запустить службу")
+			return
+		}
+
+		// проверяем вывод на FAILED, .т.е на ошибку запуска службы
+		// (если exit code != 0, то в выводе точно будет FAILED)
+		if serviceErr := errs.ParseServiceError(stdout); serviceErr != nil {
+			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", serviceErr.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, serviceErr.Error())
+			return
+		}
+
+		// контекст для ожидания запуска
+		waitStartCtx, cancelWaitStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWaitStart()
+
+		// ждём запуска с контекстом и экспоненциальной задержкой
+		if waitErr := h.waitForServiceStatus(waitStartCtx, client, service.ServiceName, utils.ServiceRunning); waitErr != nil {
+			response.ErrorJSON(w, http.StatusInternalServerError,
+				fmt.Sprintf("Служба `%s` не запустилась в ожидаемое время", service.DisplayedName))
 			return
 		}
 
@@ -301,6 +347,8 @@ func (h *ControlHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 
 // ServiceRestart Перезапуск службы.
 func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) {
+	var stdout string
+
 	ctx := r.Context()
 	creds := models.GetContextCreds(ctx)
 
@@ -387,20 +435,29 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 		stopCtx, cancelStop := context.WithTimeout(ctx, 30*time.Second)
 		defer cancelStop()
 
-		if _, err = client.RunCommand(stopCtx, stopCmd); err != nil {
+		if stdout, err = client.RunCommand(stopCtx, stopCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
-				service.DisplayedName, creds.ServiceID, server.Name, creds.ServiceID), logger.String("err", err.Error()))
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось остановить службу `%s`", service.DisplayedName))
 			return
 		}
 
+		// проверяем вывод на FAILED, .т.е на ошибку остановки службы
+		// (если exit code != 0, то в выводе точно будет FAILED)
+		if serviceErr := errs.ParseServiceError(stdout); serviceErr != nil {
+			logger.Log.Warn(fmt.Sprintf("Не удалось остановить службу `%s`, id=%d на сервере `%s`, id=%d",
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", serviceErr.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, serviceErr.Error())
+			return
+		}
+
 		// контекст для ожидания остановки
-		waitCtx, cancelWait := context.WithTimeout(ctx, 30*time.Second)
-		defer cancelWait()
+		waitStopCtx, cancelWaitStop := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWaitStop()
 
 		// ждём остановки с контекстом и экспоненциальной задержкой
-		if err := h.waitForServiceStatus(waitCtx, client, service.ServiceName, utils.ServiceStopped); err != nil {
+		if waitErr := h.waitForServiceStatus(waitStopCtx, client, service.ServiceName, utils.ServiceStopped); waitErr != nil {
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Служба `%s` не остановилась в ожидаемое время", service.DisplayedName))
 			return
@@ -417,9 +474,29 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
 		defer cancelStart()
 
-		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
+		if stdout, err = client.RunCommand(startCtx, startCmd); err != nil {
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось запустить службу `%s`", service.DisplayedName))
+			return
+		}
+
+		// проверяем вывод на FAILED, .т.е на ошибку запуска службы
+		// (если exit code != 0, то в выводе точно будет FAILED)
+		if serviceErr := errs.ParseServiceError(stdout); serviceErr != nil {
+			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", serviceErr.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, serviceErr.Error())
+			return
+		}
+
+		// контекст для ожидания запуска
+		waitStartCtx, cancelWaitStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWaitStart()
+
+		// ждём запуска с контекстом и экспоненциальной задержкой
+		if waitErr := h.waitForServiceStatus(waitStartCtx, client, service.ServiceName, utils.ServiceRunning); waitErr != nil {
+			response.ErrorJSON(w, http.StatusInternalServerError,
+				fmt.Sprintf("Служба `%s` не запустилась в ожидаемое время", service.DisplayedName))
 			return
 		}
 
@@ -438,11 +515,31 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 		startCtx, cancelStart := context.WithTimeout(ctx, 30*time.Second)
 		defer cancelStart()
 
-		if _, err = client.RunCommand(startCtx, startCmd); err != nil {
+		if stdout, err = client.RunCommand(startCtx, startCmd); err != nil {
 			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
 				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", err.Error()))
 			response.ErrorJSON(w, http.StatusInternalServerError,
 				fmt.Sprintf("Не удалось запустить службу `%s`", service.DisplayedName))
+			return
+		}
+
+		// проверяем вывод на FAILED, .т.е на ошибку запуска службы
+		// (если exit code != 0, то в выводе точно будет FAILED)
+		if serviceErr := errs.ParseServiceError(stdout); serviceErr != nil {
+			logger.Log.Warn(fmt.Sprintf("Не удалось запустить службу `%s`, id=%d на сервере `%s`, id=%d",
+				service.DisplayedName, creds.ServiceID, server.Name, creds.ServerID), logger.String("err", serviceErr.Error()))
+			response.ErrorJSON(w, http.StatusBadRequest, serviceErr.Error())
+			return
+		}
+
+		// контекст для ожидания запуска
+		waitStartCtx, cancelWaitStart := context.WithTimeout(ctx, 30*time.Second)
+		defer cancelWaitStart()
+
+		// ждём запуска с контекстом и экспоненциальной задержкой
+		if waitErr := h.waitForServiceStatus(waitStartCtx, client, service.ServiceName, utils.ServiceRunning); waitErr != nil {
+			response.ErrorJSON(w, http.StatusInternalServerError,
+				fmt.Sprintf("Служба `%s` не запустилась в ожидаемое время", service.DisplayedName))
 			return
 		}
 
@@ -472,30 +569,36 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 // Вспомогательный метод для ожидания статуса
 func (h *ControlHandler) waitForServiceStatus(ctx context.Context, client service_control.Client, serviceName string, expectedStatus int) error {
 	statusCmd := fmt.Sprintf("sc query \"%s\"", serviceName)
-
-	// Экспоненциальная задержка: 100ms, 200ms, 400ms, 800ms, 1.6s, 3.2s
 	backoff := 100 * time.Millisecond
 	maxBackoff := 5 * time.Second
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err() // таймаут или отмена клиентом
+			return ctx.Err()
 		case <-time.After(backoff):
 			result, err := client.RunCommand(ctx, statusCmd)
 			if err != nil {
-				return fmt.Errorf("ошибка получения статуса службы: %w", err)
+				return err
 			}
 
-			if utils.GetStatus(result) == expectedStatus {
-				return nil // статус успешно получен
+			currentStatus := utils.GetStatus(result)
+
+			if currentStatus == expectedStatus {
+				return nil
 			}
 
-			// увеличиваем задержку экспоненциально
-			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
+			// Если в переходном состоянии - ждём дальше
+			if currentStatus == utils.ServiceStartPending || currentStatus == utils.ServiceStopPending {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
 			}
+
+			// Неожиданное состояние
+			return fmt.Errorf("неожиданное состояние: %d, ожидалось: %d", currentStatus, expectedStatus)
 		}
 	}
 }

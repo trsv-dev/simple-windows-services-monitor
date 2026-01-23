@@ -51,3 +51,17 @@ func NewErrServiceNotFound(userID int64, serverID int64, serviceID int64, err er
 		ServiceID: serviceID,
 	}
 }
+
+// ServiceError Кастомная ошибка, сообщающая о том, что команда для управления состоянием службы завершилась с ошибкой.
+type ServiceError struct {
+	Code    int
+	Message string
+}
+
+func NewServiceError(message string, code int) *ServiceError {
+	return &ServiceError{Code: code, Message: message}
+}
+
+func (se *ServiceError) Error() string {
+	return fmt.Sprintf("Код %d, %s", se.Code, se.Message)
+}
