@@ -1771,7 +1771,7 @@ async function controlService(serviceId, action, serviceName) {
 
     } catch (error) {
         if (!(error instanceof SessionExpiredError)) {
-            showToast('Ошибка', `Не удалось выполнить операцию "${action}" для службы "${serviceName}"`, 'error');
+            showToast('Ошибка', `Не удалось выполнить операцию "${action}" для службы "${serviceName}. Ошибка: ${error.message}"`, 'error');
         }
     } finally {
         hideLoading();
