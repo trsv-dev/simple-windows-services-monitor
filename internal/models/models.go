@@ -113,6 +113,8 @@ type Service struct {
 	DisplayedName string    `json:"displayed_name"`
 	ServiceName   string    `json:"service_name"`
 	Status        string    `json:"status,omitempty"`
+	StartMode     string    `json:"start_mode"`
+	AcceptStop    bool      `json:"accept_stop"`
 	CreatedAt     time.Time `json:"created_at,omitempty"`
 	UpdatedAt     time.Time `json:"updated_at,omitempty"`
 }

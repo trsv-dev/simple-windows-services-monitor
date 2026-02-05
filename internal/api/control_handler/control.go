@@ -22,16 +22,21 @@ type ControlHandler struct {
 	storage       storage.Storage
 	clientFactory service_control.ClientFactory // фабрика для создания WinRM клиентов
 	checker       netutils.Checker
-	winrmPort     string
+	winRMPort     string
 }
 
 // NewControlHandler Конструктор ControlHandler.
-func NewControlHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, winrmPort string) *ControlHandler {
+func NewControlHandler(
+	storage storage.Storage,
+	clientFactory service_control.ClientFactory,
+	checker netutils.Checker,
+	winRMPort string,
+) *ControlHandler {
 	return &ControlHandler{
 		storage:       storage,
 		clientFactory: clientFactory,
 		checker:       checker,
-		winrmPort:     winrmPort,
+		winRMPort:     winRMPort,
 	}
 }
 
@@ -81,7 +86,7 @@ func (h *ControlHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно остановить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -237,7 +242,7 @@ func (h *ControlHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -393,7 +398,7 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно перезапустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return

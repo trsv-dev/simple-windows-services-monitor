@@ -22,16 +22,14 @@ type HealthHandler struct {
 	storage     storage.Storage
 	statusCache health_storage.StatusCacheStorage
 	checker     netutils.Checker
-	winrmPort   string
 }
 
 // NewHealthHandler Конструктор HealthHandler.
-func NewHealthHandler(storage storage.Storage, statusCache health_storage.StatusCacheStorage, checker netutils.Checker, winrmPort string) *HealthHandler {
+func NewHealthHandler(storage storage.Storage, statusCache health_storage.StatusCacheStorage, checker netutils.Checker) *HealthHandler {
 	return &HealthHandler{
 		storage:     storage,
 		statusCache: statusCache,
 		checker:     checker,
-		winrmPort:   winrmPort,
 	}
 }
 

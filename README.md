@@ -74,6 +74,10 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     RUN_ADDRESS=127.0.0.1:8080
     # Используйте 5985 (http) или 5986 (https) порты
     WINRM_PORT=5985
+    # Установите флаг в значение true для HTTPS-соединений с WinRM
+    WINRM_USE_HTTPS=false
+    # Установите флаг в значение true, чтобы пропустить проверку SSL (например, для самоподписанных сертификатов).
+    WINRM_INSECURE_FOR_HTTPS=false
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key
@@ -135,6 +139,10 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     RUN_ADDRESS=127.0.0.1:8080
     # Используйте 5985 (http) или 5986 (https) порты
     WINRM_PORT=5985
+    # Установите флаг в значение true для HTTPS-соединений с WinRM
+    WINRM_USE_HTTPS=false
+    # Установите флаг в значение true, чтобы пропустить проверку SSL (например, для самоподписанных сертификатов).
+    WINRM_INSECURE_FOR_HTTPS=false
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key

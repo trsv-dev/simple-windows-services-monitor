@@ -7,16 +7,18 @@ import (
 )
 
 type Config struct {
-	RunAddress       string
-	DatabaseURI      string
-	WinRMPort        string
-	LogLevel         string
-	LogOutput        string
-	JWTSecretKey     string
-	AESKey           string
-	WebInterface     bool
-	OpenRegistration bool
-	RegistrationKey  string
+	RunAddress            string
+	DatabaseURI           string
+	WinRMPort             string
+	WinRMUseHTTPS         bool
+	WinRMInsecureForHTTPS bool
+	LogLevel              string
+	LogOutput             string
+	JWTSecretKey          string
+	AESKey                string
+	WebInterface          bool
+	OpenRegistration      bool
+	RegistrationKey       string
 }
 
 // InitConfig Инициализация структуры, содержащей конфигурацию сервера, полученную из флагов или
@@ -26,7 +28,9 @@ func InitConfig() *Config {
 
 	flag.StringVar(&config.RunAddress, "a", "127.0.0.1:8080", "HTTP server address and port")
 	flag.StringVar(&config.DatabaseURI, "d", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
-	flag.StringVar(&config.WinRMPort, "wp", "5985", "WinRM port (Default: 5985), alternative to https - 5986")
+	flag.StringVar(&config.WinRMPort, "wp", "5985", "WinRM port (Default: 5985), alternative to https - 5986. Оr any custom port if your server uses a non-standard WinRM port ")
+	flag.BoolVar(&config.WinRMUseHTTPS, "https", false, "Set the flag true for https connections. Default: false")
+	flag.BoolVar(&config.WinRMInsecureForHTTPS, "ssl", false, "Set the flag true for skipping ssl verifications (useful for self-signed certificates)")
 	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error). Default level: Debug")
 	flag.StringVar(&config.LogOutput, "lo", "./logs/swsm.log", "Log output destination: 'stdout' for console or relative path to logfile `./path/to/file.log` for log file. Default: './logs/swsm.log'")
 	flag.StringVar(&config.JWTSecretKey, "s", "", "Secret key used for signing and verifying JWT tokens (example: UIfuBqY1crEUgzIem9)")
@@ -45,11 +49,24 @@ func InitConfig() *Config {
 	}
 
 	if value, ok := os.LookupEnv("WINRM_PORT"); ok {
-		switch value {
-		case "5985", "5986":
-			config.WinRMPort = value
-		default:
-			config.WinRMPort = "5985"
+		config.WinRMPort = value
+	}
+
+	if value, ok := os.LookupEnv("WINRM_USE_HTTPS"); ok {
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			config.WinRMUseHTTPS = true
+		case "0", "false", "no", "off":
+			config.WinRMUseHTTPS = false
+		}
+	}
+
+	if value, ok := os.LookupEnv("WINRM_INSECURE_FOR_HTTPS"); ok {
+		switch strings.ToLower(value) {
+		case "1", "true", "yes", "on":
+			config.WinRMInsecureForHTTPS = true
+		case "0", "false", "no", "off":
+			config.WinRMInsecureForHTTPS = false
 		}
 	}
 

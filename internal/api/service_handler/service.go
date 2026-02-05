@@ -44,17 +44,23 @@ type ServiceHandler struct {
 	clientFactory          service_control.ClientFactory
 	checker                netutils.Checker
 	serviceStatusesChecker worker.StatusesChecker
-	winrmPort              string
+	winRMPort              string
 }
 
 // NewServiceHandler Конструктор ServiceHandler.
-func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, serviceStatusesChecker worker.StatusesChecker, winrmPort string) *ServiceHandler {
+func NewServiceHandler(
+	storage storage.Storage,
+	clientFactory service_control.ClientFactory,
+	checker netutils.Checker,
+	serviceStatusesChecker worker.StatusesChecker,
+	winRMPort string,
+) *ServiceHandler {
 	return &ServiceHandler{
 		storage:                storage,
 		clientFactory:          clientFactory,
 		checker:                checker,
 		serviceStatusesChecker: serviceStatusesChecker,
-		winrmPort:              winrmPort,
+		winRMPort:              winRMPort,
 	}
 }
 
@@ -86,7 +92,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -102,6 +108,12 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	listOfServicesCmd := `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`
+	//
+	//listOfServicesCmd := `powershell -NoProfile -NonInteractive -Command "
+	//	Get-CimInstance Win32_Service |
+	//	Select-Object Name, DisplayName, State, StartMode, AcceptStop |
+	//	ConvertTo-Json -Depth 2
+	//	"`
 
 	// контекст для получения списка служб удаленного сервера
 	listOfServicesCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -178,7 +190,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -391,7 +403,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")

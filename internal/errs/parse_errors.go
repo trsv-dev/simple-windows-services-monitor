@@ -42,6 +42,7 @@ func ParseErrorCode(code int) string {
 		87:   "Invalid parameter",
 		1051: "A stop control has been sent to a service that other running services are dependent on",
 		1052: "The requested control is not valid for this service",
+		1058: "The service cannot be started, either because it is disabled or because it has no enabled devices associated with it.",
 		1060: "The specified service does not exist as an installed service",
 		1061: "The service cannot accept control messages at this time",
 		1062: "The service has not been started",

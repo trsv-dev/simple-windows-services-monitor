@@ -72,10 +72,9 @@ func TestHealthHandler_GetHealth(t *testing.T) {
 			mockStorage := storageMocks.NewMockStorage(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 			mockStatusCache := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-			mockWinRMPort := "5985"
 			tt.setupMock(mockStorage)
 
-			handler := NewHealthHandler(mockStorage, mockStatusCache, mockChecker, mockWinRMPort)
+			handler := NewHealthHandler(mockStorage, mockStatusCache, mockChecker)
 
 			req := httptest.NewRequest(http.MethodGet, "/health", nil)
 			w := httptest.NewRecorder()
@@ -102,7 +101,6 @@ func TestHealthHandler_PingTimeout(t *testing.T) {
 	mockStorage := storageMocks.NewMockStorage(ctrl)
 	mockChecker := netutilsMocks.NewMockChecker(ctrl)
 	mockCacheStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	mockWinRMPort := "5985"
 
 	mockStorage.EXPECT().
 		Ping(gomock.Any()).
@@ -115,7 +113,7 @@ func TestHealthHandler_PingTimeout(t *testing.T) {
 			}
 		})
 
-	handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker, mockWinRMPort)
+	handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
@@ -254,13 +252,12 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			mockStorage := storageMocks.NewMockStorage(ctrl)
 			mockCacheStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
-			mockWinRMPort := "5985"
 
 			mockCtx := createContextWithCreds("test", int64(1), int64(1))
 
 			tt.setupMock(mockStorage, mockCacheStorage)
 
-			handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker, mockWinRMPort)
+			handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker)
 
 			r := httptest.NewRequest("GET", "/servers/1/status", nil).WithContext(mockCtx)
 			w := httptest.NewRecorder()
@@ -553,13 +550,12 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			mockStorage := storageMocks.NewMockStorage(ctrl)
 			mockCacheStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
-			mockWinRMPort := "5985"
 
 			mockCtx := createContextWithCreds("test", int64(1), int64(0))
 
 			tt.setupMock(mockStorage, mockCacheStorage)
 
-			handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker, mockWinRMPort)
+			handler := NewHealthHandler(mockStorage, mockCacheStorage, mockChecker)
 
 			r := httptest.NewRequest("GET", "/servers/statuses", nil).WithContext(mockCtx)
 			w := httptest.NewRecorder()
