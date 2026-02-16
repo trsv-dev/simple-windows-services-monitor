@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,40 +20,29 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/worker"
 )
 
-// Скомпилированный regex для функции isServiceManageable().
-var servicePattern = regexp.MustCompile(`_[0-9a-f]{6,8}$`)
-
-// Системные сервисы, которыми не должен управлять пользователь.
-// OneCore/ConnectUX/DevicesFlow, суффиксы вида _cd63f6, _15e2238.
-var systemServicePatterns = []string{
-	"ConsentUX",
-	"DevicePicker",
-	"DevicesFlow",
-	"CaptureService",
-	"DiagTrack",
-	"dmwappushservice",
-	"WaaSMedicSvc",
-	"DoSvc",
-	"OneSyncSvc",
-}
-
 // ServiceHandler Обработчик для управления службами.
 type ServiceHandler struct {
 	storage                storage.Storage
 	clientFactory          service_control.ClientFactory
 	checker                netutils.Checker
 	serviceStatusesChecker worker.StatusesChecker
-	winrmPort              string
+	winRMPort              string
 }
 
 // NewServiceHandler Конструктор ServiceHandler.
-func NewServiceHandler(storage storage.Storage, clientFactory service_control.ClientFactory, checker netutils.Checker, serviceStatusesChecker worker.StatusesChecker, winrmPort string) *ServiceHandler {
+func NewServiceHandler(
+	storage storage.Storage,
+	clientFactory service_control.ClientFactory,
+	checker netutils.Checker,
+	serviceStatusesChecker worker.StatusesChecker,
+	winRMPort string,
+) *ServiceHandler {
 	return &ServiceHandler{
 		storage:                storage,
 		clientFactory:          clientFactory,
 		checker:                checker,
 		serviceStatusesChecker: serviceStatusesChecker,
-		winrmPort:              winrmPort,
+		winRMPort:              winRMPort,
 	}
 }
 
@@ -86,7 +74,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно запустить службу", server.Address, server.ID))
 		response.ErrorJSON(w, http.StatusBadGateway, fmt.Sprintf("Сервер недоступен"))
 		return
@@ -101,36 +89,41 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	listOfServicesCmd := `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`
+	listOfServicesCmd := `powershell -Command "` +
+		`Get-Service | ` +
+		`ForEach-Object { [PSCustomObject]@{ name = $_.Name; display_name = $_.DisplayName } } | ` +
+		`ConvertTo-Json -Compress"`
 
 	// контекст для получения списка служб удаленного сервера
 	listOfServicesCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	var services string
+	var servicesJSON string
 
-	if services, err = client.RunCommand(listOfServicesCtx, listOfServicesCmd); err != nil {
+	if servicesJSON, err = client.RunCommand(listOfServicesCtx, listOfServicesCmd); err != nil {
 		logger.Log.Warn(fmt.Sprintf("Не удалось получить список служб с удаленного сервера `%s`, id=%d",
-			server.Name, creds.ServerID), logger.String("err", err.Error()))
+			server.Name, server.ID), logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusInternalServerError, "Не удалось получить список служб с удаленного сервера")
 		return
 	}
 
-	var listOfServices []string
+	listOfServices := make([]models.ServiceName, 0)
 
-	for _, service := range strings.Split(services, "\n") {
-		trimmed := strings.TrimSpace(service)
-		if trimmed != "" && isServiceManageable(trimmed) {
-			listOfServices = append(listOfServices, trimmed)
-		}
+	if servicesJSON == "" {
+		response.JSON(w, http.StatusOK, map[string]interface{}{
+			"services": listOfServices,
+		})
+		return
 	}
 
-	// если список служб по какой-то причине пуст, то возвращаем пустой слайс, а не nil
-	if listOfServices == nil {
-		listOfServices = []string{}
+	err = json.Unmarshal([]byte((servicesJSON)), &listOfServices)
+	if err != nil {
+		logger.Log.Error(fmt.Sprintf("Не удалось распарсить список служб с сервера `%s`, id=%d",
+			server.Name, server.ID), logger.String("err", err.Error()))
+		response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка парсинга служб с удаленного сервера")
 	}
 
-	// возвращаем ответ с произвольным JSON
+	// возвращаем ответ в JSON
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"services": listOfServices,
 	})
@@ -178,7 +171,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем ошибку
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно добавить службу", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -391,7 +384,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 	}
 
 	// проверяем доступность сервера, если недоступен - возвращаем службы и заголовок "X-Is-Updated" = false
-	if !h.checker.CheckWinRM(ctx, server.Address, h.winrmPort, 0) {
+	if !h.checker.CheckWinRM(ctx, server.Address, h.winRMPort, 0) {
 		logger.Log.Warn(fmt.Sprintf("Сервер %s, id=%d недоступен. Невозможно обновить статус служб с сервера", server.Address, server.ID))
 
 		w.Header().Set("Content-Type", "application/json")
@@ -456,22 +449,4 @@ func isServiceExists(result string) bool {
 
 	// если ничего не понятно - считаем что такой службы нет на сервере
 	return false
-}
-
-// Вспомогательная служба. Определяет, может ли быть управляемой служба.
-func isServiceManageable(name string) bool {
-	// эвристики для вычисления системных служб по имени
-
-	if servicePattern.MatchString(name) {
-		return false
-	}
-
-	for _, pattern := range systemServicePatterns {
-		if strings.Contains(name, pattern) {
-			return false
-		}
-	}
-
-	// все остальные считаем управляемыми
-	return true
 }

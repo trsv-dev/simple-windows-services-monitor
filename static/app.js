@@ -871,7 +871,7 @@ function startServerPolling() {
                         const statusResponse = await apiRequest(`/user/servers/${currentServerId}/status`);
                         updateServersStatus([{
                             server_id: currentServerId,
-                            status: statusResponse.status || 'UNKNOWN'
+                            status: statusResponse.status
                         }]);
                         consecutiveErrors = 0;
                     } catch (error) {
@@ -1162,7 +1162,7 @@ async function loadServersList() {
                 if (!isNaN(sid)) {
                     const status = statusMap.get(sid);
                     if (status) {
-                        server.status = status.status || 'UNKNOWN';
+                        server.status = status.status;
                     }
                 }
             });
@@ -1247,16 +1247,16 @@ function renderServersList(servers) {
         status.className = 'text-muted d-block';
         status.innerHTML = `<i class="bi bi-hdd-network me-1"></i>`;
         const statusSpan = document.createElement('span');
-        statusSpan.textContent = server.status || 'UNKNOWN';
+        statusSpan.textContent = server.status;
         statusSpan.className = 'server-status-text';
-        statusSpan.setAttribute('data-status', (server.status || 'UNKNOWN').toUpperCase());
+        statusSpan.setAttribute('data-status', (server.status).toUpperCase());
         status.appendChild(statusSpan);
 
         // const status = document.createElement('small');
         // status.className = 'text-muted d-block';
         // status.innerHTML = `<i class="bi bi-hdd-network me-1"></i>`;
         // const statusSpan = document.createElement('span');
-        // statusSpan.textContent = server.status || 'UNKNOWN';
+        // statusSpan.textContent = server.status;
         // status.appendChild(statusSpan);
 
         const user = document.createElement('small');
@@ -1338,21 +1338,48 @@ async function handleAddServer(event) {
     }
 }
 
+// async function loadServerDetail(serverId) {
+//     currentServerId = serverId;
+//     showLoading();
+//
+//     try {
+//         const server = await apiRequest(`/user/servers/${serverId}`);
+//         currentServerData = server;
+//         renderServerDetail(server);
+//         await loadServicesList(serverId);
+//
+//         const editBtn = document.getElementById('editServerBtn');
+//         if (editBtn) {
+//             editBtn.onclick = openEditServerModalFromDetail;
+//         }
+//
+//     } catch (error) {
+//         if (!(error instanceof SessionExpiredError)) {
+//             showToast('Ошибка', 'Не удалось загрузить информацию о сервере', 'error');
+//             showServersList();
+//         }
+//     } finally {
+//         hideLoading();
+//     }
+// }
+
 async function loadServerDetail(serverId) {
     currentServerId = serverId;
     showLoading();
-
     try {
         const server = await apiRequest(`/user/servers/${serverId}`);
         currentServerData = server;
         renderServerDetail(server);
         await loadServicesList(serverId);
 
+        // Убедитесь, что кнопка редактирования работает
         const editBtn = document.getElementById('editServerBtn');
         if (editBtn) {
-            editBtn.onclick = openEditServerModalFromDetail;
+            // Удаляем старый обработчик если есть
+            editBtn.onclick = null;
+            // Добавляем новый
+            editBtn.onclick = () => openEditServerModalFromDetail();
         }
-
     } catch (error) {
         if (!(error instanceof SessionExpiredError)) {
             showToast('Ошибка', 'Не удалось загрузить информацию о сервере', 'error');
@@ -1362,6 +1389,7 @@ async function loadServerDetail(serverId) {
         hideLoading();
     }
 }
+
 
 function renderServerDetail(server) {
     document.getElementById('serverBreadcrumb').textContent = server.name || '';
@@ -1376,7 +1404,7 @@ function renderServerDetail(server) {
         indicator.className = 'server-status-indicator me-2';
 
         // Устанавливаем статус из данных сервера
-        updateServerStatusIndicator(indicator, server.status || 'UNKNOWN');
+        updateServerStatusIndicator(indicator, server.status);
 
         // Иконка сервера
         const icon = document.createElement('i');
@@ -1395,7 +1423,7 @@ function renderServerDetail(server) {
         document.querySelector('#serverDetailName .server-status-text');
     if (detailStatusText) {
         detailStatusText.textContent = server.status || '—';
-        detailStatusText.setAttribute('data-status', (server.status || 'UNKNOWN').toUpperCase());
+        detailStatusText.setAttribute('data-status', (server.status).toUpperCase());
     }
 
     const addrEl = document.getElementById('serverDetailAddress');
@@ -1443,7 +1471,7 @@ function updateServersStatus(statuses) {
             if (!isNaN(sid)) {
                 const updated = statusMap.get(sid);
                 if (updated) {
-                    server.status = updated.status || 'UNKNOWN';
+                    server.status = updated.status;
                     server.updated_at = updated.updated_at || server.updated_at;
                 }
             }
@@ -1469,8 +1497,8 @@ function updateServersStatus(statuses) {
             // Обновление текстового статуса (ДОБАВЛЕНО)
             const statusSpan = card.querySelector('.server-status-text');
             if (statusSpan) {
-                statusSpan.textContent = updated.status || 'UNKNOWN';
-                statusSpan.setAttribute('data-status', (updated.status || 'UNKNOWN').toUpperCase());
+                statusSpan.textContent = updated.status;
+                statusSpan.setAttribute('data-status', (updated.status).toUpperCase());
             }
         });
     } catch (e) {
@@ -1493,7 +1521,7 @@ function updateServersStatus(statuses) {
                         document.querySelector('#serverDetailName .server-status-text');
                     if (detailStatusText) {
                         detailStatusText.textContent = updated.status || '—';
-                        detailStatusText.setAttribute('data-status', (updated.status || 'UNKNOWN').toUpperCase());
+                        detailStatusText.setAttribute('data-status', (updated.status).toUpperCase());
                     }
                 }
             }
@@ -1855,6 +1883,7 @@ async function handleRefreshFromServer() {
 // ============================================
 
 let availableServices = [];
+let selectedService = null;
 
 async function loadAvailableServices(serverId) {
     try {
@@ -1868,71 +1897,92 @@ async function loadAvailableServices(serverId) {
     }
 }
 
-// Когда открывается модалка добавления - загружаем служб
+function renderServicesInList(services) {
+    const container = document.getElementById('serviceListContainer');
+
+    if (!services || services.length === 0) {
+        container.innerHTML = '<div class="text-center service-list-empty p-3">Службы не найдены</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+
+    services.forEach(service => {
+        const item = document.createElement('div');
+        item.className = 'service-item';
+        item.dataset.serviceName = service.name;
+        item.dataset.displayName = service.display_name;
+
+        item.innerHTML = `
+            <div class="service-item-name">${escapeHtml(service.name)}</div>
+            <div class="service-item-display">${escapeHtml(service.display_name)}</div>
+        `;
+
+        item.addEventListener('click', () => selectService(service, item));
+
+        container.appendChild(item);
+    });
+}
+
+function selectService(service, itemElement) {
+    selectedService = service;
+
+    // Убираем выделение со всех элементов
+    document.querySelectorAll('.service-item').forEach(el => {
+        el.classList.remove('selected');
+    });
+
+    // Выделяем выбранный элемент
+    if (itemElement) {
+        itemElement.classList.add('selected');
+    }
+
+    // Заполняем поля
+    document.getElementById('selectedServiceName').value = service.name;
+    document.getElementById('serviceDisplayName').value = service.display_name;
+}
+
+// Поиск
+document.getElementById('serviceSearch').addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+
+    if (!searchTerm) {
+        renderServicesInList(availableServices);
+        return;
+    }
+
+    const filtered = availableServices.filter(service =>
+        service.name.toLowerCase().includes(searchTerm) ||
+        service.display_name.toLowerCase().includes(searchTerm)
+    );
+
+    renderServicesInList(filtered);
+});
+
+// Открытие модалки
 document.getElementById('addServiceModal').addEventListener('show.bs.modal', async () => {
     if (!currentServerId) return;
 
-    const select = document.getElementById('serviceSelect');
-    select.innerHTML = '<option value="">Загрузка служб...</option>';
+    const container = document.getElementById('serviceListContainer');
+    container.innerHTML = '<div class="text-center service-list-loading p-3"><div class="spinner-border spinner-border-sm me-2"></div>Загрузка служб...</div>';
 
     const services = await loadAvailableServices(currentServerId);
-
-    select.innerHTML = '<option value="">-- Выберите службу --</option>';
-    services.forEach(service => {
-        const option = document.createElement('option');
-        option.value = service;
-        option.textContent = service;
-        select.appendChild(option);
-    });
+    renderServicesInList(services);
 });
 
-// Обновление отображаемого имени при выборе службы
-document.getElementById('serviceSelect').addEventListener('change', (e) => {
-    const selected = e.target.value;
-    const displayNameInput = document.getElementById('serviceDisplayName');
-    displayNameInput.value = selected;
-});
-
-// Очистка формы при закрытии модалки
+// Закрытие модалки
 document.getElementById('addServiceModal').addEventListener('hide.bs.modal', () => {
     document.getElementById('addServiceForm').reset();
-    document.getElementById('serviceSelect').innerHTML = '<option value="">-- Выберите службу --</option>';
+    document.getElementById('serviceSearch').value = '';
+    document.getElementById('selectedServiceName').value = '';
     document.getElementById('serviceDisplayName').value = '';
+    document.getElementById('serviceListContainer').innerHTML = '';
+    selectedService = null;
 });
 
-// Когда открывается модалка добавления - загружаем служб
-document.getElementById('addServiceModal').addEventListener('show.bs.modal', async () => {
-    if (!currentServerId) return;
-
-    const select = document.getElementById('serviceSelect');
-
-    // Отключаем select во время загрузки
-    select.disabled = true;
-    select.innerHTML = '<option value="">Загрузка служб...</option>';
-
-    const services = await loadAvailableServices(currentServerId);
-
-    // Включаем select после загрузки
-    select.disabled = false;
-    select.innerHTML = '<option value="">-- Выберите службу --</option>';
-    services.forEach(service => {
-        const option = document.createElement('option');
-        option.value = service;
-        option.textContent = service;
-        select.appendChild(option);
-    });
-});
-
-// Обновление отображаемого имени при выборе службы
-document.getElementById('serviceSelect').addEventListener('change', (e) => {
-    const selected = e.target.value;
-    const displayNameInput = document.getElementById('serviceDisplayName');
-    displayNameInput.value = selected;
-});
-
-// Обработчик клика на кнопку "Добавить"
+// Добавление службы
 document.getElementById('addServiceBtn').addEventListener('click', async () => {
-    const serviceName = document.getElementById('serviceSelect').value;
+    const serviceName = document.getElementById('selectedServiceName').value;
     const displayedName = document.getElementById('serviceDisplayName').value;
 
     if (!serviceName) {
@@ -1950,17 +2000,12 @@ document.getElementById('addServiceBtn').addEventListener('click', async () => {
             method: 'POST',
             body: JSON.stringify({
                 service_name: serviceName,
-                displayed_name: displayedName || serviceName
+                displayed_name: displayedName
             })
         });
 
         showToast('Успех', 'Служба добавлена');
-
-        // Закрываем модалку (очистка произойдет автоматически через hide.bs.modal)
-        const modal = bootstrap.Modal.getInstance(document.getElementById('addServiceModal'));
-        modal.hide();
-
-        // Перезагружаем список служб
+        bootstrap.Modal.getInstance(document.getElementById('addServiceModal')).hide();
         loadServicesList(currentServerId);
     } catch (error) {
         showToast('Ошибка', error.message, 'error');
@@ -1968,6 +2013,13 @@ document.getElementById('addServiceBtn').addEventListener('click', async () => {
         hideLoading();
     }
 });
+
+// Утилита для экранирования HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 // ============================================
 // PAGINATION
@@ -2107,6 +2159,22 @@ function setupEventListeners() {
 
     const editServerForm = document.getElementById('editServerForm');
     if (editServerForm) editServerForm.addEventListener('submit', handleEditServer);
+
+    const editServerModal = document.getElementById('editServerModal');
+    if (editServerModal) {
+        editServerModal.addEventListener('show.bs.modal', function () {
+            if (currentServerData) {
+                document.getElementById('editServerId').value = currentServerData.id;
+                document.getElementById('editServerName').value = currentServerData.name;
+                document.getElementById('editServerAddress').value = currentServerData.address;
+                document.getElementById('editServerUsername').value = currentServerData.username;
+                document.getElementById('editServerPassword').value = '';
+            } else {
+                showToast('Ошибка', 'Данные сервера не загружены', 'error');
+                bootstrap.Modal.getInstance(editServerModal)?.hide();
+            }
+        });
+    }
 
     const addServiceForm = document.getElementById('addServiceForm');
     if (addServiceForm) addServiceForm.addEventListener('submit', handleAddService);

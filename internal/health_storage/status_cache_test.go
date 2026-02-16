@@ -12,7 +12,7 @@ import (
 )
 
 // createTestServerStatus Создает тестовый ServerStatus с заданными параметрами.
-func createTestServerStatus(serverID int64, address, status string) models.ServerStatus {
+func createTestServerStatus(serverID int64, address string, status models.Status) models.ServerStatus {
 	return models.ServerStatus{
 		ServerID: serverID,
 		Address:  address,
@@ -40,7 +40,7 @@ func TestNewStatusCache(t *testing.T) {
 func TestStatusCacheSet(t *testing.T) {
 	// подготавливаем кэш и тестовые данные
 	cache := NewStatusCache()
-	serverStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	serverStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// добавляем статус в кэш
 	cache.Set(serverStatus)
@@ -49,16 +49,16 @@ func TestStatusCacheSet(t *testing.T) {
 	assert.Len(t, cache.cache, 1, "в кэше должен быть один элемент после set")
 	assert.Equal(t, serverStatus, cache.cache[1])
 	assert.Equal(t, "192.168.1.10", cache.cache[1].Address)
-	assert.Equal(t, "OK", cache.cache[1].Status)
+	assert.Equal(t, models.StatusOK, cache.cache[1].Status)
 }
 
 // TestStatusCacheSetMultiple Проверяет сохранение нескольких элементов.
 func TestStatusCacheSetMultiple(t *testing.T) {
 	// подготавливаем кэш и несколько статусов
 	cache := NewStatusCache()
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(2, "192.168.1.20", "Unreachable")
-	status3 := createTestServerStatus(3, "192.168.1.30", "OK")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
+	status3 := createTestServerStatus(3, "192.168.1.30", models.StatusOK)
 
 	// добавляем все статусы в кэш
 	cache.Set(status1)
@@ -76,8 +76,8 @@ func TestStatusCacheSetMultiple(t *testing.T) {
 func TestStatusCacheSetOverwrite(t *testing.T) {
 	// подготавливаем кэш со старым и новым статусом
 	cache := NewStatusCache()
-	oldStatus := createTestServerStatus(1, "192.168.1.10", "OK")
-	newStatus := createTestServerStatus(1, "192.168.2.20", "Unreachable")
+	oldStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	newStatus := createTestServerStatus(1, "192.168.2.20", models.StatusUnreachable)
 
 	// добавляем старый статус, а потом перезаписываем его
 	cache.Set(oldStatus)
@@ -85,7 +85,7 @@ func TestStatusCacheSetOverwrite(t *testing.T) {
 
 	// проверяем, что был перезаписан именно этот элемент
 	assert.Len(t, cache.cache, 1)
-	assert.Equal(t, "Unreachable", cache.cache[1].Status)
+	assert.Equal(t, models.StatusUnreachable, cache.cache[1].Status)
 	assert.Equal(t, "192.168.2.20", cache.cache[1].Address)
 }
 
@@ -93,8 +93,8 @@ func TestStatusCacheSetOverwrite(t *testing.T) {
 func TestStatusCacheSetDifferentAddressSameID(t *testing.T) {
 	// подготавливаем кэш с разными адресами для одного id
 	cache := NewStatusCache()
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(1, "192.168.1.100", "Unreachable")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(1, "192.168.1.100", models.StatusUnreachable)
 
 	// добавляем оба статуса, второй должен переписать первый
 	cache.Set(status1)
@@ -109,7 +109,7 @@ func TestStatusCacheSetDifferentAddressSameID(t *testing.T) {
 func TestStatusCacheGet(t *testing.T) {
 	// подготавливаем кэш с тестовым статусом
 	cache := NewStatusCache()
-	expectedStatus := createTestServerStatus(42, "10.0.0.1", "OK")
+	expectedStatus := createTestServerStatus(42, "10.0.0.1", models.StatusOK)
 	cache.Set(expectedStatus)
 
 	// получаем статус по id
@@ -120,7 +120,7 @@ func TestStatusCacheGet(t *testing.T) {
 	assert.Equal(t, expectedStatus, status)
 	assert.Equal(t, int64(42), status.ServerID)
 	assert.Equal(t, "10.0.0.1", status.Address)
-	assert.Equal(t, "OK", status.Status)
+	assert.Equal(t, models.StatusOK, status.Status)
 }
 
 // TestStatusCacheGetNotFound Проверяет получение несуществующего статуса.
@@ -156,7 +156,7 @@ func TestStatusCacheGetFromEmpty(t *testing.T) {
 func TestStatusCacheDelete(t *testing.T) {
 	// подготавливаем кэш с одним элементом
 	cache := NewStatusCache()
-	status := createTestServerStatus(1, "192.168.1.10", "OK")
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 	cache.Set(status)
 
 	// удаляем элемент из кэша
@@ -172,9 +172,9 @@ func TestStatusCacheDelete(t *testing.T) {
 func TestStatusCacheDeleteMultiple(t *testing.T) {
 	// подготавливаем кэш с несколькими элементами
 	cache := NewStatusCache()
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(2, "192.168.1.20", "Unreachable")
-	status3 := createTestServerStatus(3, "192.168.1.30", "OK")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
+	status3 := createTestServerStatus(3, "192.168.1.30", models.StatusOK)
 
 	cache.Set(status1)
 	cache.Set(status2)
@@ -203,7 +203,7 @@ func TestStatusCacheDeleteMultiple(t *testing.T) {
 func TestStatusCacheDeleteNonExistent(t *testing.T) {
 	// подготавливаем кэш с одним элементом
 	cache := NewStatusCache()
-	cache.Set(createTestServerStatus(1, "192.168.1.10", "OK"))
+	cache.Set(createTestServerStatus(1, "192.168.1.10", models.StatusOK))
 
 	// удаляем несуществующий элемент (не должно быть паники)
 	assert.NotPanics(t, func() {
@@ -215,19 +215,17 @@ func TestStatusCacheDeleteNonExistent(t *testing.T) {
 	assert.True(t, found)
 }
 
-// TestStatusCacheEmptyStatus Проверяет работу с пустым статусом.
-func TestStatusCacheEmptyStatus(t *testing.T) {
-	// подготавливаем кэш и статус с пустым status полем
+// TestStatusCacheUnknownStatus Проверяет работу с неизвестным статусом.
+func TestStatusCacheStoresUnknownStatus(t *testing.T) {
 	cache := NewStatusCache()
-	status := createTestServerStatus(1, "192.168.1.10", "")
 
-	// добавляем статус в кэш
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusUnknown)
+
 	cache.Set(status)
 	retrieved, found := cache.Get(1)
 
-	// проверяем, что статус с пустым status полем сохранился корректно
 	assert.True(t, found)
-	assert.Equal(t, "", retrieved.Status)
+	assert.Equal(t, models.StatusUnknown, retrieved.Status)
 	assert.Equal(t, "192.168.1.10", retrieved.Address)
 }
 
@@ -246,8 +244,8 @@ func TestStatusCacheGetAllServerStatusesByUser_EmptyCache(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_NoMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	cache.Set(models.ServerStatus{ServerID: 1, UserID: 10, Address: "192.168.1.10", Status: "OK"})
-	cache.Set(models.ServerStatus{ServerID: 2, UserID: 20, Address: "192.168.1.20", Status: "OK"})
+	cache.Set(models.ServerStatus{ServerID: 1, UserID: 10, Address: "192.168.1.10", Status: models.StatusOK})
+	cache.Set(models.ServerStatus{ServerID: 2, UserID: 20, Address: "192.168.1.20", Status: models.StatusOK})
 
 	res := cache.GetAllServerStatusesByUser(999)
 
@@ -259,8 +257,8 @@ func TestStatusCacheGetAllServerStatusesByUser_NoMatch(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_SingleMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 2, Address: "192.168.1.20", Status: "Unreachable"}
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 2, Address: "192.168.1.20", Status: models.StatusUnreachable}
 
 	cache.Set(s1)
 	cache.Set(s2)
@@ -276,9 +274,9 @@ func TestStatusCacheGetAllServerStatusesByUser_SingleMatch(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_MultipleMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "Unreachable"}
-	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: "OK"}
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusUnreachable}
+	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: models.StatusOK}
 
 	cache.Set(s1)
 	cache.Set(s2)
@@ -307,17 +305,17 @@ func TestStatusCacheGetAllServerStatusesByUser_AfterUpdatesAndDeletes(t *testing
 	cache := NewStatusCache()
 
 	// два сервера пользователя 1
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "OK"}
+	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusOK}
 	// сервер другого пользователя
-	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: "Unreachable"}
+	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: models.StatusUnreachable}
 
 	cache.Set(s1)
 	cache.Set(s2)
 	cache.Set(s3)
 
 	// обновляем статус одного сервера пользователя 1
-	updatedS2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: "Unreachable"}
+	updatedS2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusUnreachable}
 	cache.Set(updatedS2)
 
 	// удаляем сервер другого пользователя
@@ -353,7 +351,7 @@ func TestStatusCacheConcurrentSet(t *testing.T) {
 		wg.Add(1)
 		go func(id int64) {
 			defer wg.Done()
-			status := createTestServerStatus(id, "192.168.1."+string(rune(id+48)), "OK")
+			status := createTestServerStatus(id, "192.168.1."+string(rune(id+48)), models.StatusOK)
 			cache.Set(status)
 		}(int64(i))
 	}
@@ -367,7 +365,7 @@ func TestStatusCacheConcurrentSet(t *testing.T) {
 		status, found := cache.Get(int64(i))
 		assert.True(t, found)
 		assert.Equal(t, int64(i), status.ServerID)
-		assert.Equal(t, "OK", status.Status)
+		assert.Equal(t, models.StatusOK, status.Status)
 	}
 }
 
@@ -375,7 +373,7 @@ func TestStatusCacheConcurrentSet(t *testing.T) {
 func TestStatusCacheConcurrentGet(t *testing.T) {
 	// подготавливаем кэш с одним элементом
 	cache := NewStatusCache()
-	status := createTestServerStatus(1, "192.168.1.10", "OK")
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 	cache.Set(status)
 
 	// запускаем несколько горутин для одновременного чтения
@@ -409,7 +407,7 @@ func TestStatusCacheConcurrentDelete(t *testing.T) {
 	numGoroutines := 100
 
 	for i := 0; i < numGoroutines; i++ {
-		status := createTestServerStatus(int64(i), "192.168.1.10", "OK")
+		status := createTestServerStatus(int64(i), "192.168.1.10", models.StatusOK)
 		cache.Set(status)
 	}
 
@@ -453,7 +451,7 @@ func TestStatusCacheConcurrentMixed(t *testing.T) {
 		wg.Add(1)
 		go func(id int64) {
 			defer wg.Done()
-			status := createTestServerStatus(id, "192.168.1.1", "OK")
+			status := createTestServerStatus(id, "192.168.1.1", models.StatusOK)
 			cache.Set(status)
 		}(int64(i))
 	}
@@ -487,7 +485,7 @@ func TestStatusCacheConcurrentMixed(t *testing.T) {
 func TestStatusCacheGetSetConcurrent(t *testing.T) {
 	// подготавливаем кэш с начальным статусом
 	cache := NewStatusCache()
-	initialStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	initialStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 	cache.Set(initialStatus)
 
 	// запускаем две горутины: одна пишет, другая читает
@@ -497,9 +495,9 @@ func TestStatusCacheGetSetConcurrent(t *testing.T) {
 	// горутина, которая записывает изменяющиеся статусы
 	go func() {
 		for i := 0; i < iterations; i++ {
-			status := "OK"
+			status := models.StatusOK
 			if i%2 == 0 {
-				status = "Unreachable"
+				status = models.StatusUnreachable
 			}
 			newStatus := createTestServerStatus(1, "192.168.1.10", status)
 			cache.Set(newStatus)
@@ -514,7 +512,7 @@ func TestStatusCacheGetSetConcurrent(t *testing.T) {
 			assert.True(t, found)
 			assert.Equal(t, int64(1), status.ServerID)
 			assert.Equal(t, "192.168.1.10", status.Address)
-			assert.True(t, status.Status == "OK" || status.Status == "Unreachable")
+			assert.True(t, status.Status == models.StatusOK || status.Status == models.StatusUnreachable)
 		}
 		done <- true
 	}()
@@ -548,7 +546,7 @@ func TestStatusCacheGetAllServerStatusesByUser_ConcurrentAccess(t *testing.T) {
 				ServerID: id,
 				UserID:   userID,
 				Address:  "192.168.1.10",
-				Status:   "OK",
+				Status:   models.StatusOK,
 			})
 		}(int64(i))
 	}
@@ -578,9 +576,9 @@ func TestStatusCacheIntegrationScenario(t *testing.T) {
 	cache := NewStatusCache()
 
 	servers := []models.ServerStatus{
-		createTestServerStatus(1, "192.168.1.10", "OK"),
-		createTestServerStatus(2, "192.168.1.20", "OK"),
-		createTestServerStatus(3, "192.168.1.30", "Unreachable"),
+		createTestServerStatus(1, "192.168.1.10", models.StatusOK),
+		createTestServerStatus(2, "192.168.1.20", models.StatusOK),
+		createTestServerStatus(3, "192.168.1.30", models.StatusUnreachable),
 	}
 
 	// добавляем все серверы в кэш
@@ -592,7 +590,7 @@ func TestStatusCacheIntegrationScenario(t *testing.T) {
 	assert.Len(t, cache.cache, 3)
 
 	// изменяем статус второго сервера
-	updatedServer := createTestServerStatus(2, "192.168.1.20", "Unreachable")
+	updatedServer := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
 	cache.Set(updatedServer)
 
 	// удаляем третий сервер
@@ -606,14 +604,14 @@ func TestStatusCacheIntegrationScenario(t *testing.T) {
 	require.True(t, found1)
 	assert.Equal(t, servers[0], status1)
 	assert.Equal(t, "192.168.1.10", status1.Address)
-	assert.Equal(t, "OK", status1.Status)
+	assert.Equal(t, models.StatusOK, status1.Status)
 
 	// проверяем, что второй сервер изменился
 	status2, found2 := cache.Get(2)
 	require.True(t, found2)
 	assert.Equal(t, updatedServer, status2)
 	assert.Equal(t, "192.168.1.20", status2.Address)
-	assert.Equal(t, "Unreachable", status2.Status)
+	assert.Equal(t, models.StatusUnreachable, status2.Status)
 
 	// проверяем, что третий сервер удален
 	_, found3 := cache.Get(3)
@@ -631,7 +629,7 @@ func TestMockSet(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	testStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	testStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание: Set должен быть вызван 1 раз с точным аргументом
 	mockStorage.EXPECT().
@@ -650,8 +648,8 @@ func TestMockSetMultipleTimes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(2, "192.168.1.20", "Unreachable")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
 
 	// устанавливаем ожидание строгого порядка вызовов
 	gomock.InOrder(
@@ -678,9 +676,9 @@ func TestMockSetAnyServerStatus(t *testing.T) {
 		Times(3)
 
 	// вызываем Set 3 раза с разными аргументами
-	mockStorage.Set(createTestServerStatus(1, "192.168.1.10", "OK"))
-	mockStorage.Set(createTestServerStatus(2, "192.168.1.20", "Unreachable"))
-	mockStorage.Set(createTestServerStatus(3, "192.168.1.30", "OK"))
+	mockStorage.Set(createTestServerStatus(1, "192.168.1.10", models.StatusOK))
+	mockStorage.Set(createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable))
+	mockStorage.Set(createTestServerStatus(3, "192.168.1.30", models.StatusOK))
 }
 
 // TestMockGet Проверяет вызов метода Get у мока.
@@ -690,7 +688,7 @@ func TestMockGet(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	expectedStatus := createTestServerStatus(42, "10.0.0.1", "OK")
+	expectedStatus := createTestServerStatus(42, "10.0.0.1", models.StatusOK)
 
 	// устанавливаем ожидание: Get с id=42 должен вернуть expectedStatus и true
 	mockStorage.EXPECT().
@@ -737,7 +735,7 @@ func TestMockGetAnyID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	expectedStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	expectedStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание: Get может быть вызван с любым id 3 раза
 	mockStorage.EXPECT().
@@ -823,7 +821,7 @@ func TestMockSetAndGet(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	testStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	testStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание: Set должен быть вызван перед Get
 	gomock.InOrder(
@@ -847,7 +845,7 @@ func TestMockWorkflow(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	testStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	testStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание строгой последовательности операций
 	gomock.InOrder(
@@ -880,8 +878,8 @@ func TestMockMultipleInstances(t *testing.T) {
 	mockStorage2 := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 
 	// подготавливаем тестовые данные для каждого мока
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(2, "192.168.1.20", "Unreachable")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
 
 	// устанавливаем ожидания для каждого мока независимо
 	mockStorage1.EXPECT().Set(gomock.Eq(status1)).Times(1)
@@ -900,9 +898,9 @@ func TestMockComplexWorkflow(t *testing.T) {
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 	// подготавливаем три разных статуса
-	status1 := createTestServerStatus(1, "192.168.1.10", "OK")
-	status2 := createTestServerStatus(2, "192.168.1.20", "Unreachable")
-	status3 := createTestServerStatus(3, "192.168.1.30", "OK")
+	status1 := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
+	status2 := createTestServerStatus(2, "192.168.1.20", models.StatusUnreachable)
+	status3 := createTestServerStatus(3, "192.168.1.30", models.StatusOK)
 
 	// устанавливаем ожидание сложной последовательности операций
 	gomock.InOrder(
@@ -943,8 +941,8 @@ func TestMockGetAllServerStatusesByUser_Basic(t *testing.T) {
 
 	userID := int64(1)
 	statuses := []models.ServerStatus{
-		{ServerID: 1, UserID: userID, Address: "192.168.1.10", Status: "OK"},
-		{ServerID: 2, UserID: userID, Address: "192.168.1.20", Status: "Unreachable"},
+		{ServerID: 1, UserID: userID, Address: "192.168.1.10", Status: models.StatusOK},
+		{ServerID: 2, UserID: userID, Address: "192.168.1.20", Status: models.StatusUnreachable},
 	}
 
 	mockStorage.EXPECT().
@@ -986,7 +984,7 @@ func TestMockGetAllServerStatusesByUser_AnyUserID(t *testing.T) {
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 
 	statuses := []models.ServerStatus{
-		{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: "OK"},
+		{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK},
 	}
 
 	mockStorage.EXPECT().
@@ -1011,7 +1009,7 @@ func TestMockGetAllServerStatusesByUser_AnyUserID(t *testing.T) {
 func BenchmarkStatusCacheSet(b *testing.B) {
 	// подготавливаем кэш и тестовый статус
 	cache := NewStatusCache()
-	status := createTestServerStatus(1, "192.168.1.10", "OK")
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// сбрасываем таймер и проводим бенчмарк
 	b.ResetTimer()
@@ -1024,7 +1022,7 @@ func BenchmarkStatusCacheSet(b *testing.B) {
 func BenchmarkStatusCacheGet(b *testing.B) {
 	// подготавливаем кэш с тестовым статусом
 	cache := NewStatusCache()
-	cache.Set(createTestServerStatus(1, "192.168.1.10", "OK"))
+	cache.Set(createTestServerStatus(1, "192.168.1.10", models.StatusOK))
 
 	// сбрасываем таймер и проводим бенчмарк
 	b.ResetTimer()
@@ -1037,7 +1035,7 @@ func BenchmarkStatusCacheGet(b *testing.B) {
 func BenchmarkStatusCacheDelete(b *testing.B) {
 	// подготавливаем кэш и тестовый статус
 	cache := NewStatusCache()
-	status := createTestServerStatus(1, "192.168.1.10", "OK")
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// сбрасываем таймер и проводим бенчмарк
 	b.ResetTimer()
@@ -1059,7 +1057,7 @@ func BenchmarkStatusCacheConcurrent(b *testing.B) {
 		wg.Add(1)
 		go func(id int64) {
 			defer wg.Done()
-			status := createTestServerStatus(id, "192.168.1.10", "OK")
+			status := createTestServerStatus(id, "192.168.1.10", models.StatusOK)
 			// выполняем все три операции в одной горутине
 			cache.Set(status)
 			cache.Get(id)
@@ -1076,14 +1074,14 @@ func BenchmarkStatusCacheSetWithManyItems(b *testing.B) {
 	cache := NewStatusCache()
 
 	for i := 0; i < 1000; i++ {
-		status := createTestServerStatus(int64(i), "192.168.1.1", "OK")
+		status := createTestServerStatus(int64(i), "192.168.1.1", models.StatusOK)
 		cache.Set(status)
 	}
 
 	// сбрасываем таймер и проводим бенчмарк добавления нового элемента
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		status := createTestServerStatus(1001, "192.168.1.10", "OK")
+		status := createTestServerStatus(1001, "192.168.1.10", models.StatusOK)
 		cache.Set(status)
 	}
 }
@@ -1095,7 +1093,7 @@ func BenchmarkMockSet(b *testing.B) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	status := createTestServerStatus(1, "192.168.1.10", "OK")
+	status := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание: Set будет вызван b.N раз
 	mockStorage.EXPECT().
@@ -1116,7 +1114,7 @@ func BenchmarkMockGet(b *testing.B) {
 	defer ctrl.Finish()
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
-	expectedStatus := createTestServerStatus(1, "192.168.1.10", "OK")
+	expectedStatus := createTestServerStatus(1, "192.168.1.10", models.StatusOK)
 
 	// устанавливаем ожидание: Get будет вызван b.N раз
 	mockStorage.EXPECT().

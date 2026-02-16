@@ -22,16 +22,14 @@ type HealthHandler struct {
 	storage     storage.Storage
 	statusCache health_storage.StatusCacheStorage
 	checker     netutils.Checker
-	winrmPort   string
 }
 
 // NewHealthHandler Конструктор HealthHandler.
-func NewHealthHandler(storage storage.Storage, statusCache health_storage.StatusCacheStorage, checker netutils.Checker, winrmPort string) *HealthHandler {
+func NewHealthHandler(storage storage.Storage, statusCache health_storage.StatusCacheStorage, checker netutils.Checker) *HealthHandler {
 	return &HealthHandler{
 		storage:     storage,
 		statusCache: statusCache,
 		checker:     checker,
-		winrmPort:   winrmPort,
 	}
 }
 
@@ -114,8 +112,14 @@ func (h *HealthHandler) ServersStatuses(w http.ResponseWriter, r *http.Request) 
 	for _, server := range servers {
 		status, ok := h.statusCache.Get(server.ID)
 		if !ok {
-			logger.Log.Error(fmt.Sprintf("Статус сервера с ID=%d, Address=%s не найден", server.ID, server.Address))
-			response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")
+			logger.Log.Debug(fmt.Sprintf("Статус сервера с ID=%d, Address=%s еще не определен", server.ID, server.Address))
+			statuses = append(statuses, models.ServerStatus{
+				ServerID: server.ID,
+				UserID:   creds.UserID,
+				Address:  server.Address,
+				Status:   models.StatusUnknown,
+			})
+
 			continue
 		}
 

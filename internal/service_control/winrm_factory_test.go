@@ -3,9 +3,11 @@ package service_control_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/service_control"
@@ -16,9 +18,16 @@ func init() {
 	logger.InitLogger("error", "stdout")
 }
 
+var MockWinRMConfig *config.WinRMConfig = &config.WinRMConfig{
+	Port:          "5985",
+	UseHTTPS:      false,
+	InsecureHTTPS: false,
+	Timeout:       5 * time.Second,
+}
+
 // TestNewWinRMClientFactory Проверяет конструктор фабрики.
 func TestNewWinRMClientFactory(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	assert.NotNil(t, factory)
 	assert.IsType(t, &service_control.WinRMClientFactory{}, factory)
@@ -26,7 +35,7 @@ func TestNewWinRMClientFactory(t *testing.T) {
 
 // TestWinRMClientFactoryImplementsInterface Проверяет имплементацию интерфейса.
 func TestWinRMClientFactoryImplementsInterface(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	// проверяем что фабрика реализует ClientFactory интерфейс
 	assert.Implements(t, (*service_control.ClientFactory)(nil), factory)
@@ -34,7 +43,7 @@ func TestWinRMClientFactoryImplementsInterface(t *testing.T) {
 
 // TestCreateClientSuccess Проверяет успешное создание клиента.
 func TestCreateClientSuccess(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	client, err := factory.CreateClient("192.168.1.100", "admin", "password")
 
@@ -46,7 +55,7 @@ func TestCreateClientSuccess(t *testing.T) {
 
 // TestCreateClientReturnsClientInterface Проверяет что возвращается Client интерфейс.
 func TestCreateClientReturnsClientInterface(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	client, err := factory.CreateClient("192.168.1.100", "admin", "password")
 
@@ -62,7 +71,7 @@ func TestCreateClientReturnsClientInterface(t *testing.T) {
 
 // TestCreateClientWithDifferentAddresses Проверяет разные адреса.
 func TestCreateClientWithDifferentAddresses(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	tests := []struct {
 		name    string
@@ -88,7 +97,7 @@ func TestCreateClientWithDifferentAddresses(t *testing.T) {
 
 // TestCreateClientWithDifferentCredentials Проверяет разные креденшлы.
 func TestCreateClientWithDifferentCredentials(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	tests := []struct {
 		name     string
@@ -115,7 +124,7 @@ func TestCreateClientWithDifferentCredentials(t *testing.T) {
 
 // TestCreateClientEmptyAddress Проверяет пустой адрес.
 func TestCreateClientEmptyAddress(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	client, err := factory.CreateClient("", "admin", "password")
 
@@ -130,7 +139,7 @@ func TestCreateClientEmptyAddress(t *testing.T) {
 
 // TestCreateClientConsistency Проверяет консистентность при повторных вызовах.
 func TestCreateClientConsistency(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	address := "192.168.1.100"
 	username := "admin"
@@ -282,7 +291,7 @@ func TestMockClientFactoryWithSpecificCredentials(t *testing.T) {
 
 // TestCreateClientEmptyPassword Проверяет пустой пароль.
 func TestCreateClientEmptyPassword(t *testing.T) {
-	factory := service_control.NewWinRMClientFactory()
+	factory := service_control.NewWinRMClientFactory(MockWinRMConfig)
 
 	// пустой пароль может быть OK для некоторых конфигураций
 	client, err := factory.CreateClient("192.168.1.100", "admin", "")

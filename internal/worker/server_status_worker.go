@@ -128,31 +128,27 @@ func checkServerStatus(ctx context.Context, server *models.ServerStatus, statusC
 	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	var status string
+	var status models.Status
 
 	var winrmOK, icmpOK bool
 
 	icmpOK = netChecker.CheckICMP(checkCtx, server.Address, 0)
 	if !icmpOK {
-		status = "Unreachable"
+		status = models.StatusUnreachable
 	} else {
 		winrmOK = netChecker.CheckWinRM(checkCtx, server.Address, winrmPort, 0)
 		if winrmOK {
-			status = "OK"
+			status = models.StatusOK
 		} else {
-			status = "Degraded"
+			status = models.StatusDegraded
 		}
 	}
 
-	if status != "OK" {
+	if status != models.StatusOK {
 		logger.Log.Debug(fmt.Sprintf("Сервер %s, id=%d — %s (winrm=%v icmp=%v)", server.Address, server.ServerID, status, winrmOK, icmpOK))
 	}
 
 	serverStatus := models.ServerStatus{ServerID: server.ServerID, UserID: server.UserID, Address: server.Address, Status: status}
-
-	if err := serverStatus.ValidateStatus(status); err != nil {
-		return err
-	}
 
 	statusCache.Set(serverStatus)
 	return nil
