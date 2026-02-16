@@ -222,7 +222,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 				mockStatus := models.ServerStatus{
 					ServerID: 1,
 					Address:  "10.0.0.1",
-					Status:   "Unreachable",
+					Status:   models.StatusUnreachable,
 				}
 				m.EXPECT().
 					GetServer(gomock.Any(), int64(1), int64(1)).
@@ -238,7 +238,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			wantStatusContent: models.ServerStatus{
 				ServerID: 1,
 				Address:  "10.0.0.1",
-				Status:   "Unreachable",
+				Status:   models.StatusUnreachable,
 			},
 			wantErr: false,
 		},
@@ -320,12 +320,12 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 					{
 						ServerID: 1,
 						Address:  "192.168.0.1",
-						Status:   "OK",
+						Status:   models.StatusOK,
 					},
 					{
 						ServerID: 2,
 						Address:  "192.168.0.2",
-						Status:   "OK",
+						Status:   models.StatusOK,
 					},
 				}
 
@@ -345,12 +345,12 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 				{
 					ServerID: 1,
 					Address:  "192.168.0.1",
-					Status:   "OK",
+					Status:   models.StatusOK,
 				},
 				{
 					ServerID: 2,
 					Address:  "192.168.0.2",
-					Status:   "OK",
+					Status:   models.StatusOK,
 				},
 			},
 			wantErr: false,
@@ -380,43 +380,46 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			wantErr:           false,
 		},
 		{
-			name: "Статус первого сервера не найден в кэше",
+			name: "Статус первого сервера отсутствует в кэше, поэтому возвращается Unknown",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
 				mockServers := []*models.Server{
-					{
-						ID:      1,
-						Address: "192.168.0.1",
-					},
-					{
-						ID:      2,
-						Address: "192.168.0.2",
-					},
+					{ID: 1, Address: "192.168.0.1"},
+					{ID: 2, Address: "192.168.0.2"},
 				}
+
 				m.EXPECT().
 					ListServers(gomock.Any(), int64(1)).
 					Return(mockServers, nil).
 					Times(1)
 
-				mockStatus2 := models.ServerStatus{
+				status2 := models.ServerStatus{
 					ServerID: 2,
+					UserID:   1,
 					Address:  "192.168.0.2",
-					Status:   "OK",
+					Status:   models.StatusOK,
 				}
 
 				gomock.InOrder(
-					c.EXPECT().
-						Get(int64(1)).
-						Return(models.ServerStatus{}, false).
-						Times(1),
-					c.EXPECT().
-						Get(int64(2)).
-						Return(mockStatus2, true).
-						Times(1),
+					c.EXPECT().Get(int64(1)).Return(models.ServerStatus{}, false), // нет статуса
+					c.EXPECT().Get(int64(2)).Return(status2, true),
 				)
 			},
-			wantStatus:     http.StatusInternalServerError,
-			wantErr:        true,
-			wantErrMessage: "Внутренняя ошибка сервера",
+			wantStatus: http.StatusOK,
+			wantErr:    false,
+			wantStatusContent: []models.ServerStatus{
+				{
+					ServerID: 1,
+					UserID:   1,
+					Address:  "192.168.0.1",
+					Status:   models.StatusUnknown,
+				},
+				{
+					ServerID: 2,
+					UserID:   1,
+					Address:  "192.168.0.2",
+					Status:   models.StatusOK,
+				},
+			},
 		},
 		{
 			name: "Все серверы с разными статусами",
@@ -478,12 +481,12 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 				{
 					ServerID: 1,
 					Address:  "10.0.0.1",
-					Status:   "OK",
+					Status:   models.StatusOK,
 				},
 				{
 					ServerID: 2,
 					Address:  "10.0.0.2",
-					Status:   "Unreachable",
+					Status:   models.StatusUnreachable,
 				},
 				{
 					ServerID: 3,
@@ -494,51 +497,61 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Статус среднего сервера не найден в кэше",
+			name: "Статус среднего сервера отсутствует в кэше, поэтому возвращается Unknown",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
 				mockServers := []*models.Server{
-					{
-						ID:      1,
-						Address: "192.168.1.1",
-					},
-					{
-						ID:      2,
-						Address: "192.168.1.2",
-					},
-					{
-						ID:      3,
-						Address: "192.168.1.3",
-					},
+					{ID: 1, Address: "192.168.1.1"},
+					{ID: 2, Address: "192.168.1.2"},
+					{ID: 3, Address: "192.168.1.3"},
 				}
+
 				m.EXPECT().
 					ListServers(gomock.Any(), int64(1)).
 					Return(mockServers, nil).
 					Times(1)
 
-				mockStatus1 := models.ServerStatus{
+				status1 := models.ServerStatus{
 					ServerID: 1,
+					UserID:   1,
 					Address:  "192.168.1.1",
-					Status:   "OK",
+					Status:   models.StatusOK,
+				}
+
+				status3 := models.ServerStatus{
+					ServerID: 3,
+					UserID:   1,
+					Address:  "192.168.1.3",
+					Status:   models.StatusOK,
 				}
 
 				gomock.InOrder(
-					c.EXPECT().
-						Get(int64(1)).
-						Return(mockStatus1, true).
-						Times(1),
-					c.EXPECT().
-						Get(int64(2)).
-						Return(models.ServerStatus{}, false).
-						Times(1),
-					c.EXPECT().
-						Get(int64(3)).
-						Return(mockStatus1, true).
-						Times(1),
+					c.EXPECT().Get(int64(1)).Return(status1, true),
+					c.EXPECT().Get(int64(2)).Return(models.ServerStatus{}, false), // нет в кэше
+					c.EXPECT().Get(int64(3)).Return(status3, true),
 				)
 			},
-			wantStatus:     http.StatusInternalServerError,
-			wantErr:        true,
-			wantErrMessage: "Внутренняя ошибка сервера",
+			wantStatus: http.StatusOK,
+			wantErr:    false,
+			wantStatusContent: []models.ServerStatus{
+				{
+					ServerID: 1,
+					UserID:   1,
+					Address:  "192.168.1.1",
+					Status:   models.StatusOK,
+				},
+				{
+					ServerID: 2,
+					UserID:   1,
+					Address:  "192.168.1.2",
+					Status:   models.StatusUnknown,
+				},
+				{
+					ServerID: 3,
+					UserID:   1,
+					Address:  "192.168.1.3",
+					Status:   models.StatusOK,
+				},
+			},
 		},
 	}
 

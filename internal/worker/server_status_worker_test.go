@@ -237,28 +237,28 @@ func TestServerStatusWorker_AllStatuses(t *testing.T) {
 		name            string
 		winrmOK         bool
 		icmpOK          bool
-		expectedStatus  string
+		expectedStatus  models.Status
 		contextDuration time.Duration
 	}{
 		{
 			name:            "Статус OK - icmp и winrm работают",
 			winrmOK:         true,
 			icmpOK:          true,
-			expectedStatus:  "OK",
+			expectedStatus:  models.StatusOK,
 			contextDuration: 150 * time.Millisecond,
 		},
 		{
 			name:            "Статус Unreachable - icmp недоступен",
 			winrmOK:         false, // winrm не должен быть вызван
 			icmpOK:          false,
-			expectedStatus:  "Unreachable",
+			expectedStatus:  models.StatusUnreachable,
 			contextDuration: 150 * time.Millisecond,
 		},
 		{
 			name:            "Статус Degraded - icmp доступен, winrm недоступен",
 			winrmOK:         false,
 			icmpOK:          true,
-			expectedStatus:  "Degraded",
+			expectedStatus:  models.StatusDegraded,
 			contextDuration: 150 * time.Millisecond,
 		},
 	}
@@ -421,7 +421,7 @@ func TestCheckServerStatus_AllCombinations(t *testing.T) {
 		name           string
 		winrmOK        bool
 		icmpOK         bool
-		expectedStatus string
+		expectedStatus models.Status
 	}{
 		{"OK - icmp и winrm", true, true, "OK"},
 		{"Unreachable - icmp=false, winrm не вызывается", false, false, "Unreachable"},

@@ -44,7 +44,6 @@ func NewHandlersContainer(storage storage.Storage, statusCache health_storage.St
 	registrationHandler := registration_handler.NewRegistrationHandler(storage, tokenBuilder,
 		srvConfig.JWTSecretKey, srvConfig.RegistrationKey, srvConfig.OpenRegistration)
 	authorizationHandler := authorization_handler.NewAuthorizationHandler(storage, tokenBuilder, srvConfig.JWTSecretKey)
-	//healthHandler := health_handler.NewHealthHandler(storage, statusCache, netChecker, srvConfig.WinRMPort)
 	healthHandler := health_handler.NewHealthHandler(storage, statusCache, netChecker)
 	appHandler := app_handler.NewAppHandler(srvConfig.JWTSecretKey, tokenBuilder, broadcaster)
 

@@ -89,29 +89,45 @@ func TestListOfServicesSuccess(t *testing.T) {
 		CreateClient("192.168.1.100", "admin", "password").
 		Return(mockClient, nil)
 
-	// сервер возвращает список служб
-	servicesOutput := "Service1\nService2\nService3"
+	// Сервер возвращает список служб в новом JSON формате
+	servicesOutput := `[{"name":"WinRM","display_name":"Windows Remote Management (WS-Management)"},
+						{"name":"Spooler","display_name":"Print Spooler"},
+						{"name":"wuauserv","display_name":"Windows Update"}]`
+
 	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
+		RunCommand(gomock.Any(), `powershell -Command "Get-Service | ForEach-Object { [PSCustomObject]@{ name = $_.Name; display_name = $_.DisplayName } } | ConvertTo-Json -Compress"`).
 		Return(servicesOutput, nil)
 
 	handler.ListOfServices(w, r)
 
-	// проверяем статус
+	// Проверяем статус
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	// проверяем ответ
+	// Проверяем ответ
 	var response map[string]interface{}
 	err := json.NewDecoder(w.Body).Decode(&response)
 	assert.NoError(t, err)
 	assert.NotNil(t, response["services"])
 
+	// Проверяем структуру данных
 	services := response["services"].([]interface{})
 	assert.Equal(t, 3, len(services))
-	assert.Equal(t, "Service1", services[0])
-	assert.Equal(t, "Service2", services[1])
-	assert.Equal(t, "Service3", services[2])
+
+	// Проверяем первую службу
+	service1 := services[0].(map[string]interface{})
+	assert.Equal(t, "WinRM", service1["name"])
+	assert.Equal(t, "Windows Remote Management (WS-Management)", service1["display_name"])
+
+	// Проверяем вторую службу
+	service2 := services[1].(map[string]interface{})
+	assert.Equal(t, "Spooler", service2["name"])
+	assert.Equal(t, "Print Spooler", service2["display_name"])
+
+	// Проверяем третью службу
+	service3 := services[2].(map[string]interface{})
+	assert.Equal(t, "wuauserv", service3["name"])
+	assert.Equal(t, "Windows Update", service3["display_name"])
 }
 
 // TestListOfServicesServerNotFound Проверяет ошибку когда сервер не найден.
@@ -319,7 +335,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 
 	// ошибка выполнения команды
 	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
+		RunCommand(gomock.Any(), `powershell -Command "Get-Service | ForEach-Object { [PSCustomObject]@{ name = $_.Name; display_name = $_.DisplayName } } | ConvertTo-Json -Compress"`).
 		Return("", errors.New("command failed"))
 
 	handler.ListOfServices(w, r)
@@ -373,7 +389,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 
 	// сервер возвращает пустой результат
 	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
+		RunCommand(gomock.Any(), `powershell -Command "Get-Service | ForEach-Object { [PSCustomObject]@{ name = $_.Name; display_name = $_.DisplayName } } | ConvertTo-Json -Compress"`).
 		Return("", nil)
 
 	handler.ListOfServices(w, r)
@@ -389,71 +405,6 @@ func TestListOfServicesEmptyList(t *testing.T) {
 
 	services := response["services"].([]interface{})
 	assert.Equal(t, 0, len(services))
-}
-
-// TestListOfServicesWhitespaceHandling Проверяет обработку пробелов в названиях служб.
-func TestListOfServicesWhitespaceHandling(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := storageMocks.NewMockStorage(ctrl)
-	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
-	mockChecker := netutilsMocks.NewMockChecker(ctrl)
-	mockClient := serviceControlMocks.NewMockClient(ctrl)
-	mockStatusesWorker := workerMocks.NewMockStatusesChecker(ctrl)
-	mockWinRMPort := "5985"
-
-	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
-	w := httptest.NewRecorder()
-
-	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
-	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
-	r = r.WithContext(ctx)
-
-	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
-
-	server := &models.Server{
-		ID:       1,
-		Address:  "192.168.1.100",
-		Username: "admin",
-		Password: "password",
-		Name:     "TestServer",
-	}
-
-	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
-		Return(server, nil)
-
-	mockChecker.EXPECT().
-		CheckWinRM(ctx, "192.168.1.100", mockWinRMPort, time.Duration(0)).
-		Return(true)
-
-	mockClientFactory.EXPECT().
-		CreateClient("192.168.1.100", "admin", "password").
-		Return(mockClient, nil)
-
-	// сервер возвращает список с пробелами и пустыми строками
-	servicesOutput := "  Service1  \n\n  Service2  \n\nService3"
-	mockClient.EXPECT().
-		RunCommand(gomock.Any(), `powershell -Command "Get-Service | Select-Object -ExpandProperty Name"`).
-		Return(servicesOutput, nil)
-
-	handler.ListOfServices(w, r)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// проверяем что пробелы и пустые строки удалены
-	var response map[string]interface{}
-	err := json.NewDecoder(w.Body).Decode(&response)
-	assert.NoError(t, err)
-
-	services := response["services"].([]interface{})
-	assert.Equal(t, 3, len(services))
-	assert.Equal(t, "Service1", services[0])
-	assert.Equal(t, "Service2", services[1])
-	assert.Equal(t, "Service3", services[2])
 }
 
 // TestAddServiceInvalidJSON Проверяет добавление службы с невалидным JSON.

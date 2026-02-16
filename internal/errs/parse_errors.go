@@ -7,25 +7,22 @@ import (
 	"strings"
 )
 
+var re = regexp.MustCompile(`(?im)^\s*\[SC\].*?\bFAILED\b(?:\s+with\s+error)?\s+(\d+)\s*:`)
+
 // ParseServiceError ServiceControlError Парсит ошибку из вывода sc команды.
 func ParseServiceError(output string) *ServiceError {
 	output = strings.TrimSpace(output)
 
-	// Ищем паттерн "FAILED XXXX:"
-	re := regexp.MustCompile(`FAILED\s+(\d+):`)
+	if output == "" {
+		return nil
+	}
+
+	// Ищем паттерн "[SC] ... FAILED XXXX:"
 	matches := re.FindStringSubmatch(output)
 
 	if len(matches) > 1 {
 		code, _ := strconv.Atoi(matches[1])
 		msg := ParseErrorCode(code)
-
-		return NewServiceError(msg, code)
-	}
-
-	// Если FAILED нет, но есть другая ошибка
-	if strings.Contains(output, "ERROR") {
-		code := -1
-		msg := "Unknown service error"
 
 		return NewServiceError(msg, code)
 	}
