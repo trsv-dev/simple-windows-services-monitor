@@ -13,7 +13,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/jwt"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	broadcasterMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -509,7 +509,7 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("valid-token", secretKey).
-					Return(&auth.Claims{ID: 123, Login: "testuser"}, nil)
+					Return(&jwt.Claims{ID: 123, Login: "testuser"}, nil)
 			},
 			wantTopic: "user-123:services",
 			wantErr:   false,
@@ -553,7 +553,7 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("zero-id-token", secretKey).
-					Return(&auth.Claims{ID: 0, Login: "zerouser"}, nil)
+					Return(&jwt.Claims{ID: 0, Login: "zerouser"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -569,7 +569,7 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("valid-token-no-stream", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -585,7 +585,7 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("valid-token-unknown-stream", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -601,7 +601,7 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("servers-token", secretKey).
-					Return(&auth.Claims{ID: 999999, Login: "biguser"}, nil)
+					Return(&jwt.Claims{ID: 999999, Login: "biguser"}, nil)
 			},
 			wantTopic: "user-999999:servers",
 			wantErr:   false,
@@ -967,7 +967,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 100, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 100, Login: "user"}, nil)
 			},
 			wantTopic: "user-100:services",
 			wantErr:   false,
@@ -982,7 +982,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 200, Login: "admin"}, nil)
+					Return(&jwt.Claims{ID: 200, Login: "admin"}, nil)
 			},
 			wantTopic: "user-200:servers",
 			wantErr:   false,
@@ -997,7 +997,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -1013,7 +1013,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -1029,7 +1029,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -1045,7 +1045,7 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -1097,7 +1097,7 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
 			},
 			wantErr: false,
 		},
@@ -1107,7 +1107,7 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 999999999, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 999999999, Login: "user"}, nil)
 			},
 			wantErr: false,
 		},
@@ -1117,7 +1117,7 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: 0, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 0, Login: "user"}, nil)
 			},
 			wantErr:        true,
 			checkErrString: "неверный id пользователя",
@@ -1128,7 +1128,7 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: -1, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: -1, Login: "user"}, nil)
 			},
 			wantErr:        true,
 			checkErrString: "неверный id пользователя",
@@ -1139,7 +1139,7 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("token", secretKey).
-					Return(&auth.Claims{ID: -999, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: -999, Login: "user"}, nil)
 			},
 			wantErr:        true,
 			checkErrString: "неверный id пользователя",
@@ -1193,7 +1193,7 @@ func TestHTTPHandlerWithJWTResolverSuccess(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("valid-token", secretKey).
-					Return(&auth.Claims{ID: 123, Login: "user"}, nil)
+					Return(&jwt.Claims{ID: 123, Login: "user"}, nil)
 			},
 			wantStatus:    http.StatusOK,
 			expectedTopic: "user-123:services",
@@ -1205,7 +1205,7 @@ func TestHTTPHandlerWithJWTResolverSuccess(t *testing.T) {
 			setupMock: func() {
 				mockTokenBuilder.EXPECT().
 					GetClaims("valid-token", secretKey).
-					Return(&auth.Claims{ID: 456, Login: "admin"}, nil)
+					Return(&jwt.Claims{ID: 456, Login: "admin"}, nil)
 			},
 			wantStatus:    http.StatusOK,
 			expectedTopic: "user-456:servers",
@@ -1265,7 +1265,7 @@ func TestMakeJWTTopicResolver_MultipleStreamParams(t *testing.T) {
 
 	mockTokenBuilder.EXPECT().
 		GetClaims("token", secretKey).
-		Return(&auth.Claims{ID: 100, Login: "user"}, nil)
+		Return(&jwt.Claims{ID: 100, Login: "user"}, nil)
 
 	resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
 	topic, err := resolver(r)
@@ -1314,7 +1314,7 @@ func TestHTTPHandlerStreamParameterCorrectlyPassed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockTokenBuilder.EXPECT().
 				GetClaims("token", secretKey).
-				Return(&auth.Claims{ID: 1, Login: "user"}, nil).
+				Return(&jwt.Claims{ID: 1, Login: "user"}, nil).
 				AnyTimes() // может вызваться или не вызваться
 
 			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)

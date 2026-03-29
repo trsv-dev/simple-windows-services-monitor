@@ -8,8 +8,8 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 )
 
-// MakeJWTTopicResolver возвращает resolver, использующий JWT из cookie "JWT".
-func MakeJWTTopicResolver(JWTSecretKey string, tokenBuilder auth.TokenBuilder) TopicResolver {
+// MakeTopicResolver возвращает resolver.
+func MakeTopicResolver(authProvider auth.AuthProvider) TopicResolver {
 	return func(r *http.Request) (string, error) {
 		c, err := r.Cookie("JWT")
 		if err != nil {
@@ -17,11 +17,11 @@ func MakeJWTTopicResolver(JWTSecretKey string, tokenBuilder auth.TokenBuilder) T
 		}
 		token := c.Value
 
-		claims, err := tokenBuilder.GetClaims(token, JWTSecretKey)
+		claims, err := authProvider.ValidateToken(r.Context(), token)
 		if err != nil {
 			return "", err
 		}
-		if claims.ID <= 0 {
+		if claims.ID == "" {
 			return "", errors.New("неверный id пользователя")
 		}
 
@@ -38,6 +38,6 @@ func MakeJWTTopicResolver(JWTSecretKey string, tokenBuilder auth.TokenBuilder) T
 			return "", errors.New("неизвестный тип потока")
 		}
 
-		return fmt.Sprintf("user-%d:%s", claims.ID, stream), nil
+		return fmt.Sprintf("user-%s:%s", claims.ID, stream), nil
 	}
 }

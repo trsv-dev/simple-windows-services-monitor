@@ -1,13 +1,12 @@
 CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY,
+    id VARCHAR(250) PRIMARY KEY,
     login VARCHAR(250) NOT NULL UNIQUE,
-    password VARCHAR(250) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS servers (
     id BIGSERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
+    user_id VARCHAR(250) NOT NULL,
     name VARCHAR(250) NOT NULL,
     address VARCHAR(250) NOT NULL,
     username VARCHAR(250) NOT NULL,
@@ -23,7 +22,7 @@ CREATE INDEX idx_servers_fingerprint ON servers(fingerprint);
 
 CREATE TABLE IF NOT EXISTS services (
     id BIGSERIAL PRIMARY KEY,
-    server_id INTEGER NOT NULL,
+    server_id BIGINT NOT NULL,
     displayed_name VARCHAR(250) NOT NULL,
     service_name VARCHAR(250) NOT NULL,
     status VARCHAR(250) NOT NULL,

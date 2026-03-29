@@ -14,7 +14,7 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/storage/postgres/utils"
-	"golang.org/x/crypto/bcrypt"
+	//"golang.org/x/crypto/bcrypt"
 )
 
 // PgStorage Структура хранилища в PostgreSQL, удовлетворяющая интерфейсу Storage.
@@ -53,7 +53,7 @@ func InitStorage(DatabaseURI string, AESKey []byte) (*PgStorage, error) {
 }
 
 // AddServer Добавление нового сервера в БД.
-func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID int64) (*models.Server, error) {
+func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID string) (*models.Server, error) {
 	var newPassword string
 
 	if server.Password != "" {
@@ -93,7 +93,7 @@ func (pg *PgStorage) AddServer(ctx context.Context, server models.Server, userID
 }
 
 // EditServer Редактирование сервера, принадлежащего пользователю.
-func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, serverID int64, userID int64) (*models.Server, error) {
+func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server, serverID int64, userID string) (*models.Server, error) {
 	var password string
 
 	// если был передан новый пароль - шифруем его для передачи в БД
@@ -141,7 +141,7 @@ func (pg *PgStorage) EditServer(ctx context.Context, editedServer *models.Server
 }
 
 // DelServer Удаление сервера, принадлежащего пользователю.
-func (pg *PgStorage) DelServer(ctx context.Context, serverID int64, userID int64) error {
+func (pg *PgStorage) DelServer(ctx context.Context, serverID int64, userID string) error {
 	query := `DELETE FROM servers 
        		  WHERE id = $1 AND user_id = $2`
 
@@ -166,7 +166,7 @@ func (pg *PgStorage) DelServer(ctx context.Context, serverID int64, userID int64
 
 // GetServer Получение информации о сервере, принадлежащем пользователю.
 // Вызывается когда нужно отдать наружу инфо о сервере через API.
-func (pg *PgStorage) GetServer(ctx context.Context, serverID int64, userID int64) (*models.Server, error) {
+func (pg *PgStorage) GetServer(ctx context.Context, serverID int64, userID string) (*models.Server, error) {
 	var server models.Server
 
 	query := `SELECT id, name, address, username, fingerprint, created_at FROM servers 
@@ -189,7 +189,7 @@ func (pg *PgStorage) GetServer(ctx context.Context, serverID int64, userID int64
 // GetServerWithPassword Получение информации о сервере (с ПАРОЛЕМ), принадлежащем пользователю.
 // Использовать ТОЛЬКО внутри бизнес-логики (WinRM).
 // Никогда не отдавать наружу через API!
-func (pg *PgStorage) GetServerWithPassword(ctx context.Context, serverID int64, userID int64) (*models.Server, error) {
+func (pg *PgStorage) GetServerWithPassword(ctx context.Context, serverID int64, userID string) (*models.Server, error) {
 	var server models.Server
 
 	query := `SELECT id, name, address, username, password, fingerprint, created_at FROM servers 
@@ -219,7 +219,7 @@ func (pg *PgStorage) GetServerWithPassword(ctx context.Context, serverID int64, 
 }
 
 // ListServers Отображение списка серверов, принадлежащих пользователю.
-func (pg *PgStorage) ListServers(ctx context.Context, userID int64) ([]*models.Server, error) {
+func (pg *PgStorage) ListServers(ctx context.Context, userID string) ([]*models.Server, error) {
 	query := `SELECT id, name, address, username, fingerprint, created_at 
 			  FROM servers WHERE user_id = $1
 			  ORDER BY name`
@@ -254,7 +254,7 @@ func (pg *PgStorage) ListServers(ctx context.Context, userID int64) ([]*models.S
 }
 
 // AddService Добавление службы на сервер, принадлежащий пользователю.
-func (pg *PgStorage) AddService(ctx context.Context, serverID int64, userID int64, service models.Service) (*models.Service, error) {
+func (pg *PgStorage) AddService(ctx context.Context, serverID int64, userID string, service models.Service) (*models.Service, error) {
 	// создаем транзакцию при добавлении службы, чтобы гарантированно получить из базы актуальный
 	// статус службы и время его изменения и не попасть в ситуацию, когда кто-то параллельно изменил ее статус
 	// и время изменения (например, сделав какую-то операцию над службой)
@@ -336,7 +336,7 @@ func (pg *PgStorage) AddService(ctx context.Context, serverID int64, userID int6
 }
 
 // DelService Удаление службы с сервера пользователя.
-func (pg *PgStorage) DelService(ctx context.Context, serverID int64, serviceID int64, userID int64) error {
+func (pg *PgStorage) DelService(ctx context.Context, serverID int64, serviceID int64, userID string) error {
 	query := `DELETE FROM services 
               WHERE id = $1 
                 AND server_id = $2
@@ -447,7 +447,7 @@ func (pg *PgStorage) BatchChangeServiceStatus(ctx context.Context, serverID int6
 }
 
 // GetService Получение службы с сервера пользователя.
-func (pg *PgStorage) GetService(ctx context.Context, serverID int64, serviceID int64, userID int64) (*models.Service, error) {
+func (pg *PgStorage) GetService(ctx context.Context, serverID int64, serviceID int64, userID string) (*models.Service, error) {
 	query := `SELECT id, displayed_name, service_name, status, created_at, updated_at 
 			  FROM services 
 			  WHERE id = $1 
@@ -474,7 +474,7 @@ func (pg *PgStorage) GetService(ctx context.Context, serverID int64, serviceID i
 }
 
 // ListServices Получение списка служб сервера, принадлежащего пользователю.
-func (pg *PgStorage) ListServices(ctx context.Context, serverID int64, userID int64) ([]*models.Service, error) {
+func (pg *PgStorage) ListServices(ctx context.Context, serverID int64, userID string) ([]*models.Service, error) {
 
 	// Сначала проверяем, принадлежит ли сервер пользователю
 	var exists bool
@@ -531,16 +531,9 @@ func (pg *PgStorage) ListServices(ctx context.Context, serverID int64, userID in
 
 // CreateUser Создание пользователя.
 func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
-	// хэшируем пароль для передачи в БД
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		logger.Log.Error("Не удалось хэшировать пароль", logger.String("err", err.Error()))
-		return err
-	}
+	query := `INSERT INTO users (id, login) VALUES ($1, $2)`
 
-	query := `INSERT INTO users (login, password) VALUES ($1, $2)`
-
-	_, err = pg.DB.ExecContext(ctx, query, user.Login, string(hashedPassword))
+	_, err := pg.DB.ExecContext(ctx, query, user.ID, user.Login)
 	var pgErr *pgconn.PgError
 	if err != nil {
 		switch {
@@ -558,52 +551,60 @@ func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
 	return nil
 }
 
+// DeleteUser Удаление пользователя.
+func (pg *PgStorage) DeleteUser(ctx context.Context, userID string) error {
+	query := `DELETE FROM users WHERE id = $1`
+
+	result, err := pg.DB.ExecContext(ctx, query, userID)
+	if err != nil {
+		logger.Log.Error("Ошибка при удалении пользователя",
+			logger.String("user_id", userID),
+			logger.String("err", err.Error()))
+		return fmt.Errorf("ошибка удаления пользователя: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		logger.Log.Error("Ошибка при подсчете затронутых строк при удалении пользователя",
+			logger.String("user_id", userID),
+			logger.String("err", err.Error()))
+		return fmt.Errorf("ошибка подсчета затронутых строк при удалении пользователя: %w", err)
+	}
+
+	if rows == 0 {
+		logger.Log.Error("Пользователь с таким ID не найден", logger.String("user_id", userID))
+	}
+
+	if rows > 1 {
+		logger.Log.Error("Удалено больше одного пользователя",
+			logger.String("user_id", userID),
+			logger.Int64("rows", rows))
+		return fmt.Errorf("удалено неожиданное количество пользователей: %d", rows)
+	}
+
+	return nil
+}
+
 // GetUser Возвращает пользователя если он зарегистрирован.
 func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.User, error) {
 	var userFromDB models.User
 
-	query := `SELECT id, login, password FROM users WHERE login = $1`
-	err := pg.DB.QueryRowContext(ctx, query, user.Login).Scan(&userFromDB.ID, &userFromDB.Login, &userFromDB.Password)
+	query := `SELECT id, login FROM users WHERE id = $1`
+	err := pg.DB.QueryRowContext(ctx, query, user.ID).Scan(&userFromDB.ID, &userFromDB.Login)
 
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			logger.Log.Error("Пользователь с таким логином не найден", logger.String("err", err.Error()))
-			return nil, errs.NewErrWrongLoginOrPassword(err)
+			logger.Log.Error("Пользователь с таким ID не найден", logger.String("err", err.Error()))
+			return nil, errs.NewErrUserIDNotFound(err)
 		default:
 			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
 			return nil, err
 		}
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(userFromDB.Password), []byte(user.Password)); err != nil {
-		logger.Log.Error("Неверная пара логин/пароль", logger.String("err", err.Error()))
-		return nil, errs.NewErrWrongLoginOrPassword(err)
-	}
-
 	return &userFromDB, nil
 }
-
-//// GetUserIDByLogin Возвращает userID пользователя если он зарегистрирован.
-//func (pg *PgStorage) GetUserIDByLogin(ctx context.Context, login string) (int, error) {
-//	var userID int
-//
-//	query := `SELECT id FROM users WHERE login = $1`
-//
-//	err := pg.DB.QueryRowContext(ctx, query, login).Scan(&userID)
-//
-//	if err != nil {
-//		switch {
-//		case errors.Is(err, sql.ErrNoRows):
-//			return 0, errs.NewErrLoginNotFound(err)
-//		default:
-//			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
-//			return 0, err
-//		}
-//	}
-//
-//	return userID, nil
-//}
 
 // ListUsers Получение списка всех пользователей.
 func (pg *PgStorage) ListUsers(ctx context.Context) ([]*models.User, error) {
@@ -639,8 +640,8 @@ func (pg *PgStorage) ListUsers(ctx context.Context) ([]*models.User, error) {
 	return users, nil
 }
 
-// GetUserServiceStatuses возвращает все службы со статусами, которые принадлежат указанному пользователю.
-func (pg *PgStorage) GetUserServiceStatuses(ctx context.Context, userID int64) ([]*models.ServiceStatus, error) {
+// GetUserServiceStatuses Возвращает все службы со статусами, которые принадлежат указанному пользователю.
+func (pg *PgStorage) GetUserServiceStatuses(ctx context.Context, userID string) ([]*models.ServiceStatus, error) {
 	query := `SELECT id, server_id, status, updated_at 
 			  FROM services
 			  WHERE server_id IN (SELECT id FROM servers WHERE user_id = $1)`

@@ -9,7 +9,8 @@ import (
 // UserStorage Интерфейс для пользователей.
 type UserStorage interface {
 	CreateUser(ctx context.Context, user *models.User) error
+	DeleteUser(ctx context.Context, userID string) error
 	GetUser(ctx context.Context, user *models.User) (*models.User, error)
 	ListUsers(ctx context.Context) ([]*models.User, error)
-	GetUserServiceStatuses(ctx context.Context, userID int64) ([]*models.ServiceStatus, error)
+	GetUserServiceStatuses(ctx context.Context, userID string) ([]*models.ServiceStatus, error)
 }

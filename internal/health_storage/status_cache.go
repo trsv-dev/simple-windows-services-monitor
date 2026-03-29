@@ -53,7 +53,7 @@ func (sc *StatusCache) Delete(id int64) {
 }
 
 // GetAllServerStatusesByUser Получение всех статусов серверов пользователя.
-func (sc *StatusCache) GetAllServerStatusesByUser(userID int64) []models.ServerStatus {
+func (sc *StatusCache) GetAllServerStatusesByUser(userID string) []models.ServerStatus {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
 

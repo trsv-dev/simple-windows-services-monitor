@@ -36,7 +36,7 @@ func (m *MockStorage) EXPECT() *MockStorageMockRecorder {
 }
 
 // AddServer mocks base method.
-func (m *MockStorage) AddServer(arg0 context.Context, arg1 models.Server, arg2 int64) (*models.Server, error) {
+func (m *MockStorage) AddServer(arg0 context.Context, arg1 models.Server, arg2 string) (*models.Server, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddServer", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*models.Server)
@@ -51,7 +51,7 @@ func (mr *MockStorageMockRecorder) AddServer(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // AddService mocks base method.
-func (m *MockStorage) AddService(arg0 context.Context, arg1, arg2 int64, arg3 models.Service) (*models.Service, error) {
+func (m *MockStorage) AddService(arg0 context.Context, arg1 int64, arg2 string, arg3 models.Service) (*models.Service, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddService", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*models.Service)
@@ -122,7 +122,7 @@ func (mr *MockStorageMockRecorder) CreateUser(arg0, arg1 interface{}) *gomock.Ca
 }
 
 // DelServer mocks base method.
-func (m *MockStorage) DelServer(arg0 context.Context, arg1, arg2 int64) error {
+func (m *MockStorage) DelServer(arg0 context.Context, arg1 int64, arg2 string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DelServer", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -136,7 +136,7 @@ func (mr *MockStorageMockRecorder) DelServer(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // DelService mocks base method.
-func (m *MockStorage) DelService(arg0 context.Context, arg1, arg2, arg3 int64) error {
+func (m *MockStorage) DelService(arg0 context.Context, arg1, arg2 int64, arg3 string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DelService", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
@@ -149,8 +149,22 @@ func (mr *MockStorageMockRecorder) DelService(arg0, arg1, arg2, arg3 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DelService", reflect.TypeOf((*MockStorage)(nil).DelService), arg0, arg1, arg2, arg3)
 }
 
+// DeleteUser mocks base method.
+func (m *MockStorage) DeleteUser(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUser", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteUser indicates an expected call of DeleteUser.
+func (mr *MockStorageMockRecorder) DeleteUser(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUser", reflect.TypeOf((*MockStorage)(nil).DeleteUser), arg0, arg1)
+}
+
 // EditServer mocks base method.
-func (m *MockStorage) EditServer(arg0 context.Context, arg1 *models.Server, arg2, arg3 int64) (*models.Server, error) {
+func (m *MockStorage) EditServer(arg0 context.Context, arg1 *models.Server, arg2 int64, arg3 string) (*models.Server, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EditServer", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*models.Server)
@@ -165,7 +179,7 @@ func (mr *MockStorageMockRecorder) EditServer(arg0, arg1, arg2, arg3 interface{}
 }
 
 // GetServer mocks base method.
-func (m *MockStorage) GetServer(arg0 context.Context, arg1, arg2 int64) (*models.Server, error) {
+func (m *MockStorage) GetServer(arg0 context.Context, arg1 int64, arg2 string) (*models.Server, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetServer", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*models.Server)
@@ -180,7 +194,7 @@ func (mr *MockStorageMockRecorder) GetServer(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // GetServerWithPassword mocks base method.
-func (m *MockStorage) GetServerWithPassword(arg0 context.Context, arg1, arg2 int64) (*models.Server, error) {
+func (m *MockStorage) GetServerWithPassword(arg0 context.Context, arg1 int64, arg2 string) (*models.Server, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetServerWithPassword", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*models.Server)
@@ -195,7 +209,7 @@ func (mr *MockStorageMockRecorder) GetServerWithPassword(arg0, arg1, arg2 interf
 }
 
 // GetService mocks base method.
-func (m *MockStorage) GetService(arg0 context.Context, arg1, arg2, arg3 int64) (*models.Service, error) {
+func (m *MockStorage) GetService(arg0 context.Context, arg1, arg2 int64, arg3 string) (*models.Service, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetService", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*models.Service)
@@ -225,7 +239,7 @@ func (mr *MockStorageMockRecorder) GetUser(arg0, arg1 interface{}) *gomock.Call 
 }
 
 // GetUserServiceStatuses mocks base method.
-func (m *MockStorage) GetUserServiceStatuses(arg0 context.Context, arg1 int64) ([]*models.ServiceStatus, error) {
+func (m *MockStorage) GetUserServiceStatuses(arg0 context.Context, arg1 string) ([]*models.ServiceStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserServiceStatuses", arg0, arg1)
 	ret0, _ := ret[0].([]*models.ServiceStatus)
@@ -240,7 +254,7 @@ func (mr *MockStorageMockRecorder) GetUserServiceStatuses(arg0, arg1 interface{}
 }
 
 // ListServers mocks base method.
-func (m *MockStorage) ListServers(arg0 context.Context, arg1 int64) ([]*models.Server, error) {
+func (m *MockStorage) ListServers(arg0 context.Context, arg1 string) ([]*models.Server, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListServers", arg0, arg1)
 	ret0, _ := ret[0].([]*models.Server)
@@ -255,7 +269,7 @@ func (mr *MockStorageMockRecorder) ListServers(arg0, arg1 interface{}) *gomock.C
 }
 
 // ListServices mocks base method.
-func (m *MockStorage) ListServices(arg0 context.Context, arg1, arg2 int64) ([]*models.Service, error) {
+func (m *MockStorage) ListServices(arg0 context.Context, arg1 int64, arg2 string) ([]*models.Service, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListServices", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]*models.Service)

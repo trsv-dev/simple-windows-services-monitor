@@ -65,7 +65,7 @@ func TestListOfServicesSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -155,7 +155,7 @@ func TestListOfServicesServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -187,7 +187,7 @@ func TestListOfServicesDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -213,7 +213,7 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -257,7 +257,7 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -307,7 +307,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -361,7 +361,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -426,7 +426,7 @@ func TestAddServiceInvalidJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -477,7 +477,7 @@ func TestAddServiceInvalidServiceData(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 			r = r.WithContext(ctx)
 
@@ -520,7 +520,7 @@ func TestAddServiceServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -558,7 +558,7 @@ func TestAddServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -590,7 +590,7 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -641,7 +641,7 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -697,7 +697,7 @@ func TestAddServiceRunCommandError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -757,7 +757,7 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -817,7 +817,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -885,7 +885,7 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -953,7 +953,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1017,7 +1017,7 @@ func TestAddServiceSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1119,7 +1119,7 @@ func TestAddServiceNameNormalization(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 			r = r.WithContext(ctx)
 
@@ -1152,7 +1152,7 @@ func TestDelServiceSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1190,7 +1190,7 @@ func TestDelServiceNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1223,7 +1223,7 @@ func TestDelServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1262,7 +1262,7 @@ func TestGetServiceSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1306,7 +1306,7 @@ func TestGetServiceNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1339,7 +1339,7 @@ func TestGetServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1376,7 +1376,7 @@ func TestGetServicesListSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1414,7 +1414,7 @@ func TestGetServicesListEmpty(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1454,7 +1454,7 @@ func TestGetServicesListServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1485,7 +1485,7 @@ func TestGetServicesListDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1530,7 +1530,7 @@ func TestGetServicesListWithActualTrueServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1572,7 +1572,7 @@ func TestGetServicesListWithActualTrueDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1598,7 +1598,7 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1660,7 +1660,7 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1727,7 +1727,7 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1803,7 +1803,7 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1897,7 +1897,7 @@ func TestGetServicesListWithActualFalse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1947,7 +1947,7 @@ func TestGetServicesListWithActualTrueEmptyServices(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 

@@ -30,7 +30,7 @@ func init() {
 func createContextWithCreds(login string, userID, serverID, serviceID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
-	ctx = context.WithValue(ctx, contextkeys.ID, userID)
+	ctx = context.WithValue(ctx, contextkeys.UserID, userID)
 	ctx = context.WithValue(ctx, contextkeys.ServerID, serverID)
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, serviceID)
 	return ctx

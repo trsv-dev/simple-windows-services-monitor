@@ -30,7 +30,7 @@ func init() {
 func createContextWithCreds(login string, userID, serverID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
-	ctx = context.WithValue(ctx, contextkeys.ID, userID)
+	ctx = context.WithValue(ctx, contextkeys.UserID, userID)
 	ctx = context.WithValue(ctx, contextkeys.ServerID, serverID)
 	return ctx
 }
@@ -988,7 +988,7 @@ func TestGetServerList(t *testing.T) {
 
 			r := httptest.NewRequest(http.MethodGet, "/servers", nil)
 			ctx := context.Background()
-			ctx = context.WithValue(ctx, contextkeys.ID, tt.userID)
+			ctx = context.WithValue(ctx, contextkeys.UserID, tt.userID)
 			r = r.WithContext(ctx)
 
 			w := httptest.NewRecorder()

@@ -1250,8 +1250,8 @@ func TestGetUser(t *testing.T) {
 			},
 			expectError: true,
 			errorAssertion: func(t *testing.T, err error) {
-				var wrongPassErr *errs.ErrWrongLoginOrPassword
-				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLoginOrPassword")
+				var wrongPassErr *errs.ErrWrongLogin
+				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLogin")
 			},
 			validate: func(t *testing.T, result *models.User) {
 				assert.Nil(t, result)
@@ -1272,8 +1272,8 @@ func TestGetUser(t *testing.T) {
 			},
 			expectError: true,
 			errorAssertion: func(t *testing.T, err error) {
-				var wrongPassErr *errs.ErrWrongLoginOrPassword
-				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLoginOrPassword")
+				var wrongPassErr *errs.ErrWrongLogin
+				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLogin")
 			},
 			validate: func(t *testing.T, result *models.User) {
 				assert.Nil(t, result)

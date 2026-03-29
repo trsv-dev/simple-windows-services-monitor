@@ -64,7 +64,12 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    create user swsm with encrypted password 'userpassword';
    grant all privileges on database swsm to swsm;
    alter database swsm owner to swsm;
-   ```
+
+3. Разверните docker-контейнер с Keycloak
+
+
+# Нумарация !!!
+
 
 3. Создайте в корне файл `.env.development` и заполните своими данными (пример дан в env_example):
     ```env
@@ -81,14 +86,8 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     LOG_LEVEL=debug
     LOG_OUTPUT=./logs/swsm.log
     AES_KEY=your-base64-key
-    SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
     API_BASE_URL=http://localhost:8080/api
-    # Разрешение открытой регистрации для всех или регистрация с регистрационным ключом
-    OPEN_REGISTRATION=false
-    # Если регистрация закрытая (`OPEN_REGISTRATION=false`) - необходимо задать регистрационный ключ,
-    # используя который избранные пользователи смогут зарегистрироваться
-    REGISTRATION_KEY=your-secret-registration-key
     
     # Postgres init vars (для образа postgres)
     ####################################################################################
@@ -98,6 +97,18 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     POSTGRES_PASSWORD=userpassword
     # то же имя БД, что в URI
     POSTGRES_DB=swsm
+   
+   # Keycloak init vars (OpenID Connect)
+   ####################################################################################
+   # Базовый URL Keycloak сервера, включая realm.
+   # Формат: http(s)://<host>:<port>/realms/<realm_name>
+   # Пример: http://localhost:8081/realms/swsm
+   # Или по имени контейнера, например: keycloak:8081/realms/swsm
+   KEYCLOAK_ISSUER_URL=keycloak:8081/realms/swsm
+   
+   # Идентификатор клиента (client_id), зарегистрированного в Keycloak.
+   # Должен совпадать с именем клиента, указанным в консоли Keycloak.
+   KEYCLOAK_CLIENT_ID=swsm
    ```
 
 4. Соберите бинарник и запустите сервер:
@@ -149,11 +160,6 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     SECRET_KEY=your-jwt-secret
     WEB_INTERFACE=true
     API_BASE_URL=/api
-    # Разрешение открытой регистрации для всех или регистрация с регистрационным ключом
-    OPEN_REGISTRATION=false
-    # Если регистрация закрытая (`OPEN_REGISTRATION=false`) - необходимо задать регистрационный ключ,
-    # используя который избранные пользователи смогут зарегистрироваться
-    REGISTRATION_KEY=your-secret-registration-key
     
     # Postgres init vars (для образа postgres)
     ####################################################################################
@@ -163,6 +169,18 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     POSTGRES_PASSWORD=userpassword
     # то же имя БД, что в URI
     POSTGRES_DB=swsm
+   
+    # Keycloak init vars (OpenID Connect)
+    ####################################################################################
+    # Базовый URL Keycloak сервера, включая realm.
+    # Формат: http(s)://<host>:<port>/realms/<realm_name>
+    # Пример: http://localhost:8081/realms/swsm
+    # Или по имени контейнера, например: keycloak:8081/realms/swsm
+    KEYCLOAK_ISSUER_URL=keycloak:8081/realms/swsm
+    
+    # Идентификатор клиента (client_id), зарегистрированного в Keycloak.
+    # Должен совпадать с именем клиента, указанным в консоли Keycloak.
+    KEYCLOAK_CLIENT_ID=swsm
    ```
 3. Если вы хотите собрать проект с веб-интерфейсом (в `env` вы оставили `WEB_INTERFACE=true`), 
 то из корня проекта (где расположен `docker-compose.yml`) выполните:

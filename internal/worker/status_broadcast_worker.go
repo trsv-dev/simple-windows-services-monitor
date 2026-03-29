@@ -20,7 +20,7 @@ func StatusBroadcastWorker(ctx context.Context, storage storage.Storage, statusC
 
 	for {
 		if err := publishServerStatuses(ctx, storage, statusCache, publisher); err != nil {
-			logger.Log.Error("ошибка ServerStatusBroadcastWorker",
+			logger.Log.Error("ошибка StatusBroadcastWorker",
 				logger.String("err", err.Error()))
 		}
 
@@ -48,7 +48,7 @@ func publishServerStatuses(ctx context.Context, storage storage.Storage, statusC
 			return err
 		}
 
-		topic := fmt.Sprintf("user-%d:servers", user.ID)
+		topic := fmt.Sprintf("user-%s:servers", user.ID)
 		if err := publisher.Publish(topic, b); err != nil {
 			return err
 		}

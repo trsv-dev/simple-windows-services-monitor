@@ -49,7 +49,7 @@ func CorsMiddleware(next http.Handler) http.Handler {
 		// Время кэширования preflight запросов
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
-		// **Эта строка позволяет браузеру читать X-Is-Updated**
+		// Эта строка позволяет браузеру читать X-Is-Updated
 		w.Header().Set("Access-Control-Expose-Headers", "X-Is-Updated")
 
 		// Обрабатываем preflight OPTIONS запросы

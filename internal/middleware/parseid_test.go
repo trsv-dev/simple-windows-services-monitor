@@ -45,7 +45,7 @@ func TestParseServerIDMiddlewareSuccess(t *testing.T) {
 	// проверяем что next handler был вызван
 	assert.True(t, nextCalled)
 
-	// проверяем что ID правильно спарсился
+	// проверяем что UserID правильно спарсился
 	assert.Equal(t, int64(123), capturedID)
 
 	// проверяем статус
@@ -79,17 +79,17 @@ func TestParseServerIDMiddlewareMissingID(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "сервера")
 }
 
-// TestParseServerIDMiddlewareInvalidID Проверяет запрос с невалидным ID.
+// TestParseServerIDMiddlewareInvalidID Проверяет запрос с невалидным UserID.
 func TestParseServerIDMiddlewareInvalidID(t *testing.T) {
 	tests := []struct {
 		name     string
 		serverID string
 	}{
-		{"строковый ID", "abc"},
-		{"ID с буквами", "123abc"},
-		{"ID с символами", "12@3"},
-		{"ID равен нулю", "0"},
-		{"ID c отрицательным числом", "-123"},
+		{"строковый UserID", "abc"},
+		{"UserID с буквами", "123abc"},
+		{"UserID с символами", "12@3"},
+		{"UserID равен нулю", "0"},
+		{"UserID c отрицательным числом", "-123"},
 		{"отрицательное число со словом", "-123abc"},
 	}
 
@@ -123,7 +123,7 @@ func TestParseServerIDMiddlewareInvalidID(t *testing.T) {
 	}
 }
 
-// TestParseServerIDMiddlewareLargeID Проверяет работу с большим ID.
+// TestParseServerIDMiddlewareLargeID Проверяет работу с большим UserID.
 func TestParseServerIDMiddlewareLargeID(t *testing.T) {
 	var capturedID int64
 
@@ -177,7 +177,7 @@ func TestParseServiceIDMiddlewareSuccess(t *testing.T) {
 	// проверяем что next handler был вызван
 	assert.True(t, nextCalled)
 
-	// проверяем что ID правильно спарсился
+	// проверяем что UserID правильно спарсился
 	assert.Equal(t, int64(456), capturedID)
 
 	// проверяем статус
@@ -216,17 +216,17 @@ func TestParseServiceIDMiddlewareMissingID(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "службы")
 }
 
-// TestParseServiceIDMiddlewareInvalidID Проверяет запрос с невалидным ID.
+// TestParseServiceIDMiddlewareInvalidID Проверяет запрос с невалидным UserID.
 func TestParseServiceIDMiddlewareInvalidID(t *testing.T) {
 	tests := []struct {
 		name      string
 		serviceID string
 	}{
-		{"строковый ID", "xyz"},
-		{"ID с буквами", "456abc"},
-		{"ID с символами", "45@6"},
-		{"ID равен нулю", "0"},
-		{"ID c отрицательным числом", "-123"},
+		{"строковый UserID", "xyz"},
+		{"UserID с буквами", "456abc"},
+		{"UserID с символами", "45@6"},
+		{"UserID равен нулю", "0"},
+		{"UserID c отрицательным числом", "-123"},
 		{"отрицательное число со словом", "-123abc"},
 	}
 
@@ -318,12 +318,12 @@ func TestParseServiceIDMiddlewareContextKey(t *testing.T) {
 	assert.True(t, contextHasServiceID)
 }
 
-// TestParseServerIDMiddlewareMultipleCalls Проверяет несколько вызовов с разными ID.
+// TestParseServerIDMiddlewareMultipleCalls Проверяет несколько вызовов с разными UserID.
 func TestParseServerIDMiddlewareMultipleCalls(t *testing.T) {
 	testCases := []int64{1, 42, 999, 12345}
 
 	for _, expectedID := range testCases {
-		t.Run("ID: "+strconv.FormatInt(expectedID, 10), func(t *testing.T) {
+		t.Run("UserID: "+strconv.FormatInt(expectedID, 10), func(t *testing.T) {
 			var capturedID int64
 
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +343,7 @@ func TestParseServerIDMiddlewareMultipleCalls(t *testing.T) {
 
 			router.ServeHTTP(w, r)
 
-			// проверяем правильный ID для каждого случая
+			// проверяем правильный UserID для каждого случая
 			assert.Equal(t, expectedID, capturedID)
 		})
 	}

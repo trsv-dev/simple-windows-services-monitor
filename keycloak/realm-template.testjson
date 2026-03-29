@@ -1,0 +1,102 @@
+{
+  "id": "${KEYCLOAK_REALM_NAME}",
+  "realm": "${KEYCLOAK_REALM_NAME}",
+  "displayName": "${KEYCLOAK_REALM_NAME}",
+  "enabled": true,
+
+  "userManagedAccessAllowed": true,
+  "registrationAllowed": true,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "loginWithEmailAllowed": true,
+  "verifyEmail": true,
+
+  "internationalizationEnabled": true,
+  "supportedLocales": ["en", "ru"],
+  "defaultLocale": "ru",
+
+  "smtpServer": {
+    "from": "${SMTP_FROM}",
+    "fromDisplayName": "${SMTP_FROM_NAME}",
+    "host": "${SMTP_HOST}",
+    "port": "${SMTP_PORT}",
+    "ssl": "true",
+    "auth": "true",
+    "user": "${SMTP_USERNAME}",
+    "password": "${SMTP_PASSWORD}"
+  },
+
+  "clientScopes": [
+    {
+      "name": "swsm-dedicated",
+      "description": "Dedicated scope for SWSM client",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "swsm",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "${KEYCLOAK_CLIENT_ID}",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+
+  "clients": [
+    {
+      "clientId": "${KEYCLOAK_CLIENT_ID}",
+      "name": "${KEYCLOAK_REALM_NAME}",
+      "description": "${KEYCLOAK_REALM_NAME}",
+
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "frontchannelLogout": true,
+
+      "rootUrl": "http://127.0.0.1:3000/",
+      "redirectUris": ["http://127.0.0.1:3000/*"],
+      "webOrigins": ["http://127.0.0.1:3000"],
+
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "acr",
+        "basic",
+        "swsm-dedicated"
+      ],
+
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt",
+        "organization"
+      ]
+    }
+  ],
+
+  "users": [
+    {
+      "username": "${ADMIN_USERNAME}",
+      "email": "${ADMIN_EMAIL}",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ]
+    }
+  ]
+}

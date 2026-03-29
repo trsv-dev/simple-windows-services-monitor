@@ -14,11 +14,12 @@ type Config struct {
 	WinRMInsecureForHTTPS bool
 	LogLevel              string
 	LogOutput             string
-	JWTSecretKey          string
+	KeycloakBaseURL       string
+	SkipIssuerCheck       bool
+	KeycloakRealmName     string
+	KeycloakClientID      string
 	AESKey                string
 	WebInterface          bool
-	OpenRegistration      bool
-	RegistrationKey       string
 }
 
 // InitConfig Инициализация структуры, содержащей конфигурацию сервера, полученную из флагов или
@@ -26,18 +27,25 @@ type Config struct {
 func InitConfig() *Config {
 	config := &Config{}
 
-	flag.StringVar(&config.RunAddress, "a", "127.0.0.1:8080", "HTTP server address and port")
-	flag.StringVar(&config.DatabaseURI, "d", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
-	flag.StringVar(&config.WinRMPort, "wp", "5985", "WinRM port (Default: 5985), alternative to https - 5986. Оr any custom port if your server uses a non-standard WinRM port ")
-	flag.BoolVar(&config.WinRMUseHTTPS, "https", false, "Set the flag true for https connections. Default: false")
+	//flag.StringVar(&config.RunAddress, "address", "127.0.0.1:8080", "HTTP server address and port")
+	flag.StringVar(&config.RunAddress, "address", "127.0.0.1:9090", "HTTP server address and port")
+	flag.StringVar(&config.DatabaseURI, "database", "", "Database URI (example: `postgres://username:password@localhost:5432/dbname?sslmode=disable`)")
+	flag.StringVar(&config.WinRMPort, "winrm-port", "5985",
+		"WinRM port (Default: 5985), alternative to https - 5986. Оr any custom port if your server uses a non-standard WinRM port ")
+	flag.BoolVar(&config.WinRMUseHTTPS, "winrm-use-https", false, "Set the flag true for https connections. Default: false")
 	flag.BoolVar(&config.WinRMInsecureForHTTPS, "ssl", false, "Set the flag true for skipping ssl verifications (useful for self-signed certificates)")
-	flag.StringVar(&config.LogLevel, "ll", "Debug", "Log level for logging (example: Debug, Info, Warn, Error). Default level: Debug")
-	flag.StringVar(&config.LogOutput, "lo", "./logs/swsm.log", "Log output destination: 'stdout' for console or relative path to logfile `./path/to/file.log` for log file. Default: './logs/swsm.log'")
-	flag.StringVar(&config.JWTSecretKey, "s", "", "Secret key used for signing and verifying JWT tokens (example: UIfuBqY1crEUgzIem9)")
-	flag.StringVar(&config.AESKey, "k", "", "AES key for encrypting server passwords (hex-encoded, 32 bytes, for example: DjffxQxRnhvkB0CkxEiGbrFIoN8PTJc3TZqf/YNSVRI=)")
-	flag.BoolVar(&config.WebInterface, "w", true, "Enable the web interface (SSE and HTTP frontend). Set to false to run the server as API-only without frontend and SSE support. Default: true")
-	flag.BoolVar(&config.OpenRegistration, "r", false, "Enable open registration. Default: false")
-	flag.StringVar(&config.RegistrationKey, "rk", "your-secret-registration-key", "Secret key required for user registration")
+	flag.StringVar(&config.LogLevel, "log-level", "Debug", "Log level for logging (example: Debug, Info, Warn, Error). Default level: Debug")
+	flag.StringVar(&config.LogOutput, "log-output", "./logs/swsm.log",
+		"Log output destination: 'stdout' for console or relative path to logfile `./path/to/file.log` for log file. Default: './logs/swsm.log'")
+	flag.StringVar(&config.AESKey, "aes-key", "",
+		"AES key for encrypting server passwords (hex-encoded, 32 bytes, for example: DjffxQxRnhvkB0CkxEiGbrFIoN8PTJc3TZqf/YNSVRI=)")
+	flag.StringVar(&config.KeycloakBaseURL, "keycloak-url-address", "http://127.0.0.1:8081",
+		"Keycloak URL address (example: `http(s)://<host>:<port>`). Default: http://127.0.0.1:8081")
+	flag.BoolVar(&config.SkipIssuerCheck, "skip-issuer-check", false, "Disables issuer verification for local development in Docker containers. Default: false")
+	flag.StringVar(&config.KeycloakRealmName, "realm-name", "swsm", "Keycloak realm name (example: `swsm`). Default: swsm")
+	flag.StringVar(&config.KeycloakClientID, "keycloak-client-id", "swsm", "Keycloak client ID. Must match client in Keycloak (example: `swsm`). Default: swsm")
+	flag.BoolVar(&config.WebInterface, "web-interface", true,
+		"Enable the web interface (SSE and HTTP frontend). Set to false to run the server as API-only without frontend and SSE support. Default: true")
 	flag.Parse()
 
 	if value, ok := os.LookupEnv("RUN_ADDRESS"); ok {
@@ -78,10 +86,6 @@ func InitConfig() *Config {
 		config.LogOutput = value
 	}
 
-	if value, ok := os.LookupEnv("JWT_SECRET_KEY"); ok {
-		config.JWTSecretKey = value
-	}
-
 	if value, ok := os.LookupEnv("AES_KEY"); ok {
 		config.AESKey = value
 	}
@@ -95,17 +99,25 @@ func InitConfig() *Config {
 		}
 	}
 
-	if value, ok := os.LookupEnv("OPEN_REGISTRATION"); ok {
+	if value, ok := os.LookupEnv("KEYCLOAK_BASE_URL"); ok {
+		config.KeycloakBaseURL = value
+	}
+
+	if value, ok := os.LookupEnv("KEYCLOAK_SKIP_ISSUER_CHECK"); ok {
 		switch strings.ToLower(value) {
 		case "1", "true", "yes", "on":
-			config.OpenRegistration = true
+			config.SkipIssuerCheck = true
 		case "0", "false", "no", "off":
-			config.OpenRegistration = false
+			config.SkipIssuerCheck = false
 		}
 	}
 
-	if value, ok := os.LookupEnv("REGISTRATION_KEY"); ok {
-		config.RegistrationKey = value
+	if value, ok := os.LookupEnv("KEYCLOAK_REALM_NAME"); ok {
+		config.KeycloakRealmName = value
+	}
+
+	if value, ok := os.LookupEnv("KEYCLOAK_CLIENT_ID"); ok {
+		config.KeycloakClientID = value
 	}
 
 	return config
