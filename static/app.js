@@ -127,12 +127,6 @@ const servicesList = document.getElementById('servicesList');
 // KEYCLOAK CONFIGURATION
 // ============================================
 
-// const KEYCLOAK_CONFIG = {
-//     url: 'http://127.0.0.1:8081',
-//     realm: 'swsm',
-//     clientId: 'swsm'
-// };
-
 let keycloak = null;
 
 // Синхронизация httpOnly куки с текущим токеном
@@ -238,9 +232,36 @@ document.addEventListener('DOMContentLoaded', async function() {
             showMainApp();
             subscribeServerEvents();
 
-            if (currentServerId) {
-                currentServerId = parseInt(currentServerId);
-                showServerDetail(currentServerId);
+            // Восстановление состояния при перезагрузке
+            const savedServerId = localStorage.getItem('swsm_current_server_id');
+
+            if (savedServerId && !isNaN(parseInt(savedServerId, 10))) {
+                const targetId = parseInt(savedServerId, 10);
+                console.log('[Init] Восстановление сессии для сервера ID:', targetId);
+
+                // 1. Сразу переключаем вид, чтобы не было мигания
+                if (serversListView) serversListView.classList.add('hidden');
+                if (serverDetailView) serverDetailView.classList.remove('hidden');
+
+                // 2. Загружаем список серверов (этот эндпоинт у вас точно работает)
+                try {
+                    await loadServersList();
+
+                    // 3. Ищем сохранённый сервер в обновлённом кэше
+                    const server = allServers.find(s => Number(s.id || s.server_id) === targetId);
+
+                    if (server) {
+                        // Кэш заполнен, showServerDetail возьмёт сервер из него и НЕ будет делать проблемный запрос
+                        showServerDetail(server.id);
+                    } else {
+                        console.warn('[Init] Сервер не найден в списке, сбрасываем');
+                        localStorage.removeItem('swsm_current_server_id');
+                        showServersList();
+                    }
+                } catch (err) {
+                    console.error('[Init] Ошибка восстановления:', err);
+                    showServersList();
+                }
             } else {
                 loadServersList();
             }
@@ -492,7 +513,7 @@ function updateThemeButton() {
             themeBtn.title = 'Переключиться на светлый режим';
             themeBtn.className = 'btn me-2';
         } else {
-            themeBtn.innerHTML = '🌚';
+            themeBtn.innerHTML = '🌙';
             themeBtn.title = 'Переключиться на тёмный режим';
             themeBtn.className = 'btn me-2';
         }
@@ -1064,54 +1085,6 @@ async function handleLogin(event) {
         if (!(error instanceof SessionExpiredError)) {
             showToast('Ошибка', error.message, 'error');
         }
-    } finally {
-        hideLoading();
-    }
-}
-
-async function handleRegister(event) {
-    event.preventDefault();
-
-    const username = document.getElementById('registerUsername').value.trim();
-    const password = document.getElementById('registerPassword').value;
-    const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
-    const registrationKey = document.getElementById('registrationKey').value.trim();
-
-    if (password !== passwordConfirm) {
-        showToast('Ошибка', 'Пароли не совпадают', 'error');
-        return;
-    }
-
-    if (username.length < 4) {
-        showToast('Ошибка', 'Логин должен содержать не менее 4 символов', 'error');
-        return;
-    }
-
-    if (password.length < 5) {
-        showToast('Ошибка', 'Пароль должен содержать не менее 5 символов', 'error');
-        return;
-    }
-
-    showLoading();
-
-    try {
-        await apiRequest('/user/register', {
-            method: 'POST',
-            body: JSON.stringify({
-                login: username,
-                password: password,
-                registration_key: registrationKey,
-            }),
-        });
-
-        const modal = bootstrap.Modal.getInstance(document.getElementById('registerModal'));
-        modal.hide();
-        document.getElementById('registerForm').reset();
-
-        showToast('Успех', 'Регистрация прошла успешно! Теперь авторизуйтесь.');
-
-    } catch (error) {
-        showToast('Ошибка', error.message, 'error');
     } finally {
         hideLoading();
     }
@@ -2169,9 +2142,6 @@ function renderServersCurrentPage() {
 function setupEventListeners() {
     const loginForm = document.getElementById('loginForm');
     if (loginForm) loginForm.addEventListener('submit', handleLogin);
-
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) registerForm.addEventListener('submit', handleRegister);
 
     const addServerForm = document.getElementById('addServerForm');
     if (addServerForm) addServerForm.addEventListener('submit', handleAddServer);

@@ -66,7 +66,6 @@ services:
 
   auth:
     container_name: auth
-#    build: ./keycloak
     image: quay.io/keycloak/keycloak:26.5.6
     restart: unless-stopped
     ports:
@@ -74,7 +73,7 @@ services:
     env_file:
       - .env.production
     environment:
-      KC_HOSTNAME: 127.0.01
+      KC_HOSTNAME: 127.0.0.1
       KC_HOSTNAME_PORT: 8080
       KC_PROXY: edge
 

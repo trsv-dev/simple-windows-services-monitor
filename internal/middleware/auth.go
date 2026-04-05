@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -55,13 +54,7 @@ func AuthMiddleware(storage storage.Storage, authProvider auth.AuthProvider) fun
 				return
 			}
 
-			// todo удалить после отладки
-			fmt.Printf("claims %+v", claims)
-
 			claimUser := &models.User{ID: claims.ID, Login: claims.Login}
-
-			// todo удалить после отладки
-			fmt.Printf("claimUser %+v", claimUser)
 
 			// проверяем, существует ли пользователь в БД
 			_, getErr := storage.GetUser(r.Context(), claimUser)

@@ -5,7 +5,7 @@ cat > /usr/share/nginx/html/config.js << EOF
 const API_BASE = "${API_BASE_URL}";
 
 const KEYCLOAK_CONFIG = {
-    url: window.location.protocol + "//" + window.location.hostname + ":8081",
+    url: "${KEYCLOAK_BASE_URL}",
     realm: "${KEYCLOAK_REALM_NAME}",
     clientId: "${KEYCLOAK_CLIENT_ID}"
 };
