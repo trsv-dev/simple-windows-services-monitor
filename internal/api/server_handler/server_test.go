@@ -27,7 +27,7 @@ func init() {
 }
 
 // Создание контекста с данными о пользователе и сервере.
-func createContextWithCreds(login string, userID, serverID int64) context.Context {
+func createContextWithCreds(login, userID string, serverID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
 	ctx = context.WithValue(ctx, contextkeys.UserID, userID)
@@ -45,7 +45,7 @@ func TestAddServer(t *testing.T) {
 	tests := []struct {
 		name               string
 		login              string
-		userID             int64
+		userID             string
 		body               interface{}
 		setupFingerprinter func(m *serviceControlMocks.MockFingerprinter)
 		setupStorage       func(m *storageMocks.MockStorage)
@@ -56,7 +56,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:               "невалидный JSON",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			body:               "{invalid}",
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage:       func(m *storageMocks.MockStorage) {},
@@ -69,7 +69,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:               "валидация не пройдена - пустой адрес",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			body:               models.Server{Name: "Test", Username: "admin", Password: "pass"},
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage:       func(m *storageMocks.MockStorage) {},
@@ -82,7 +82,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:   "ошибка получения fingerprint",
 			login:  "user",
-			userID: 1,
+			userID: "any-id-user-1",
 			body: models.Server{
 				Name:     "TestServer",
 				Address:  "192.168.1.1",
@@ -104,7 +104,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:   "дубликат сервера",
 			login:  "user",
-			userID: 1,
+			userID: "any-id-user-1",
 			body: models.Server{
 				Name:     "TestServer",
 				Address:  "192.168.1.1",
@@ -118,7 +118,7 @@ func TestAddServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					AddServer(gomock.Any(), gomock.Any(), int64(1)).
+					AddServer(gomock.Any(), gomock.Any(), "any-id-user-1").
 					Return(nil, errs.NewErrDuplicatedServer("192.168.1.1", errors.New("duplicate")))
 			},
 			wantStatus: http.StatusConflict,
@@ -130,7 +130,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:   "ошибка БД при добавлении сервера",
 			login:  "user",
-			userID: 1,
+			userID: "any-id-user-1",
 			body: models.Server{
 				Name:     "TestServer",
 				Address:  "192.168.1.1",
@@ -144,7 +144,7 @@ func TestAddServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					AddServer(gomock.Any(), gomock.Any(), int64(1)).
+					AddServer(gomock.Any(), gomock.Any(), "any-id-user-1").
 					Return(nil, errors.New("database error"))
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -156,7 +156,7 @@ func TestAddServer(t *testing.T) {
 		{
 			name:   "успешное добавление сервера",
 			login:  "user",
-			userID: 1,
+			userID: "any-id-user-1",
 			body: models.Server{
 				Name:     "TestServer",
 				Address:  "192.168.1.1",
@@ -170,7 +170,7 @@ func TestAddServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					AddServer(gomock.Any(), gomock.Any(), int64(1)).
+					AddServer(gomock.Any(), gomock.Any(), "any-id-user-1").
 					Return(&models.Server{
 						ID:          1,
 						Name:        "TestServer",
@@ -234,7 +234,7 @@ func TestEditServer(t *testing.T) {
 	tests := []struct {
 		name               string
 		login              string
-		userID             int64
+		userID             string
 		serverID           int64
 		body               interface{}
 		setupFingerprinter func(m *serviceControlMocks.MockFingerprinter)
@@ -245,13 +245,13 @@ func TestEditServer(t *testing.T) {
 		{
 			name:               "невалидный JSON",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			body:               "{invalid}",
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:      100,
 						Name:    "TestServer",
@@ -267,14 +267,14 @@ func TestEditServer(t *testing.T) {
 		{
 			name:               "сервер не найден",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			body:               models.Server{Name: "NewName"},
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-					Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("not found")))
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
+					Return(nil, errs.NewErrServerNotFound(100, "any-id-user-1", errors.New("not found")))
 			},
 			wantStatus: http.StatusNotFound,
 			wantErrorResp: &response.APIError{
@@ -285,7 +285,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "валидация - имя сервера слишком короткое",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Name: "ab", // менее 3 символов
@@ -293,7 +293,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -312,7 +312,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "валидация - невалидный IP адрес",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address: "999.999.999.999", // невалидный IP
@@ -320,7 +320,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -339,7 +339,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "валидация - невалидный hostname",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address: "invalid hostname with spaces", // невалидный hostname
@@ -347,7 +347,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -366,7 +366,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "валидация - hostname слишком длинный",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address: strings.Repeat("a", 254), // 254+ символа
@@ -374,7 +374,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -393,13 +393,13 @@ func TestEditServer(t *testing.T) {
 		{
 			name:               "изменение только имени",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			body:               models.Server{Name: "NewName"},
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -410,7 +410,7 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:       100,
 						Name:     "NewName",
@@ -423,7 +423,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "изменение адреса с несовпадающим fingerprint",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address:  "192.168.1.2",
@@ -437,7 +437,7 @@ func TestEditServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -456,7 +456,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "изменение пароля и адреса одновременно",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address:  "192.168.1.2",
@@ -472,7 +472,7 @@ func TestEditServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -491,7 +491,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "изменение адреса с использованием старого пароля",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address:  "192.168.1.2",
@@ -506,7 +506,7 @@ func TestEditServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -517,7 +517,7 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:       100,
 						Name:     "TestServer",
@@ -531,7 +531,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "изменение пароля без изменения адреса",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Password: "newpassword",
@@ -542,7 +542,7 @@ func TestEditServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -553,7 +553,7 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:       100,
 						Name:     "TestServer",
@@ -567,7 +567,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "ошибка редактирования сервера - сервер не найден",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Name: "NewName",
@@ -575,7 +575,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -586,8 +586,8 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
-					Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("not found")))
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
+					Return(nil, errs.NewErrServerNotFound(100, "any-id-user-1", errors.New("not found")))
 			},
 			wantStatus: http.StatusNotFound,
 			wantErrorResp: &response.APIError{
@@ -598,7 +598,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "ошибка редактирования сервера - другая ошибка БД",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Name: "NewName",
@@ -606,7 +606,7 @@ func TestEditServer(t *testing.T) {
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -617,7 +617,7 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
 					Return(nil, errors.New("database connection error"))
 			},
 			wantStatus: http.StatusBadRequest,
@@ -630,7 +630,7 @@ func TestEditServer(t *testing.T) {
 		{
 			name:     "ошибка при получении fingerprint с новым паролем",
 			login:    "user",
-			userID:   1,
+			userID:   "any-id-user-1",
 			serverID: 100,
 			body: models.Server{
 				Address:  "192.168.1.2",
@@ -644,7 +644,7 @@ func TestEditServer(t *testing.T) {
 			},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -663,13 +663,13 @@ func TestEditServer(t *testing.T) {
 		{
 			name:               "успешное редактирование",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			body:               models.Server{Name: "NewName", Username: "newadmin"},
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+					GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -680,7 +680,7 @@ func TestEditServer(t *testing.T) {
 					}, nil)
 
 				m.EXPECT().
-					EditServer(gomock.Any(), gomock.Any(), int64(100), int64(1)).
+					EditServer(gomock.Any(), gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:       100,
 						Name:     "NewName",
@@ -734,7 +734,7 @@ func TestDelServer(t *testing.T) {
 	tests := []struct {
 		name               string
 		login              string
-		userID             int64
+		userID             string
 		serverID           int64
 		setupFingerprinter func(m *serviceControlMocks.MockFingerprinter)
 		setupStorage       func(m *storageMocks.MockStorage)
@@ -744,13 +744,13 @@ func TestDelServer(t *testing.T) {
 		{
 			name:               "сервер не найден",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					DelServer(gomock.Any(), int64(100), int64(1)).
-					Return(errs.NewErrServerNotFound(100, 1, errors.New("not found")))
+					DelServer(gomock.Any(), int64(100), "any-id-user-1").
+					Return(errs.NewErrServerNotFound(100, "any-id-user-1", errors.New("not found")))
 			},
 			wantStatus: http.StatusNotFound,
 			wantErrorResp: &response.APIError{
@@ -761,12 +761,12 @@ func TestDelServer(t *testing.T) {
 		{
 			name:               "ошибка БД при удалении",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					DelServer(gomock.Any(), int64(100), int64(1)).
+					DelServer(gomock.Any(), int64(100), "any-id-user-1").
 					Return(errors.New("db connection error"))
 			},
 			wantStatus: http.StatusBadRequest,
@@ -778,12 +778,12 @@ func TestDelServer(t *testing.T) {
 		{
 			name:               "успешное удаление",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					DelServer(gomock.Any(), int64(100), int64(1)).
+					DelServer(gomock.Any(), int64(100), "any-id-user-1").
 					Return(nil)
 			},
 			wantStatus: http.StatusNoContent,
@@ -831,7 +831,7 @@ func TestGetServer(t *testing.T) {
 	tests := []struct {
 		name               string
 		login              string
-		userID             int64
+		userID             string
 		serverID           int64
 		setupFingerprinter func(m *serviceControlMocks.MockFingerprinter)
 		setupStorage       func(m *storageMocks.MockStorage)
@@ -841,13 +841,13 @@ func TestGetServer(t *testing.T) {
 		{
 			name:               "сервер не найден",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(100), int64(1)).
-					Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("not found")))
+					GetServer(gomock.Any(), int64(100), "any-id-user-1").
+					Return(nil, errs.NewErrServerNotFound(100, "any-id-user-1", errors.New("not found")))
 			},
 			wantStatus: http.StatusNotFound,
 			wantErrorResp: &response.APIError{
@@ -858,12 +858,12 @@ func TestGetServer(t *testing.T) {
 		{
 			name:               "успешное получение",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			serverID:           100,
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(100), int64(1)).
+					GetServer(gomock.Any(), int64(100), "any-id-user-1").
 					Return(&models.Server{
 						ID:          100,
 						Name:        "TestServer",
@@ -917,7 +917,7 @@ func TestGetServerList(t *testing.T) {
 	tests := []struct {
 		name               string
 		login              string
-		userID             int64
+		userID             string
 		setupFingerprinter func(m *serviceControlMocks.MockFingerprinter)
 		setupStorage       func(m *storageMocks.MockStorage)
 		wantStatus         int
@@ -926,11 +926,11 @@ func TestGetServerList(t *testing.T) {
 		{
 			name:               "ошибка при получении списка",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(nil, errors.New("db error"))
 			},
 			wantStatus: http.StatusInternalServerError,
@@ -938,11 +938,11 @@ func TestGetServerList(t *testing.T) {
 		{
 			name:               "пустой список серверов",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return([]*models.Server{}, nil)
 			},
 			wantStatus:      http.StatusOK,
@@ -951,11 +951,11 @@ func TestGetServerList(t *testing.T) {
 		{
 			name:               "список с серверами",
 			login:              "user",
-			userID:             1,
+			userID:             "any-id-user-1",
 			setupFingerprinter: func(m *serviceControlMocks.MockFingerprinter) {},
 			setupStorage: func(m *storageMocks.MockStorage) {
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return([]*models.Server{
 						{
 							ID:          1,

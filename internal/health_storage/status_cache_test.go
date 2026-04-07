@@ -234,7 +234,7 @@ func TestStatusCacheStoresUnknownStatus(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_EmptyCache(t *testing.T) {
 	cache := NewStatusCache()
 
-	res := cache.GetAllServerStatusesByUser(1)
+	res := cache.GetAllServerStatusesByUser("any-id-1")
 
 	assert.Empty(t, res)
 }
@@ -244,10 +244,10 @@ func TestStatusCacheGetAllServerStatusesByUser_EmptyCache(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_NoMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	cache.Set(models.ServerStatus{ServerID: 1, UserID: 10, Address: "192.168.1.10", Status: models.StatusOK})
-	cache.Set(models.ServerStatus{ServerID: 2, UserID: 20, Address: "192.168.1.20", Status: models.StatusOK})
+	cache.Set(models.ServerStatus{ServerID: 1, UserID: "any-id-1", Address: "192.168.1.10", Status: models.StatusOK})
+	cache.Set(models.ServerStatus{ServerID: 2, UserID: "any-id-2", Address: "192.168.1.20", Status: models.StatusOK})
 
-	res := cache.GetAllServerStatusesByUser(999)
+	res := cache.GetAllServerStatusesByUser("any-id-999")
 
 	assert.Empty(t, res)
 }
@@ -257,39 +257,39 @@ func TestStatusCacheGetAllServerStatusesByUser_NoMatch(t *testing.T) {
 func TestStatusCacheGetAllServerStatusesByUser_SingleMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 2, Address: "192.168.1.20", Status: models.StatusUnreachable}
+	s1 := models.ServerStatus{ServerID: 1, UserID: "any-id-1", Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: "any-id-2", Address: "192.168.1.20", Status: models.StatusUnreachable}
 
 	cache.Set(s1)
 	cache.Set(s2)
 
-	res := cache.GetAllServerStatusesByUser(1)
+	res := cache.GetAllServerStatusesByUser("any-id-1")
 
 	require.Len(t, res, 1)
 	assert.Equal(t, s1, res[0])
 }
 
 // TestStatusCacheGetAllServerStatusesByUser_MultipleMatch
-// Для пользователя несколько серверов, проверяем, что возвращаются все.
+// У пользователя несколько серверов, проверяем, что возвращаются все.
 func TestStatusCacheGetAllServerStatusesByUser_MultipleMatch(t *testing.T) {
 	cache := NewStatusCache()
 
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusUnreachable}
-	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: models.StatusOK}
+	s1 := models.ServerStatus{ServerID: 1, UserID: "any-id-1", Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: "any-id-1", Address: "192.168.1.20", Status: models.StatusUnreachable}
+	s3 := models.ServerStatus{ServerID: 3, UserID: "any-id-2", Address: "192.168.1.30", Status: models.StatusOK}
 
 	cache.Set(s1)
 	cache.Set(s2)
 	cache.Set(s3)
 
-	res := cache.GetAllServerStatusesByUser(1)
+	res := cache.GetAllServerStatusesByUser("any-id-1")
 
 	// порядок итерации по мапе не гарантирован, поэтому лучше собрать id в map/set
 	require.Len(t, res, 2)
 
 	ids := make(map[int64]struct{})
 	for _, s := range res {
-		require.Equal(t, int64(1), s.UserID)
+		require.Equal(t, "any-id-1", s.UserID)
 		ids[s.ServerID] = struct{}{}
 	}
 
@@ -305,23 +305,23 @@ func TestStatusCacheGetAllServerStatusesByUser_AfterUpdatesAndDeletes(t *testing
 	cache := NewStatusCache()
 
 	// два сервера пользователя 1
-	s1 := models.ServerStatus{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK}
-	s2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusOK}
+	s1 := models.ServerStatus{ServerID: 1, UserID: "any-id-1", Address: "192.168.1.10", Status: models.StatusOK}
+	s2 := models.ServerStatus{ServerID: 2, UserID: "any-id-1", Address: "192.168.1.20", Status: models.StatusOK}
 	// сервер другого пользователя
-	s3 := models.ServerStatus{ServerID: 3, UserID: 2, Address: "192.168.1.30", Status: models.StatusUnreachable}
+	s3 := models.ServerStatus{ServerID: 3, UserID: "any-id-2", Address: "192.168.1.30", Status: models.StatusUnreachable}
 
 	cache.Set(s1)
 	cache.Set(s2)
 	cache.Set(s3)
 
 	// обновляем статус одного сервера пользователя 1
-	updatedS2 := models.ServerStatus{ServerID: 2, UserID: 1, Address: "192.168.1.20", Status: models.StatusUnreachable}
+	updatedS2 := models.ServerStatus{ServerID: 2, UserID: "any-id-1", Address: "192.168.1.20", Status: models.StatusUnreachable}
 	cache.Set(updatedS2)
 
 	// удаляем сервер другого пользователя
 	cache.Delete(3)
 
-	res := cache.GetAllServerStatusesByUser(1)
+	res := cache.GetAllServerStatusesByUser("any-id-1")
 
 	require.Len(t, res, 2)
 
@@ -532,7 +532,7 @@ func TestStatusCacheGetSetConcurrent(t *testing.T) {
 // Проверяет конкурентное чтение GetAllServerStatusesByUser при одновременных Set.
 func TestStatusCacheGetAllServerStatusesByUser_ConcurrentAccess(t *testing.T) {
 	cache := NewStatusCache()
-	userID := int64(1)
+	userID := "any-id-1"
 	iterations := 100
 
 	var wg sync.WaitGroup
@@ -939,7 +939,7 @@ func TestMockGetAllServerStatusesByUser_Basic(t *testing.T) {
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 
-	userID := int64(1)
+	userID := "any-id-1"
 	statuses := []models.ServerStatus{
 		{ServerID: 1, UserID: userID, Address: "192.168.1.10", Status: models.StatusOK},
 		{ServerID: 2, UserID: userID, Address: "192.168.1.20", Status: models.StatusUnreachable},
@@ -963,7 +963,7 @@ func TestMockGetAllServerStatusesByUser_Empty(t *testing.T) {
 
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 
-	userID := int64(999)
+	userID := "any-id-999"
 
 	mockStorage.EXPECT().
 		GetAllServerStatusesByUser(gomock.Eq(userID)).
@@ -984,7 +984,7 @@ func TestMockGetAllServerStatusesByUser_AnyUserID(t *testing.T) {
 	mockStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 
 	statuses := []models.ServerStatus{
-		{ServerID: 1, UserID: 1, Address: "192.168.1.10", Status: models.StatusOK},
+		{ServerID: 1, UserID: "any-id-1", Address: "192.168.1.10", Status: models.StatusOK},
 	}
 
 	mockStorage.EXPECT().
@@ -992,9 +992,9 @@ func TestMockGetAllServerStatusesByUser_AnyUserID(t *testing.T) {
 		Return(statuses).
 		Times(3)
 
-	res1 := mockStorage.GetAllServerStatusesByUser(1)
-	res2 := mockStorage.GetAllServerStatusesByUser(2)
-	res3 := mockStorage.GetAllServerStatusesByUser(999)
+	res1 := mockStorage.GetAllServerStatusesByUser("any-id-1")
+	res2 := mockStorage.GetAllServerStatusesByUser("any-id-2")
+	res3 := mockStorage.GetAllServerStatusesByUser("any-id-999")
 
 	assert.Equal(t, statuses, res1)
 	assert.Equal(t, statuses, res2)

@@ -9,559 +9,233 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/jwt"
-
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
+	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
 
-func init() {
-	logger.InitLogger("error", "stdout")
-}
-
-// TestUserLoginUserIdToContextMiddlewareSuccess Проверяет успешное добавление логина и UserID в контекст.
-func TestUserLoginUserIdToContextMiddlewareSuccess(t *testing.T) {
+// TestAuthMiddleware Интеграционные тесты middleware авторизации с Keycloak.
+// Проверяет: извлечение токена, валидацию, создание/поиск пользователя, контекст.
+func TestAuthMiddleware(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
 
-	// настраиваем мок
-	mockTokenBuilder.EXPECT().
-		GetClaims("valid-token", secretKey).
-		Return(&jwt.Claims{ID: 123, Login: "testuser"}, nil)
-
-	// флаги для проверки
-	var capturedLogin string
-	var capturedID int64
-	nextCalled := false
-
-	// создаём next handler
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextCalled = true
-
-		// проверяем что значения в контексте
-		login, ok := r.Context().Value(contextkeys.Login).(string)
-		assert.True(t, ok, "логин должен быть в контексте")
-		capturedLogin = login
-
-		id, ok := r.Context().Value(contextkeys.UserID).(int64)
-		assert.True(t, ok, "UserID должен быть в контексте")
-		capturedID = id
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// оборачиваем в middleware
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// создаём запрос с JWT cookie
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "valid-token"})
-	w := httptest.NewRecorder()
-
-	// вызываем handler
-	handler.ServeHTTP(w, r)
-
-	// проверяем что next handler был вызван
-	assert.True(t, nextCalled, "next handler должен быть вызван")
-
-	// проверяем что значения правильные
-	assert.Equal(t, "testuser", capturedLogin)
-	assert.Equal(t, int64(123), capturedID)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// TestUserLoginUserIdToContextMiddlewareNoCookie Проверяет запрос без JWT cookie.
-func TestUserLoginUserIdToContextMiddlewareNoCookie(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// GetClaims НЕ должен быть вызван, так как cookie отсутствует
-	nextCalled := false
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextCalled = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// создаём запрос БЕЗ JWT cookie
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-
-	// вызываем handler
-	handler.ServeHTTP(w, r)
-
-	// проверяем что next handler НЕ был вызван
-	assert.False(t, nextCalled, "next handler НЕ должен быть вызван без cookie")
-
-	// проверяем статус
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-
-	// проверяем что ответ содержит сообщение об ошибке
-	assert.Contains(t, w.Body.String(), "не аутентифицирован")
-}
-
-// TestUserLoginUserIdToContextMiddlewareInvalidToken Проверяет запрос с невалидным токеном.
-func TestUserLoginUserIdToContextMiddlewareInvalidToken(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// настраиваем мок на возврат ошибки
-	mockTokenBuilder.EXPECT().
-		GetClaims("invalid-token", secretKey).
-		Return(nil, errors.New("invalid token"))
-
-	nextCalled := false
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextCalled = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// создаём запрос с невалидным токеном
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "invalid-token"})
-	w := httptest.NewRecorder()
-
-	// вызываем handler
-	handler.ServeHTTP(w, r)
-
-	// проверяем что next handler НЕ был вызван
-	assert.False(t, nextCalled, "next handler НЕ должен быть вызван с невалидным токеном")
-
-	// проверяем статус
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-
-	// проверяем что ответ содержит сообщение об ошибке
-	assert.Contains(t, w.Body.String(), "идентификации")
-}
-
-// TestUserLoginUserIdToContextMiddlewareDifferentUsers Проверяет разных пользователей.
-func TestUserLoginUserIdToContextMiddlewareDifferentUsers(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	middleware := AuthMiddleware(mockStorage, mockAuthProvider)
 
 	tests := []struct {
 		name          string
-		token         string
-		expectedID    int64
-		expectedLogin string
+		setupAuth     func(r *http.Request)
+		setupMocks    func()
+		wantStatus    int
+		wantCtxLogin  string
+		wantCtxUserID string
 	}{
 		{
-			name:          "пользователь alice",
-			token:         "token-alice",
-			expectedID:    1,
-			expectedLogin: "alice",
+			name: "успешная авторизация - пользователь существует",
+			setupAuth: func(r *http.Request) {
+				r.Header.Set("Authorization", "Bearer kc-valid-token")
+			},
+			setupMocks: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-valid-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
+				mockStorage.EXPECT().
+					GetUser(gomock.Any(), gomock.Any()).
+					Return(&models.User{ID: "any-id-user-1", Login: "testuser"}, nil)
+			},
+			wantStatus:    http.StatusOK,
+			wantCtxLogin:  "testuser",
+			wantCtxUserID: "any-id-user-1",
 		},
 		{
-			name:          "пользователь bob",
-			token:         "token-bob",
-			expectedID:    2,
-			expectedLogin: "bob",
+			name: "успешная авторизация через cookie - новый пользователь создаётся",
+			setupAuth: func(r *http.Request) {
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-newuser-token"})
+			},
+			setupMocks: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-newuser-token").
+					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "newuser"}, nil)
+				mockStorage.EXPECT().
+					GetUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
+					Return(nil, errs.NewErrUserIDNotFound(nil))
+				mockStorage.EXPECT().
+					CreateUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
+					Return(nil)
+			},
+			wantStatus:    http.StatusOK,
+			wantCtxLogin:  "newuser",
+			wantCtxUserID: "any-id-user-2",
 		},
 		{
-			name:          "пользователь admin",
-			token:         "token-admin",
-			expectedID:    999,
-			expectedLogin: "admin",
+			name:      "ошибка - нет токена (нет заголовка и cookie)",
+			setupAuth: func(r *http.Request) {},
+			setupMocks: func() {
+				// Ничего НЕ вызывается
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "ошибка - невалидный токен Keycloak",
+			setupAuth: func(r *http.Request) {
+				r.Header.Set("Authorization", "Bearer kc-invalid-token")
+			},
+			setupMocks: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-invalid-token").
+					Return(nil, errors.New("oidc: token expired"))
+			},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "создание нового пользователя (успешно)",
+			setupAuth: func(r *http.Request) {
+				r.Header.Set("Authorization", "Bearer kc-newuser-token")
+			},
+			setupMocks: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-newuser-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "newuser"}, nil)
+				mockStorage.EXPECT().
+					GetUser(gomock.Any(), gomock.Any()).
+					Return(nil, errs.NewErrUserIDNotFound(nil))
+				mockStorage.EXPECT().
+					CreateUser(gomock.Any(), gomock.Any()).
+					Return(nil)
+			},
+			wantStatus:    http.StatusOK,
+			wantCtxLogin:  "newuser",
+			wantCtxUserID: "any-id-user-1",
+		},
+		{
+			name: "ошибка БД при GetUser",
+			setupAuth: func(r *http.Request) {
+				r.Header.Set("Authorization", "Bearer kc-db-error-token")
+			},
+			setupMocks: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-db-error-token").
+					Return(&auth.UserClaims{ID: "any-id-user-err", Login: "dbuser"}, nil)
+				mockStorage.EXPECT().
+					GetUser(gomock.Any(), &models.User{ID: "any-id-user-err", Login: "dbuser"}).
+					Return(nil, errors.New("database timeout"))
+			},
+			wantStatus: http.StatusInternalServerError,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// настраиваем мок для этого теста
-			mockTokenBuilder.EXPECT().
-				GetClaims(tt.token, secretKey).
-				Return(&jwt.Claims{ID: tt.expectedID, Login: tt.expectedLogin}, nil)
+			tt.setupMocks()
 
-			var capturedLogin string
-			var capturedID int64
-
+			// Next handler проверяет контекст
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				login := r.Context().Value(contextkeys.Login).(string)
-				id := r.Context().Value(contextkeys.UserID).(int64)
+				login, ok := r.Context().Value(contextkeys.Login).(string)
+				if !ok || login != tt.wantCtxLogin {
+					t.Errorf("ожидался login=%s, получен=%v", tt.wantCtxLogin, login)
+				}
 
-				capturedLogin = login
-				capturedID = id
+				userID, ok := r.Context().Value(contextkeys.UserID).(string)
+				if !ok || userID != tt.wantCtxUserID {
+					t.Errorf("ожидался userID=%s, получен=%v", tt.wantCtxUserID, userID)
+				}
 
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := AuthMiddleware(secretKey, mockTokenBuilder)
+			// Применяем middleware
 			handler := middleware(nextHandler)
 
+			// Создаём запрос
 			r := httptest.NewRequest(http.MethodGet, "/test", nil)
-			r.AddCookie(&http.Cookie{Name: "JWT", Value: tt.token})
+			tt.setupAuth(r)
 			w := httptest.NewRecorder()
 
+			// Выполняем
 			handler.ServeHTTP(w, r)
 
-			// проверяем что значения правильные для каждого пользователя
-			assert.Equal(t, tt.expectedLogin, capturedLogin)
-			assert.Equal(t, tt.expectedID, capturedID)
+			assert.Equal(t, tt.wantStatus, w.Code)
 		})
 	}
 }
 
-// TestUserLoginUserIdToContextMiddlewareContextNotModified Проверяет что контекст правильно добавляет значения.
-func TestUserLoginUserIdToContextMiddlewareContextNotModified(t *testing.T) {
+// TestAuthMiddleware_TokenSources Проверяет приоритет источников токена (Bearer > Cookie).
+func TestAuthMiddleware_TokenSources(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
+	mockStorage := storageMocks.NewMockStorage(ctrl)
 
-	mockTokenBuilder.EXPECT().
-		GetClaims("token", secretKey).
-		Return(&jwt.Claims{ID: 123, Login: "user"}, nil)
+	middleware := AuthMiddleware(mockStorage, mockAuthProvider)
 
-	// флаги для проверки
-	var capturedLogin string
-	var capturedID int64
-	var contextInHandler context.Context
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// сохраняем контекст из handler'а
-		contextInHandler = r.Context()
-
-		// проверяем что значения есть в контексте
-		login, ok := r.Context().Value(contextkeys.Login).(string)
-		assert.True(t, ok, "логин должен быть в контексте")
-		capturedLogin = login
-
-		id, ok := r.Context().Value(contextkeys.UserID).(int64)
-		assert.True(t, ok, "UserID должен быть в контексте")
-		capturedID = id
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// создаём запрос
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-
-	// сохраняем оригинальный контекст
-	originalCtx := r.Context()
-
-	w := httptest.NewRecorder()
-
-	// вызываем handler
-	handler.ServeHTTP(w, r)
-
-	// проверяем что контекст ВНУТРИ handler'а отличается от оригинального
-	// (потому что middleware добавил значения)
-	assert.NotEqual(t, originalCtx, contextInHandler, "контекст в handler'е должен отличаться от оригинального")
-
-	// проверяем что значения правильно добавлены
-	assert.Equal(t, "user", capturedLogin)
-	assert.Equal(t, int64(123), capturedID)
-
-	// проверяем что оригинальный контекст ВСЕ ЕЩЕ пустой (не имеет значений)
-	_, ok := originalCtx.Value(contextkeys.Login).(string)
-	assert.False(t, ok, "оригинальный контекст НЕ должен иметь логин")
-
-	_, ok = originalCtx.Value(contextkeys.UserID).(int64)
-	assert.False(t, ok, "оригинальный контекст НЕ должен иметь UserID")
-}
-
-// TestUserLoginUserIdToContextMiddlewareEmptyToken Проверяет запрос с пустым токеном.
-func TestUserLoginUserIdToContextMiddlewareEmptyToken(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// настраиваем мок на пустой токен
-	mockTokenBuilder.EXPECT().
-		GetClaims("", secretKey).
-		Return(nil, errors.New("empty token"))
-
-	nextCalled := false
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextCalled = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// создаём запрос с пустым токеном
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: ""})
-	w := httptest.NewRecorder()
-
-	// вызываем handler
-	handler.ServeHTTP(w, r)
-
-	// проверяем что next handler НЕ был вызван
-	assert.False(t, nextCalled)
-
-	// проверяем статус
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// TestUserLoginUserIdToContextMiddlewareContextValues Проверяет что значения правильно добавлены в контекст.
-func TestUserLoginUserIdToContextMiddlewareContextValues(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	mockTokenBuilder.EXPECT().
-		GetClaims("token", secretKey).
-		Return(&jwt.Claims{ID: 456, Login: "testuser"}, nil)
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// проверяем что оба значения есть в контексте
-		login, loginOk := r.Context().Value(contextkeys.Login).(string)
-		id, idOk := r.Context().Value(contextkeys.UserID).(int64)
-
-		// убеждаемся что оба типа проверены правильно
-		assert.True(t, loginOk, "логин должен быть string")
-		assert.True(t, idOk, "UserID должен быть int64")
-
-		// проверяем значения
-		assert.Equal(t, "testuser", login)
-		assert.Equal(t, int64(456), id)
-
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, r)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// TestUserLoginUserIdToContextMiddlewareMultipleCalls Проверяет множественные вызовы middleware.
-func TestUserLoginUserIdToContextMiddlewareMultipleCalls(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// ожидаем 3 вызова GetClaims
-	mockTokenBuilder.EXPECT().
-		GetClaims(gomock.Any(), secretKey).
-		Return(&jwt.Claims{ID: 1, Login: "user"}, nil).
-		Times(3)
-
-	callCount := 0
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	// делаем 3 запроса
-	for i := 0; i < 3; i++ {
-		r := httptest.NewRequest(http.MethodGet, "/test", nil)
-		r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, r)
-
-		assert.Equal(t, http.StatusOK, w.Code)
+	tests := []struct {
+		name       string
+		authHeader string
+		jwtCookie  string
+		wantToken  string
+		wantStatus int
+	}{
+		{
+			name:       "Bearer имеет приоритет над Cookie",
+			authHeader: "Bearer bearer-wins-token",
+			jwtCookie:  "cookie-loses-token",
+			wantToken:  "bearer-wins-token",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "только Cookie работает",
+			authHeader: "",
+			jwtCookie:  "only-cookie-token",
+			wantToken:  "only-cookie-token",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "только Bearer работает",
+			authHeader: "Bearer only-bearer-token",
+			jwtCookie:  "",
+			wantToken:  "only-bearer-token",
+			wantStatus: http.StatusOK,
+		},
 	}
 
-	// проверяем что next handler был вызван 3 раза
-	assert.Equal(t, 3, callCount)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calledToken := ""
+			mockAuthProvider.EXPECT().
+				ValidateToken(gomock.Any(), tt.wantToken).
+				DoAndReturn(func(ctx context.Context, token string) (*auth.UserClaims, error) {
+					calledToken = token
+					return &auth.UserClaims{ID: "any-id-user-1", Login: "test"}, nil
+				})
 
-// TestUserLoginUserIdToContextMiddlewareDifferentSecretKeys Проверяет разные secret keys.
-func TestUserLoginUserIdToContextMiddlewareDifferentSecretKeys(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-
-	// первый вызов с первым secret key
-	mockTokenBuilder.EXPECT().
-		GetClaims("token1", "secret1").
-		Return(&jwt.Claims{ID: 1, Login: "user1"}, nil)
-
-	// второй вызов со вторым secret key
-	mockTokenBuilder.EXPECT().
-		GetClaims("token2", "secret2").
-		Return(&jwt.Claims{ID: 2, Login: "user2"}, nil)
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// создаём два разных middleware с разными secret keys
-	middleware1 := AuthMiddleware("secret1", mockTokenBuilder)
-	middleware2 := AuthMiddleware("secret2", mockTokenBuilder)
-
-	handler1 := middleware1(nextHandler)
-	handler2 := middleware2(nextHandler)
-
-	// первый запрос
-	r1 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r1.AddCookie(&http.Cookie{Name: "JWT", Value: "token1"})
-	w1 := httptest.NewRecorder()
-
-	handler1.ServeHTTP(w1, r1)
-	assert.Equal(t, http.StatusOK, w1.Code)
-
-	// второй запрос
-	r2 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r2.AddCookie(&http.Cookie{Name: "JWT", Value: "token2"})
-	w2 := httptest.NewRecorder()
-
-	handler2.ServeHTTP(w2, r2)
-	assert.Equal(t, http.StatusOK, w2.Code)
-}
-
-// TestUserLoginUserIdToContextMiddlewareLargeID Проверяет работу с большим UserID.
-func TestUserLoginUserIdToContextMiddlewareLargeID(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// используем большое UserID значение
-	largeID := int64(9223372036854775807) // max int64
-
-	mockTokenBuilder.EXPECT().
-		GetClaims("token", secretKey).
-		Return(&jwt.Claims{ID: largeID, Login: "user"}, nil)
-
-	var capturedID int64
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Context().Value(contextkeys.UserID).(int64)
-		capturedID = id
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, r)
-
-	// проверяем что большое UserID сохранилось
-	assert.Equal(t, largeID, capturedID)
-}
-
-// TestUserLoginUserIdToContextMiddlewareLongLogin Проверяет работу с длинным логином.
-func TestUserLoginUserIdToContextMiddlewareLongLogin(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// создаём длинный логин
-	longLogin := string(make([]byte, 1000))
-	for range longLogin {
-		longLogin = "a"
-	}
-
-	mockTokenBuilder.EXPECT().
-		GetClaims("token", secretKey).
-		Return(&jwt.Claims{ID: 1, Login: longLogin}, nil)
-
-	var capturedLogin string
-
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		login := r.Context().Value(contextkeys.Login).(string)
-		capturedLogin = login
-		w.WriteHeader(http.StatusOK)
-	})
-
-	middleware := AuthMiddleware(secretKey, mockTokenBuilder)
-	handler := middleware(nextHandler)
-
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, r)
-
-	// проверяем что длинный логин сохранился
-	assert.Equal(t, longLogin, capturedLogin)
-}
-
-// TestUserLoginUserIdToContextMiddlewareDifferentHTTPMethods Проверяет разные HTTP методы.
-func TestUserLoginUserIdToContextMiddlewareDifferentHTTPMethods(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	methods := []string{
-		http.MethodGet,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodPatch,
-		http.MethodDelete,
-	}
-
-	for _, method := range methods {
-		t.Run(method, func(t *testing.T) {
-			mockTokenBuilder.EXPECT().
-				GetClaims("token", secretKey).
-				Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+			mockStorage.EXPECT().
+				GetUser(gomock.Any(), gomock.Any()).
+				Return(&models.User{ID: "any-id-user-1", Login: "test"}, nil)
 
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := AuthMiddleware(secretKey, mockTokenBuilder)
 			handler := middleware(nextHandler)
 
-			r := httptest.NewRequest(method, "/test", nil)
-			r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, "/test", nil)
+			r.Header.Set("Authorization", tt.authHeader)
+			if tt.jwtCookie != "" {
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: tt.jwtCookie})
+			}
 
+			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, r)
 
-			// проверяем что все методы работают
-			assert.Equal(t, http.StatusOK, w.Code, "метод %s должен работать", method)
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Equal(t, tt.wantToken, calledToken)
 		})
 	}
 }

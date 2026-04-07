@@ -16,7 +16,6 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // init Инициализирует logger для тестов.
@@ -29,7 +28,7 @@ func init() {
 func TestAddServer(t *testing.T) {
 	// Подготовка тестовых данных
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	// AES ключ должен быть ровно 32 байта для AES-256
 	aesKey := []byte("12345678901234567890123456789012")
@@ -41,7 +40,7 @@ func TestAddServer(t *testing.T) {
 	tests := []struct {
 		name           string                                    // название теста
 		server         models.Server                             // входные данные сервера
-		userID         int64                                     // ID пользователя
+		userID         string                                    // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                // настройка мока базы данных
 		expectError    bool                                      // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)             // дополнительная проверка ошибки
@@ -191,7 +190,7 @@ func TestAddServer(t *testing.T) {
 // TestEditServer Проверяет редактирование существующего сервера.
 func TestEditServer(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	// AES ключ должен быть ровно 32 байта для AES-256
 	aesKey := []byte("12345678901234567890123456789012")
@@ -205,7 +204,7 @@ func TestEditServer(t *testing.T) {
 		name           string                                    // название теста
 		editedServer   *models.Server                            // данные для обновления
 		serverID       int64                                     // ID сервера
-		userID         int64                                     // ID пользователя
+		userID         string                                    // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                // настройка мока
 		expectError    bool                                      // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)             // дополнительная проверка ошибки
@@ -352,7 +351,7 @@ func TestEditServer(t *testing.T) {
 
 // TestDelServer Проверяет удаление сервера.
 func TestDelServer(t *testing.T) {
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 
 	deleteServerQuery := `DELETE FROM servers 
@@ -361,7 +360,7 @@ func TestDelServer(t *testing.T) {
 	tests := []struct {
 		name           string                     // название теста
 		serverID       int64                      // ID сервера для удаления
-		userID         int64                      // ID пользователя
+		userID         string                     // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock) // настройка мока
 		expectError    bool                       // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)
@@ -437,7 +436,7 @@ func TestDelServer(t *testing.T) {
 // TestGetServer Проверяет получение информации о сервере без пароля.
 func TestGetServer(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	testFingerprint := uuid.New()
 
@@ -448,7 +447,7 @@ func TestGetServer(t *testing.T) {
 	tests := []struct {
 		name           string                                    // название теста
 		serverID       int64                                     // ID сервера
-		userID         int64                                     // ID пользователя
+		userID         string                                    // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                // настройка мока
 		expectError    bool                                      // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)             // дополнительная проверка ошибки
@@ -543,7 +542,7 @@ func TestGetServer(t *testing.T) {
 // TestGetServerWithPassword Проверяет получение сервера с паролем.
 func TestGetServerWithPassword(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	// тестовый AES ключ 32 байта
 	aesKey := []byte("12345678901234567890123456789012")
@@ -555,7 +554,7 @@ func TestGetServerWithPassword(t *testing.T) {
 	tests := []struct {
 		name           string                                    // название теста
 		serverID       int64                                     // ID сервера
-		userID         int64                                     // ID пользователя
+		userID         string                                    // ID пользователя
 		dbPassword     string                                    // что вернет поле password из БД
 		mockSetup      func(mock sqlmock.Sqlmock)                // настройка мока
 		expectError    bool                                      // ожидается ли ошибка
@@ -663,7 +662,7 @@ func TestGetServerWithPassword(t *testing.T) {
 // TestListServers Проверяет получение списка серверов пользователя.
 func TestListServers(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	fp1 := uuid.New()
 	fp2 := uuid.New()
 
@@ -673,7 +672,7 @@ func TestListServers(t *testing.T) {
 
 	tests := []struct {
 		name           string                                      // название теста
-		userID         int64                                       // ID пользователя
+		userID         string                                      // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                  // настройка мока
 		expectError    bool                                        // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)               // дополнительная проверка ошибки
@@ -761,7 +760,7 @@ func TestListServers(t *testing.T) {
 // TestGetService Проверяет получение службы с сервера пользователя.
 func TestGetService(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	testServiceID := int64(10)
 
@@ -778,7 +777,7 @@ func TestGetService(t *testing.T) {
 		name           string                                     // название теста
 		serverID       int64                                      // ID сервера
 		serviceID      int64                                      // ID службы
-		userID         int64                                      // ID пользователя
+		userID         string                                     // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                 // настройка мока
 		expectError    bool                                       // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)              // дополнительная проверка ошибки
@@ -830,10 +829,10 @@ func TestGetService(t *testing.T) {
 			name:      "ошибка - служба не принадлежит пользователю",
 			serverID:  testServerID,
 			serviceID: testServiceID,
-			userID:    int64(999), // другой пользователь
+			userID:    "any-id-user-999", // другой пользователь
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(regexp.QuoteMeta(getServerQuery)).
-					WithArgs(testServiceID, testServerID, int64(999)).
+					WithArgs(testServiceID, testServerID, "any-id-user-999").
 					WillReturnError(sql.ErrNoRows)
 			},
 			expectError: true,
@@ -916,7 +915,7 @@ func TestGetService(t *testing.T) {
 // TestListServices Проверяет получение списка служб сервера пользователя.
 func TestListServices(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 
 	checkOwnershipQuery := `SELECT EXISTS(
@@ -932,7 +931,7 @@ func TestListServices(t *testing.T) {
 	tests := []struct {
 		name           string                                       // название теста
 		serverID       int64                                        // ID сервера
-		userID         int64                                        // ID пользователя
+		userID         string                                       // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                   // настройка мока
 		expectError    bool                                         // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)                // дополнительная проверка ошибки
@@ -1117,7 +1116,7 @@ func TestListServices(t *testing.T) {
 
 // TestCreateUser Проверяет создание пользователя.
 func TestCreateUser(t *testing.T) {
-	createUserQuery := `INSERT INTO users (login, password) VALUES ($1, $2)`
+	createUserQuery := `INSERT INTO users (id, login) VALUES ($1, $2)`
 
 	tests := []struct {
 		name           string                     // название теста
@@ -1129,12 +1128,12 @@ func TestCreateUser(t *testing.T) {
 		{
 			name: "успешное создание пользователя",
 			user: &models.User{
-				Login:    "testuser",
-				Password: "password123",
+				ID:    "any-id-user-1",
+				Login: "testuser",
 			},
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(createUserQuery)).
-					WithArgs("testuser", sqlmock.AnyArg()). // пароль хэшируется
+					WithArgs("any-id-user-1", "testuser").
 					WillReturnResult(sqlmock.NewResult(1, 1))
 			},
 			expectError: false,
@@ -1142,12 +1141,12 @@ func TestCreateUser(t *testing.T) {
 		{
 			name: "ошибка - логин уже занят",
 			user: &models.User{
-				Login:    "existinguser",
-				Password: "password123",
+				ID:    "any-id-user-1",
+				Login: "existinguser",
 			},
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(createUserQuery)).
-					WithArgs("existinguser", sqlmock.AnyArg()).
+					WithArgs("any-id-user-1", "existinguser").
 					WillReturnError(&pgconn.PgError{Code: "23505"})
 			},
 			expectError: true,
@@ -1159,12 +1158,12 @@ func TestCreateUser(t *testing.T) {
 		{
 			name: "общая ошибка базы данных",
 			user: &models.User{
-				Login:    "testuser",
-				Password: "password123",
+				ID:    "any-id-user-1",
+				Login: "testuser",
 			},
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(createUserQuery)).
-					WithArgs("testuser", sqlmock.AnyArg()).
+					WithArgs("any-id-user-1", "testuser").
 					WillReturnError(errors.New("database error"))
 			},
 			expectError: true,
@@ -1202,12 +1201,7 @@ func TestCreateUser(t *testing.T) {
 
 // TestGetUser Проверяет получение пользователя по логину и паролю.
 func TestGetUser(t *testing.T) {
-	// cоздаем хэшированный пароль для тестов
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpassword"), bcrypt.DefaultCost)
-
-	getUserQuery := `SELECT id, login, password 
-					 FROM users 
-					 WHERE login = $1`
+	getUserQuery := `SELECT id, login FROM users WHERE id = $1`
 
 	tests := []struct {
 		name           string                                  // название теста
@@ -1220,60 +1214,38 @@ func TestGetUser(t *testing.T) {
 		{
 			name: "успешная авторизация пользователя",
 			user: &models.User{
-				Login:    "testuser",
-				Password: "correctpassword",
+				ID:    "any-id-user-1",
+				Login: "testuser",
 			},
 			mockSetup: func(mock sqlmock.Sqlmock) {
-				rows := sqlmock.NewRows([]string{"id", "login", "password"}).
-					AddRow(1, "testuser", string(hashedPassword))
+				rows := sqlmock.NewRows([]string{"id", "login"}).
+					AddRow("any-id-user-1", "testuser")
 				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
-					WithArgs("testuser").
+					WithArgs("any-id-user-1").
 					WillReturnRows(rows)
 			},
 			expectError: false,
 			validate: func(t *testing.T, result *models.User) {
 				assert.NotNil(t, result)
-				assert.Equal(t, int64(1), result.ID)
+				assert.Equal(t, "any-id-user-1", result.ID)
 				assert.Equal(t, "testuser", result.Login)
 			},
 		},
 		{
 			name: "ошибка - пользователь не найден",
 			user: &models.User{
-				Login:    "nonexistent",
-				Password: "password",
+				ID:    "non-existent-user-id",
+				Login: "nonexistent",
 			},
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
-					WithArgs("nonexistent").
+					WithArgs("non-existent-user-id").
 					WillReturnError(sql.ErrNoRows)
 			},
 			expectError: true,
 			errorAssertion: func(t *testing.T, err error) {
-				var wrongPassErr *errs.ErrWrongLogin
-				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLogin")
-			},
-			validate: func(t *testing.T, result *models.User) {
-				assert.Nil(t, result)
-			},
-		},
-		{
-			name: "ошибка - неверный пароль",
-			user: &models.User{
-				Login:    "testuser",
-				Password: "wrongpassword",
-			},
-			mockSetup: func(mock sqlmock.Sqlmock) {
-				rows := sqlmock.NewRows([]string{"id", "login", "password"}).
-					AddRow(1, "testuser", string(hashedPassword))
-				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
-					WithArgs("testuser").
-					WillReturnRows(rows)
-			},
-			expectError: true,
-			errorAssertion: func(t *testing.T, err error) {
-				var wrongPassErr *errs.ErrWrongLogin
-				assert.True(t, errors.As(err, &wrongPassErr), "ошибка должна быть типа ErrWrongLogin")
+				var userNotFoundErr *errs.ErrUserIDNotFound
+				assert.True(t, errors.As(err, &userNotFoundErr), "ошибка должна быть типа ErrUserIDNotFound")
 			},
 			validate: func(t *testing.T, result *models.User) {
 				assert.Nil(t, result)
@@ -1312,7 +1284,7 @@ func TestGetUser(t *testing.T) {
 func TestAddService(t *testing.T) {
 	fixedTime := time.Now()
 	testServerID := int64(100)
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	//aesKey := []byte("12345678901234567890123456789012")
 
 	fingerprintQuery := `SELECT fingerprint 
@@ -1339,7 +1311,7 @@ func TestAddService(t *testing.T) {
 	tests := []struct {
 		name           string
 		serverID       int64
-		userID         int64
+		userID         string
 		inputService   models.Service
 		mockSetup      func(mock sqlmock.Sqlmock)
 		expectError    bool
@@ -1529,7 +1501,7 @@ func TestAddService(t *testing.T) {
 
 // TestDelService Проверяет удаление службы с сервера пользователя.
 func TestDelService(t *testing.T) {
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 	testServerID := int64(100)
 	testServiceID := int64(10)
 
@@ -1545,7 +1517,7 @@ func TestDelService(t *testing.T) {
 		name           string
 		serverID       int64
 		serviceID      int64
-		userID         int64
+		userID         string
 		mockSetup      func(mock sqlmock.Sqlmock)
 		expectError    bool
 		errorAssertion func(t *testing.T, err error)
@@ -2014,7 +1986,7 @@ func TestListUsers(t *testing.T) {
 // TestGetUserServiceStatuses Проверяет получение списка статусов служб пользователя.
 func TestGetUserServiceStatuses(t *testing.T) {
 	fixedTime := time.Now()
-	testUserID := int64(1)
+	testUserID := "any-id-user-1"
 
 	getUserServiceStatusesQuery := `SELECT id, server_id, status, updated_at 
                           			FROM services
@@ -2022,7 +1994,7 @@ func TestGetUserServiceStatuses(t *testing.T) {
 
 	tests := []struct {
 		name           string                                             // название теста
-		userID         int64                                              // ID пользователя
+		userID         string                                             // ID пользователя
 		mockSetup      func(mock sqlmock.Sqlmock)                         // настройка мока
 		expectError    bool                                               // ожидается ли ошибка
 		errorAssertion func(t *testing.T, err error)                      // дополнительная проверка ошибки
@@ -2253,10 +2225,10 @@ func TestListServersAddresses(t *testing.T) {
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				// порядок колонок должен соответствовать порядку Scan:
 				// Scan(&server.ServerID, &server.UserID, &server.Address)
-				rows := sqlmock.NewRows([]string{"id", "user_id", "address"}).
-					AddRow(int64(1), "10.0.0.1", int64(10)).
-					AddRow(int64(2), "10.0.0.2", int64(20)).
-					AddRow(int64(3), "10.0.0.3", int64(30))
+				rows := sqlmock.NewRows([]string{"id", "address", "user_id"}).
+					AddRow(int64(1), "10.0.0.1", "any-id-user-10").
+					AddRow(int64(2), "10.0.0.2", "any-id-user-20").
+					AddRow(int64(3), "10.0.0.3", "any-id-user-30")
 
 				mock.ExpectQuery(regexp.QuoteMeta(query)).
 					WillReturnRows(rows)
@@ -2267,15 +2239,15 @@ func TestListServersAddresses(t *testing.T) {
 				assert.Len(t, result, 3)
 
 				assert.Equal(t, int64(1), result[0].ServerID)
-				assert.Equal(t, int64(10), result[0].UserID)
+				assert.Equal(t, "any-id-user-10", result[0].UserID)
 				assert.Equal(t, "10.0.0.1", result[0].Address)
 
 				assert.Equal(t, int64(2), result[1].ServerID)
-				assert.Equal(t, int64(20), result[1].UserID)
+				assert.Equal(t, "any-id-user-20", result[1].UserID)
 				assert.Equal(t, "10.0.0.2", result[1].Address)
 
 				assert.Equal(t, int64(3), result[2].ServerID)
-				assert.Equal(t, int64(30), result[2].UserID)
+				assert.Equal(t, "any-id-user-30", result[2].UserID)
 				assert.Equal(t, "10.0.0.3", result[2].Address)
 			},
 		},

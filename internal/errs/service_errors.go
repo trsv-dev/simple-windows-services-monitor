@@ -32,7 +32,7 @@ type ErrServiceNotFound struct {
 }
 
 func (no *ErrServiceNotFound) Error() string {
-	return fmt.Sprintf("Служба id=%d не найдена среди служб сервера id=%d. Пользователь - id=`%d`. Ошибка: %s", no.ServiceID, no.ServerID, no.UserID, no.Err)
+	return fmt.Sprintf("Служба id=%d не найдена среди служб сервера id=%d. Пользователь - id=`%s`. Ошибка: %s", no.ServiceID, no.ServerID, no.UserID, no.Err)
 }
 
 func (no *ErrServiceNotFound) Unwrap() error {

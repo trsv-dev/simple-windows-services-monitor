@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,7 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/jwt"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	broadcasterMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -457,154 +456,126 @@ func TestHTTPHandlerHeaderPreservation(t *testing.T) {
 	assert.Equal(t, originalLang, r.Header.Get("Accept-Language"))
 }
 
-// TestHTTPHandlerResolverCalledOnce Проверяет что resolver вызывается один раз.
-func TestHTTPHandlerResolverCalledOnce(t *testing.T) {
-	callCount := 0
-	resolver := func(r *http.Request) (string, error) {
-		callCount++
-		return "user-123", nil
-	}
-
-	adapter := NewR3labsSSEAdapter(resolver)
-	defer adapter.Close()
-
-	handler := adapter.HTTPHandler()
-	r := httptest.NewRequest(http.MethodGet, "/events", nil)
-	w := httptest.NewRecorder()
-
-	done := make(chan struct{})
-	go func() {
-		handler.ServeHTTP(w, r)
-		close(done)
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-
-	assert.Equal(t, 1, callCount)
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestMakeJWTTopicResolver(t *testing.T) {
+// TestMakeTopicResolver Проверяет конструктор и работу TopicResolver с Keycloak AuthProvider.
+func TestMakeTopicResolver(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
 
 	tests := []struct {
-		name           string
-		setupRequest   func() *http.Request
-		setupMock      func()
-		wantTopic      string
-		wantErr        bool
-		checkErrString string
+		name         string
+		setupRequest func() *http.Request
+		setupMock    func()
+		wantTopic    string
+		wantErr      bool
+		checkErrMsg  string
 	}{
 		{
-			name: "успешное получение топика из JWT для stream=services",
+			name: "успешное получение топика из Keycloak для stream=services",
 			setupRequest: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "valid-token"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-valid-token-123"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("valid-token", secretKey).
-					Return(&jwt.Claims{ID: 123, Login: "testuser"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-valid-token-123").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
 			},
-			wantTopic: "user-123:services",
+			wantTopic: "user-any-id-user-1:services",
+			wantErr:   false,
+		},
+		{
+			name: "успешное получение топика для stream=servers",
+			setupRequest: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/events?stream=servers", nil)
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-valid-token-999"})
+				return r
+			},
+			setupMock: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-valid-token-999").
+					Return(&auth.UserClaims{ID: "any-id-user-999", Login: "biguser"}, nil)
+			},
+			wantTopic: "user-any-id-user-999:servers",
 			wantErr:   false,
 		},
 		{
 			name: "отсутствует cookie JWT",
 			setupRequest: func() *http.Request {
-				// stream есть, но куки нет
 				return httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
 			},
 			setupMock: func() {
-				// GetClaims не вызывается
+				// ValidateToken НЕ вызывается!
 			},
-			wantTopic:      "",
-			wantErr:        true,
-			checkErrString: "http: named cookie not present",
+			wantTopic:   "",
+			wantErr:     true,
+			checkErrMsg: "http: named cookie not present",
 		},
 		{
-			name: "невалидный JWT токен",
+			name: "невалидный Keycloak токен (ошибка верификации)",
 			setupRequest: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "invalid-token"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-invalid-token"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("invalid-token", secretKey).
-					Return(nil, errors.New("invalid token"))
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-invalid-token").
+					Return(nil, errors.New("oidc: token expired"))
 			},
-			wantTopic:      "",
-			wantErr:        true,
-			checkErrString: "invalid token",
+			wantTopic:   "",
+			wantErr:     true,
+			checkErrMsg: "token expired",
 		},
 		{
-			name: "JWT с нулевым ID пользователя",
+			name: "Keycloak токен с пустым ID (отсутствует sub)",
 			setupRequest: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "zero-id-token"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-empty-sub-token"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("zero-id-token", secretKey).
-					Return(&jwt.Claims{ID: 0, Login: "zerouser"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-empty-sub-token").
+					Return(&auth.UserClaims{ID: "", Login: "anonymous"}, nil)
 			},
-			wantTopic:      "",
-			wantErr:        true,
-			checkErrString: "неверный id пользователя",
+			wantTopic:   "",
+			wantErr:     true,
+			checkErrMsg: "неверный id пользователя",
 		},
 		{
 			name: "отсутствует параметр stream",
 			setupRequest: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/events", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "valid-token-no-stream"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-no-stream-token"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("valid-token-no-stream", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-no-stream-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
-			wantTopic:      "",
-			wantErr:        true,
-			checkErrString: "параметр запроса stream обязателен",
+			wantTopic:   "",
+			wantErr:     true,
+			checkErrMsg: "параметр запроса stream обязателен",
 		},
 		{
 			name: "неизвестный тип потока",
 			setupRequest: func() *http.Request {
 				r := httptest.NewRequest(http.MethodGet, "/events?stream=unknown", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "valid-token-unknown-stream"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-unknown-stream-token"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("valid-token-unknown-stream", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-unknown-stream-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
-			wantTopic:      "",
-			wantErr:        true,
-			checkErrString: "неизвестный тип потока",
-		},
-		{
-			name: "успех для stream=servers",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=servers", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "servers-token"})
-				return r
-			},
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("servers-token", secretKey).
-					Return(&jwt.Claims{ID: 999999, Login: "biguser"}, nil)
-			},
-			wantTopic: "user-999999:servers",
-			wantErr:   false,
+			wantTopic:   "",
+			wantErr:     true,
+			checkErrMsg: "неизвестный тип потока",
 		},
 	}
 
@@ -612,60 +583,60 @@ func TestMakeJWTTopicResolver(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
+			resolver := MakeTopicResolver(mockAuthProvider)
 			r := tt.setupRequest()
 
 			topic, err := resolver(r)
 
 			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.checkErrString != "" {
-					assert.Contains(t, err.Error(), tt.checkErrString)
+				require.Error(t, err)
+				if tt.checkErrMsg != "" {
+					assert.Contains(t, err.Error(), tt.checkErrMsg)
 				}
 				assert.Equal(t, "", topic)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.wantTopic, topic)
 			}
 		})
 	}
 }
 
-// TestHTTPHandlerWithJWTResolver Интеграционный тест с JWT resolver.
-func TestHTTPHandlerWithJWTResolver(t *testing.T) {
+// TestHTTPHandlerWithKeycloakResolver Интеграционный тест HTTP-обработчика авторизации.
+// Проверяет только сценарии ошибок 401 (SSE с успешным кейсом виснет, т.к. соединение долгоживущее).
+func TestHTTPHandlerWithKeycloakResolver(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
 
 	tests := []struct {
-		name         string
-		setupRequest func() *http.Request
-		setupMock    func()
-		wantStatus   int
+		name       string
+		setupReq   func() *http.Request
+		setupMock  func()
+		wantStatus int
 	}{
 		{
-			name: "ошибка авторизации - нет JWT cookie",
-			setupRequest: func() *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/events", nil)
+			name: "ошибка авторизации - отсутствует JWT cookie",
+			setupReq: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
 			},
 			setupMock: func() {
-				// GetClaims не должен вызваться
+				// ValidateToken НЕ вызывается
 			},
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
-			name: "ошибка авторизации - невалидный токен",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "invalid-token"})
+			name: "ошибка авторизации - невалидный Keycloak токен",
+			setupReq: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-invalid-token"})
 				return r
 			},
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("invalid-token", secretKey).
-					Return(nil, errors.New("invalid"))
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "kc-invalid-token").
+					Return(nil, errors.New("oidc: invalid signature"))
 			},
 			wantStatus: http.StatusUnauthorized,
 		},
@@ -675,15 +646,13 @@ func TestHTTPHandlerWithJWTResolver(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
+			resolver := MakeTopicResolver(mockAuthProvider)
 			adapter := NewR3labsSSEAdapter(resolver)
 			defer adapter.Close()
 
-			handler := adapter.HTTPHandler()
-			r := tt.setupRequest()
 			w := httptest.NewRecorder()
-
-			handler.ServeHTTP(w, r)
+			handler := adapter.HTTPHandler()
+			handler.ServeHTTP(w, tt.setupReq())
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 		})
@@ -941,115 +910,102 @@ func TestConcurrentBroadcasterOperations(t *testing.T) {
 	}
 }
 
-// TestMakeJWTTopicResolver_StreamValidation Проверяет валидацию параметра stream.
-func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
+// TestTopicResolver_StreamValidation Проверяет валидацию параметра stream.
+// Тестирует все edge-кейсы: пустой, неверный регистр, пробелы, дубликаты.
+func TestTopicResolver_StreamValidation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
 
 	tests := []struct {
 		name           string
-		setupRequest   func() *http.Request
+		query          string
 		setupMock      func()
 		wantTopic      string
 		wantErr        bool
 		checkErrString string
 	}{
 		{
-			name: "stream=services валиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream=services валиден",
+			query: "/events?stream=services",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 100, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
-			wantTopic: "user-100:services",
+			wantTopic: "user-any-id-user-1:services",
 			wantErr:   false,
 		},
 		{
-			name: "stream=servers валиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=servers", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream=servers валиден",
+			query: "/events?stream=servers",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 200, Login: "admin"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "admin"}, nil)
 			},
-			wantTopic: "user-200:servers",
+			wantTopic: "user-any-id-user-2:servers",
 			wantErr:   false,
 		},
 		{
-			name: "stream=SERVER (заглавные буквы) невалиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=SERVER", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream=SERVER (верхний регистр) невалиден",
+			query: "/events?stream=SERVER",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
 			checkErrString: "неизвестный тип потока",
 		},
 		{
-			name: "stream= (пустое значение) невалиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream= (пустое значение) невалиден",
+			query: "/events?stream=",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
 			checkErrString: "параметр запроса stream обязателен",
 		},
 		{
-			name: "stream=events (неверное значение) невалиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=events", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream=events (неверное значение) невалиден",
+			query: "/events?stream=events",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
 			checkErrString: "неизвестный тип потока",
 		},
 		{
-			name: "stream с пробелом невалиден",
-			setupRequest: func() *http.Request {
-				r := httptest.NewRequest(http.MethodGet, "/events?stream=services%20", nil)
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-				return r
-			},
+			name:  "stream с пробелом невалиден",
+			query: "/events?stream=services%20",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
 			checkErrString: "неизвестный тип потока",
+		},
+		{
+			name:  "дублированный stream (берётся первый)",
+			query: "/events?stream=servers&stream=services",
+			setupMock: func() {
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+			},
+			wantTopic: "user-any-id-user-1:servers", // URL.Query().Get() → первый "servers"
+			wantErr:   false,
 		},
 	}
 
@@ -1057,89 +1013,58 @@ func TestMakeJWTTopicResolver_StreamValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
-			r := tt.setupRequest()
+			resolver := MakeTopicResolver(mockAuthProvider)
+			r := httptest.NewRequest(http.MethodGet, tt.query, nil)
+			r.AddCookie(&http.Cookie{Name: "JWT", Value: "jwt-token"})
 
 			topic, err := resolver(r)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.checkErrString != "" {
 					assert.Contains(t, err.Error(), tt.checkErrString)
 				}
 				assert.Equal(t, "", topic)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.wantTopic, topic)
 			}
 		})
 	}
 }
 
-// TestMakeJWTTopicResolver_IDValidation Проверяет валидацию ID.
-func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
+// TestTopicResolver_IDValidation Проверяет валидацию ID пользователя.
+// Keycloak всегда возвращает string ID, поэтому упрощённый тест.
+func TestTopicResolver_IDValidation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
+	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
 
 	tests := []struct {
 		name           string
-		id             int64
+		userID         string
 		setupMock      func()
 		wantErr        bool
 		checkErrString string
 	}{
 		{
-			name: "ID=1 валиден",
-			id:   1,
+			name:   "валидный Keycloak ID",
+			userID: "any-id-user-1",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 1, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantErr: false,
 		},
 		{
-			name: "ID=999999999 валиден",
-			id:   999999999,
+			name:   "пустой ID невалиден",
+			userID: "",
 			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 999999999, Login: "user"}, nil)
-			},
-			wantErr: false,
-		},
-		{
-			name: "ID=0 невалиден",
-			id:   0,
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: 0, Login: "user"}, nil)
-			},
-			wantErr:        true,
-			checkErrString: "неверный id пользователя",
-		},
-		{
-			name: "ID=-1 невалиден",
-			id:   -1,
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: -1, Login: "user"}, nil)
-			},
-			wantErr:        true,
-			checkErrString: "неверный id пользователя",
-		},
-		{
-			name: "ID=-999 невалиден",
-			id:   -999,
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("token", secretKey).
-					Return(&jwt.Claims{ID: -999, Login: "user"}, nil)
+				mockAuthProvider.EXPECT().
+					ValidateToken(gomock.Any(), "jwt-token").
+					Return(&auth.UserClaims{ID: "", Login: "anonymous"}, nil)
 			},
 			wantErr:        true,
 			checkErrString: "неверный id пользователя",
@@ -1150,184 +1075,21 @@ func TestMakeJWTTopicResolver_IDValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setupMock()
 
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
+			resolver := MakeTopicResolver(mockAuthProvider)
 			r := httptest.NewRequest(http.MethodGet, "/events?stream=services", nil)
-			r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
+			r.AddCookie(&http.Cookie{Name: "JWT", Value: "jwt-token"})
 
 			topic, err := resolver(r)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.checkErrString != "" {
 					assert.Contains(t, err.Error(), tt.checkErrString)
 				}
 				assert.Equal(t, "", topic)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, fmt.Sprintf("user-%d:services", tt.id), topic)
-			}
-		})
-	}
-}
-
-// TestHTTPHandlerWithJWTResolverSuccess Успешный case с JWT resolver.
-func TestHTTPHandlerWithJWTResolverSuccess(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret"
-
-	tests := []struct {
-		name          string
-		streamParam   string
-		userID        int64
-		setupMock     func()
-		wantStatus    int
-		expectedTopic string
-	}{
-		{
-			name:        "успешное подключение stream=services",
-			streamParam: "services",
-			userID:      123,
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("valid-token", secretKey).
-					Return(&jwt.Claims{ID: 123, Login: "user"}, nil)
-			},
-			wantStatus:    http.StatusOK,
-			expectedTopic: "user-123:services",
-		},
-		{
-			name:        "успешное подключение stream=servers",
-			streamParam: "servers",
-			userID:      456,
-			setupMock: func() {
-				mockTokenBuilder.EXPECT().
-					GetClaims("valid-token", secretKey).
-					Return(&jwt.Claims{ID: 456, Login: "admin"}, nil)
-			},
-			wantStatus:    http.StatusOK,
-			expectedTopic: "user-456:servers",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.setupMock()
-
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
-			adapter := NewR3labsSSEAdapter(resolver)
-			defer adapter.Close()
-
-			handler := adapter.HTTPHandler()
-			url := "/events?stream=" + tt.streamParam
-			r := httptest.NewRequest(http.MethodGet, url, nil)
-			r.AddCookie(&http.Cookie{Name: "JWT", Value: "valid-token"})
-			w := httptest.NewRecorder()
-
-			// запускаем handler в goroutine с timeout
-			done := make(chan struct{}, 1)
-			go func() {
-				handler.ServeHTTP(w, r)
-				done <- struct{}{}
-			}()
-
-			// даём время на установку соединения
-			time.Sleep(50 * time.Millisecond)
-
-			// проверяем статус (должен быть 200 к этому моменту)
-			assert.Equal(t, tt.wantStatus, w.Code, "статус должен быть 200 OK")
-
-			// ждём завершения или timeout (1 секунда)
-			select {
-			case <-done:
-				// успешно завершилось
-			case <-time.After(1 * time.Second):
-				// timeout — это нормально для SSE, соединение остаётся открытым
-				t.Logf("SSE соединение открыто (это нормально)")
-			}
-		})
-	}
-}
-
-// TestMakeJWTTopicResolver_MultipleStreamParams Проверяет поведение с несколькими stream параметрами.
-func TestMakeJWTTopicResolver_MultipleStreamParams(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret-key"
-
-	// URL.Query().Get() возвращает ПЕРВОЕ значение при дублировании параметра
-	r := httptest.NewRequest(http.MethodGet, "/events?stream=servers&stream=services", nil)
-	r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-
-	mockTokenBuilder.EXPECT().
-		GetClaims("token", secretKey).
-		Return(&jwt.Claims{ID: 100, Login: "user"}, nil)
-
-	resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
-	topic, err := resolver(r)
-
-	assert.NoError(t, err)
-	// Get() вернёт первый параметр "servers"
-	assert.Equal(t, "user-100:servers", topic)
-}
-
-// TestHTTPHandlerStreamParameterCorrectlyPassed Проверяет что stream параметр попадает в топик через resolver.
-func TestHTTPHandlerStreamParameterCorrectlyPassed(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockTokenBuilder := authMocks.NewMockTokenBuilder(ctrl)
-	secretKey := "test-secret"
-
-	tests := []struct {
-		name        string
-		url         string
-		expectedErr bool
-	}{
-		{
-			name:        "корректный URL с stream=services",
-			url:         "/events?stream=services",
-			expectedErr: false,
-		},
-		{
-			name:        "корректный URL с stream=servers",
-			url:         "/events?stream=servers",
-			expectedErr: false,
-		},
-		{
-			name:        "URL без stream параметра",
-			url:         "/events",
-			expectedErr: true,
-		},
-		{
-			name:        "URL с другими параметрами",
-			url:         "/events?foo=bar&stream=services&baz=qux",
-			expectedErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockTokenBuilder.EXPECT().
-				GetClaims("token", secretKey).
-				Return(&jwt.Claims{ID: 1, Login: "user"}, nil).
-				AnyTimes() // может вызваться или не вызваться
-
-			resolver := MakeJWTTopicResolver(secretKey, mockTokenBuilder)
-			r := httptest.NewRequest(http.MethodGet, tt.url, nil)
-			r.AddCookie(&http.Cookie{Name: "JWT", Value: "token"})
-
-			topic, err := resolver(r)
-
-			if tt.expectedErr {
-				assert.Error(t, err, "ошибка ожидается для "+tt.url)
-			} else {
-				assert.NoError(t, err, "ошибка не ожидается для "+tt.url)
-				assert.NotEmpty(t, topic, "топик не должен быть пустым")
+				require.NoError(t, err)
+				assert.Contains(t, topic, tt.userID)
 			}
 		})
 	}

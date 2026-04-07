@@ -26,7 +26,7 @@ func init() {
 }
 
 // Создание контекста с данными о пользователе и сервере.
-func createContextWithCreds(login string, userID, serverID int64) context.Context {
+func createContextWithCreds(login, userID string, serverID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
 	ctx = context.WithValue(ctx, contextkeys.UserID, userID)
@@ -149,7 +149,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 					Status:   "OK",
 				}
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(1), int64(1)).
+					GetServer(gomock.Any(), int64(1), "any-id-user-1").
 					Return(&mockServer, nil).
 					Times(1)
 
@@ -169,9 +169,9 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 		{
 			name: "Сервер не найден в хранилище",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
-				errServerNotFound := errs.NewErrServerNotFound(int64(1), int64(1), errors.New("сервер не найден"))
+				errServerNotFound := errs.NewErrServerNotFound(int64(1), "any-id-user-1", errors.New("сервер не найден"))
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(1), int64(1)).
+					GetServer(gomock.Any(), int64(1), "any-id-user-1").
 					Return(nil, errServerNotFound).
 					Times(1)
 			},
@@ -187,7 +187,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 					Address: "192.168.0.1",
 				}
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(1), int64(1)).
+					GetServer(gomock.Any(), int64(1), "any-id-user-1").
 					Return(&mockServer, nil).
 					Times(1)
 
@@ -204,7 +204,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			name: "Ошибка при получении информации о сервере",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(1), int64(1)).
+					GetServer(gomock.Any(), int64(1), "any-id-user-1").
 					Return(nil, errors.New("database connection error")).
 					Times(1)
 			},
@@ -225,7 +225,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 					Status:   models.StatusUnreachable,
 				}
 				m.EXPECT().
-					GetServer(gomock.Any(), int64(1), int64(1)).
+					GetServer(gomock.Any(), int64(1), "any-id-user-1").
 					Return(&mockServer, nil).
 					Times(1)
 
@@ -253,7 +253,7 @@ func TestHealthHandler_ServerStatus(t *testing.T) {
 			mockCacheStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 
-			mockCtx := createContextWithCreds("test", int64(1), int64(1))
+			mockCtx := createContextWithCreds("test", "any-id-user-1", int64(1))
 
 			tt.setupMock(mockStorage, mockCacheStorage)
 
@@ -312,7 +312,7 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 					},
 				}
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(mockServers, nil).
 					Times(1)
 
@@ -359,7 +359,7 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			name: "Нет серверов у пользователя",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return([]*models.Server{}, nil).
 					Times(1)
 			},
@@ -371,7 +371,7 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			name: "Ошибка при получении списка серверов из БД",
 			setupMock: func(m *storageMocks.MockStorage, c *statusCacheStorageMocks.MockStatusCacheStorage) {
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(nil, errors.New("database connection error")).
 					Times(1)
 			},
@@ -388,13 +388,13 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 				}
 
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(mockServers, nil).
 					Times(1)
 
 				status2 := models.ServerStatus{
 					ServerID: 2,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.0.2",
 					Status:   models.StatusOK,
 				}
@@ -409,13 +409,13 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			wantStatusContent: []models.ServerStatus{
 				{
 					ServerID: 1,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.0.1",
 					Status:   models.StatusUnknown,
 				},
 				{
 					ServerID: 2,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.0.2",
 					Status:   models.StatusOK,
 				},
@@ -439,7 +439,7 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 					},
 				}
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(mockServers, nil).
 					Times(1)
 
@@ -506,20 +506,20 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 				}
 
 				m.EXPECT().
-					ListServers(gomock.Any(), int64(1)).
+					ListServers(gomock.Any(), "any-id-user-1").
 					Return(mockServers, nil).
 					Times(1)
 
 				status1 := models.ServerStatus{
 					ServerID: 1,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.1.1",
 					Status:   models.StatusOK,
 				}
 
 				status3 := models.ServerStatus{
 					ServerID: 3,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.1.3",
 					Status:   models.StatusOK,
 				}
@@ -535,19 +535,19 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			wantStatusContent: []models.ServerStatus{
 				{
 					ServerID: 1,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.1.1",
 					Status:   models.StatusOK,
 				},
 				{
 					ServerID: 2,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.1.2",
 					Status:   models.StatusUnknown,
 				},
 				{
 					ServerID: 3,
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					Address:  "192.168.1.3",
 					Status:   models.StatusOK,
 				},
@@ -564,7 +564,7 @@ func TestHealthHandler_ServersStatuses(t *testing.T) {
 			mockCacheStorage := statusCacheStorageMocks.NewMockStatusCacheStorage(ctrl)
 			mockChecker := netutilsMocks.NewMockChecker(ctrl)
 
-			mockCtx := createContextWithCreds("test", int64(1), int64(0))
+			mockCtx := createContextWithCreds("test", "any-id-user-1", int64(0))
 
 			tt.setupMock(mockStorage, mockCacheStorage)
 

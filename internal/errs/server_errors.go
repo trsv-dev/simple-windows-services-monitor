@@ -31,7 +31,7 @@ type ErrServerNotFound struct {
 }
 
 func (no *ErrServerNotFound) Error() string {
-	return fmt.Sprintf("Сервер id=%d не найден среди серверов пользователя id=%d. Ошибка: %s", no.ServerID, no.UserID, no.Err)
+	return fmt.Sprintf("Сервер id=%d не найден среди серверов пользователя id=%s. Ошибка: %s", no.ServerID, no.UserID, no.Err)
 }
 
 func (no *ErrServerNotFound) Unwrap() error {
