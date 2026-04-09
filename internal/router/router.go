@@ -18,7 +18,8 @@ func Router(h *di_containers.HandlersContainer) chi.Router {
 	// публичные маршруты
 	router.Get("/health", h.HealthHandler.GetHealth)
 
-	router.Post("/keycloak-event", h.WebhooksHandler.DeleteUserWebhook)
+	// обработка событий из Keycloak
+	router.Post("/keycloak-events", h.WebhooksHandler.HandleEvent)
 
 	// маршруты, требующие авторизацию
 	router.Route("/api/user", func(r chi.Router) {
@@ -27,7 +28,7 @@ func Router(h *di_containers.HandlersContainer) chi.Router {
 		r.Use(middleware.AuthMiddleware(h.Storage, h.AppHandler.AuthProvider))
 		r.Use(middleware.RequireAuthMiddleware)
 
-		// Эндпоинт для установки сессионной куки
+		// Эндпоинт для установки сессионной куки для работы SSE (Server Sent Events) на фронтенде
 		r.Post("/session", h.SessionHandler.SetSessionCookie)
 
 		// SSE: подписка на события служб

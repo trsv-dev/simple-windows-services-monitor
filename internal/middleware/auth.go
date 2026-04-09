@@ -62,6 +62,7 @@ func AuthMiddleware(storage storage.Storage, authProvider auth.AuthProvider) fun
 			// если пользователь не существует - создаем
 			if getErr != nil {
 				var ErrUserIDNotFound *errs.ErrUserIDNotFound
+
 				switch {
 				case errors.As(getErr, &ErrUserIDNotFound):
 					createErr := storage.CreateUser(r.Context(), claimUser)
@@ -80,6 +81,11 @@ func AuthMiddleware(storage storage.Storage, authProvider auth.AuthProvider) fun
 							return
 						}
 					}
+
+					logger.Log.Info("Пользователь зарегистрирован", logger.String("login", claimUser.Login), logger.String("ID", claimUser.ID))
+					response.JSON(w, http.StatusOK, claimUser)
+					return
+
 				case getErr != nil:
 					logger.Log.Error("Внутренняя ошибка сервера", logger.String("err", getErr.Error()))
 					response.ErrorJSON(w, http.StatusInternalServerError, "Внутренняя ошибка сервера")

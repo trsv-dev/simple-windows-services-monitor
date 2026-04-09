@@ -45,7 +45,7 @@ func NewHandlersContainer(storage storage.Storage, statusCache health_storage.St
 	sessionHandler := session_handler.NewSessionHandler(authProvider)
 	healthHandler := health_handler.NewHealthHandler(storage, statusCache, netChecker)
 	appHandler := app_handler.NewAppHandler(authProvider, broadcaster)
-	webhooksHAndler := webhooks.NewWebhook()
+	webhooksHAndler := webhooks.NewWebhook(storage)
 
 	return &HandlersContainer{
 		Storage:         storage,

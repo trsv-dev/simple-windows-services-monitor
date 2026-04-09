@@ -212,10 +212,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             localStorage.setItem('swsm_user', currentUser);
 
-            const userLink = document.getElementById('currentUserLink');
-            if (userLink) {
-                userLink.textContent = currentUser;
-                userLink.href = `${KEYCLOAK_CONFIG.url}/realms/${KEYCLOAK_CONFIG.realm}/account/`;
+            // Ссылка на профиль в Keycloak
+            const profileUrl = `${KEYCLOAK_CONFIG.url}/realms/${KEYCLOAK_CONFIG.realm}/account/`;
+
+            // Иконка пользователя (всегда видна, везде одинаковая)
+            const userProfileLink = document.getElementById('userProfileLink');
+            if (userProfileLink) {
+                userProfileLink.href = profileUrl;
+                userProfileLink.title = `Профиль: ${currentUser}`;  // Tooltip при наведении
             }
 
             if (tokenParsed?.sub) {

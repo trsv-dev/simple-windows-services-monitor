@@ -563,23 +563,17 @@ func (pg *PgStorage) DeleteUser(ctx context.Context, userID string) error {
 		return fmt.Errorf("ошибка удаления пользователя: %w", err)
 	}
 
-	rows, err := result.RowsAffected()
+	affectedRows, err := result.RowsAffected()
 	if err != nil {
-		logger.Log.Error("Ошибка при подсчете затронутых строк при удалении пользователя",
-			logger.String("user_id", userID),
-			logger.String("err", err.Error()))
-		return fmt.Errorf("ошибка подсчета затронутых строк при удалении пользователя: %w", err)
+		return fmt.Errorf("ошибка при выполнении запроса %w", err)
 	}
 
-	if rows == 0 {
-		logger.Log.Error("Пользователь с таким ID не найден", logger.String("user_id", userID))
+	if affectedRows == 0 {
+		return errs.NewErrUserIDNotFound(userID)
 	}
 
-	if rows > 1 {
-		logger.Log.Error("Удалено больше одного пользователя",
-			logger.String("user_id", userID),
-			logger.Int64("rows", rows))
-		return fmt.Errorf("удалено неожиданное количество пользователей: %d", rows)
+	if affectedRows > 1 {
+		return fmt.Errorf("удалено неожиданное количество пользователей: %d", affectedRows)
 	}
 
 	return nil
@@ -595,10 +589,8 @@ func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.Us
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			logger.Log.Error("Пользователь с таким ID не найден", logger.String("err", err.Error()))
-			return nil, errs.NewErrUserIDNotFound(err)
+			return nil, errs.NewErrUserIDNotFound(user.ID)
 		default:
-			logger.Log.Error("Ошибка запроса", logger.String("err", err.Error()))
 			return nil, err
 		}
 	}

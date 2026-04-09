@@ -64,7 +64,7 @@ func TestAuthMiddleware(t *testing.T) {
 					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "newuser"}, nil)
 				mockStorage.EXPECT().
 					GetUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
-					Return(nil, errs.NewErrUserIDNotFound(nil))
+					Return(nil, errs.NewErrUserIDNotFound("any-id-user-2"))
 				mockStorage.EXPECT().
 					CreateUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
 					Return(nil)
@@ -104,7 +104,7 @@ func TestAuthMiddleware(t *testing.T) {
 					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "newuser"}, nil)
 				mockStorage.EXPECT().
 					GetUser(gomock.Any(), gomock.Any()).
-					Return(nil, errs.NewErrUserIDNotFound(nil))
+					Return(nil, errs.NewErrUserIDNotFound("any-id-user-2"))
 				mockStorage.EXPECT().
 					CreateUser(gomock.Any(), gomock.Any()).
 					Return(nil)

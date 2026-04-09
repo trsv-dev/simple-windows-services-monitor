@@ -44,19 +44,15 @@ func NewErrWrongLoginOrPassword(err error) *ErrWrongLogin {
 
 // ErrUserIDNotFound Кастомная ошибка, сообщающая о том, что пользователь с таким ID не был найден.
 type ErrUserIDNotFound struct {
-	Err error
+	UserID string
 }
 
 func (nf *ErrUserIDNotFound) Error() string {
-	return fmt.Sprintf("Пользователь с таким id не найден. Ошибка: %v", nf.Err)
+	return fmt.Sprintf("Пользователь с id = %s не найден", nf.UserID)
 }
 
-func (nf *ErrUserIDNotFound) Unwrap() error {
-	return nf.Err
-}
-
-func NewErrUserIDNotFound(err error) *ErrUserIDNotFound {
+func NewErrUserIDNotFound(userID string) *ErrUserIDNotFound {
 	return &ErrUserIDNotFound{
-		Err: err,
+		UserID: userID,
 	}
 }
