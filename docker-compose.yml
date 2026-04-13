@@ -31,7 +31,7 @@ services:
     volumes:
       - auth_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${KEYCLOAK_POSTGRES_USER} -d ${KEYCLOAK_DB} -h localhost" ]
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_POSTGRES_USER} -d ${KEYCLOAK_DB} -h localhost"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -51,7 +51,7 @@ services:
       auth:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "10000:8080"
     volumes:
       - backend_logs:/app/logs
     # даёт контейнеру право создавать raw-сокеты, без которых ICMP (ping) работать не может.
@@ -66,33 +66,30 @@ services:
 
   auth:
     container_name: auth
-    image: quay.io/keycloak/keycloak:26.5.6
+    image: quay.io/phasetwo/phasetwo-keycloak:26.5.0
     restart: unless-stopped
     ports:
       - "8081:8080"
     env_file:
       - .env.production
     environment:
-      KC_HOSTNAME: 127.0.0.1
-      KC_HOSTNAME_PORT: 8080
-      KC_PROXY: edge
-
+      KC_HOSTNAME: auth.example.com
+      KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://auth_db:5432/${KEYCLOAK_DB}
       KC_DB_USERNAME: ${KEYCLOAK_POSTGRES_USER}
       KC_DB_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
-      KC_HEALTH_ENABLED: "true"
-      KEYCLOAK_ADMIN: ${ADMIN_USERNAME} # ?
-      KEYCLOAK_ADMIN_PASSWORD: ${ADMIN_PASSWORD} # ?
-    command: ["start", "--import-realm"]
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    command: ["start", "--optimized"]
     depends_on:
       auth_db:
         condition: service_healthy
     volumes:
       - auth_data:/opt/keycloak/data
-      - ./keycloak:/opt/keycloak/data/import:ro
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo 'OK' || exit 1"]
       interval: 10s
@@ -109,7 +106,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -121,3 +118,127 @@ volumes:
   auth_db_data:
   backend_logs:
   auth_data:
+
+#services:
+#  backend_db:
+#    container_name: postgres_backend
+#    image: postgres:16
+#    restart: unless-stopped
+#    env_file:
+#      - .env.production
+#    environment:
+#      POSTGRES_DB: ${POSTGRES_DB}
+#      POSTGRES_USER: ${POSTGRES_USER}
+#      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+#    volumes:
+#      - backend_db_data:/var/lib/postgresql/data
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -h localhost"]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 5s
+#
+#  auth_db:
+#    container_name: postgres_auth
+#    image: postgres:16
+#    restart: unless-stopped
+#    env_file:
+#      - .env.production
+#    environment:
+#      POSTGRES_DB: ${KEYCLOAK_DB}
+#      POSTGRES_USER: ${KEYCLOAK_POSTGRES_USER}
+#      POSTGRES_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
+#    volumes:
+#      - auth_db_data:/var/lib/postgresql/data
+#    healthcheck:
+#      test: [ "CMD-SHELL", "pg_isready -U ${KEYCLOAK_POSTGRES_USER} -d ${KEYCLOAK_DB} -h localhost" ]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 5s
+#
+#  backend:
+#    container_name: backend
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    restart: unless-stopped
+#    env_file:
+#      - .env.production
+#    depends_on:
+#      backend_db:
+#        condition: service_healthy
+#      auth:
+#        condition: service_healthy
+#    ports:
+#      - "8080:8080"
+#    volumes:
+#      - backend_logs:/app/logs
+#    # даёт контейнеру право создавать raw-сокеты, без которых ICMP (ping) работать не может.
+#    cap_add:
+#      - NET_RAW
+#    healthcheck:
+#      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+#      interval: 5s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 5s
+#
+#  auth:
+#    container_name: auth
+#    image: quay.io/keycloak/keycloak:26.5.6
+#    restart: unless-stopped
+#    ports:
+#      - "8081:8080"
+#    env_file:
+#      - .env.production
+#    environment:
+#      KC_HOSTNAME: 127.0.0.1
+#      KC_HOSTNAME_PORT: 8080
+#      KC_PROXY: edge
+#
+#      KC_HTTP_ENABLED: "true"
+#      KC_HOSTNAME_STRICT: "false"
+#      KC_DB: postgres
+#      KC_DB_URL: jdbc:postgresql://auth_db:5432/${KEYCLOAK_DB}
+#      KC_DB_USERNAME: ${KEYCLOAK_POSTGRES_USER}
+#      KC_DB_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
+#      KC_HEALTH_ENABLED: "true"
+#      KEYCLOAK_ADMIN: ${ADMIN_USERNAME} # ?
+#      KEYCLOAK_ADMIN_PASSWORD: ${ADMIN_PASSWORD} # ?
+#    command: ["start", "--import-realm"]
+#    depends_on:
+#      auth_db:
+#        condition: service_healthy
+#    volumes:
+#      - auth_data:/opt/keycloak/data
+#      - ./keycloak:/opt/keycloak/data/import:ro
+#    healthcheck:
+#      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo 'OK' || exit 1"]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 40s
+#
+#  frontend:
+#    container_name: frontend
+#    env_file:
+#      - .env.production
+#    build:
+#      context: ./static
+#      dockerfile: Dockerfile
+#    restart: unless-stopped
+#    ports:
+#      - "80:80"
+#    depends_on:
+#      backend:
+#        condition: service_healthy
+#    profiles:
+#      - frontend
+#
+#volumes:
+#  backend_db_data:
+#  auth_db_data:
+#  backend_logs:
+#  auth_data:

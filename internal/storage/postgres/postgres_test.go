@@ -1118,6 +1118,10 @@ func TestListServices(t *testing.T) {
 func TestCreateUser(t *testing.T) {
 	createUserQuery := `INSERT INTO users (id, login) VALUES ($1, $2)`
 
+	pgErr := &pgconn.PgError{
+		Code: "23505",
+	}
+
 	tests := []struct {
 		name           string                     // название теста
 		user           *models.User               // данные пользователя
@@ -1139,7 +1143,7 @@ func TestCreateUser(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "ошибка - логин уже занят",
+			name: "ошибка - пользователь уже существует (дубликат Login)",
 			user: &models.User{
 				ID:    "any-id-user-1",
 				Login: "existinguser",
@@ -1147,12 +1151,31 @@ func TestCreateUser(t *testing.T) {
 			mockSetup: func(mock sqlmock.Sqlmock) {
 				mock.ExpectExec(regexp.QuoteMeta(createUserQuery)).
 					WithArgs("any-id-user-1", "existinguser").
-					WillReturnError(&pgconn.PgError{Code: "23505"})
+					WillReturnError(pgErr)
 			},
 			expectError: true,
 			errorAssertion: func(t *testing.T, err error) {
-				var loginTakenErr *errs.ErrLoginIsTaken
-				assert.True(t, errors.As(err, &loginTakenErr), "ошибка должна быть типа ErrLoginIsTaken")
+				//var loginTakenErr *errs.ErrLoginIsTaken
+				var userExistsErr *errs.ErrUserAlreadyExists
+				assert.True(t, errors.As(err, &userExistsErr), "ошибка должна быть типа ErrUserAlreadyExists")
+			},
+		},
+		{
+			name: "ошибка - пользователь уже существует (дубликат ID)",
+			user: &models.User{
+				ID:    "existing-any-id-user-1",
+				Login: "user",
+			},
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectExec(regexp.QuoteMeta(createUserQuery)).
+					WithArgs("existing-any-id-user-1", "user").
+					WillReturnError(pgErr)
+			},
+			expectError: true,
+			errorAssertion: func(t *testing.T, err error) {
+				//var loginTakenErr *errs.ErrLoginIsTaken
+				var userExistsErr *errs.ErrUserAlreadyExists
+				assert.True(t, errors.As(err, &userExistsErr), "ошибка должна быть типа ErrUserAlreadyExists")
 			},
 		},
 		{

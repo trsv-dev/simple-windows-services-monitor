@@ -12,21 +12,17 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
-	storageMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/storage/mocks"
 )
 
 // TestAuthMiddleware Интеграционные тесты middleware авторизации с Keycloak.
-// Проверяет: извлечение токена, валидацию, создание/поиск пользователя, контекст.
+// Проверяет: извлечение токена, валидацию, контекст.
 func TestAuthMiddleware(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
-	mockStorage := storageMocks.NewMockStorage(ctrl)
 
-	middleware := AuthMiddleware(mockStorage, mockAuthProvider)
+	middleware := LoginIDToContextMiddleware(mockAuthProvider)
 
 	tests := []struct {
 		name          string
@@ -45,32 +41,23 @@ func TestAuthMiddleware(t *testing.T) {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-valid-token").
 					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
-				mockStorage.EXPECT().
-					GetUser(gomock.Any(), gomock.Any()).
-					Return(&models.User{ID: "any-id-user-1", Login: "testuser"}, nil)
 			},
 			wantStatus:    http.StatusOK,
 			wantCtxLogin:  "testuser",
 			wantCtxUserID: "any-id-user-1",
 		},
 		{
-			name: "успешная авторизация через cookie - новый пользователь создаётся",
+			name: "успешная авторизация через cookie",
 			setupAuth: func(r *http.Request) {
-				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-newuser-token"})
+				r.AddCookie(&http.Cookie{Name: "JWT", Value: "kc-user-token"})
 			},
 			setupMocks: func() {
 				mockAuthProvider.EXPECT().
-					ValidateToken(gomock.Any(), "kc-newuser-token").
-					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "newuser"}, nil)
-				mockStorage.EXPECT().
-					GetUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
-					Return(nil, errs.NewErrUserIDNotFound("any-id-user-2"))
-				mockStorage.EXPECT().
-					CreateUser(gomock.Any(), &models.User{ID: "any-id-user-2", Login: "newuser"}).
-					Return(nil)
+					ValidateToken(gomock.Any(), "kc-user-token").
+					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "user"}, nil)
 			},
 			wantStatus:    http.StatusOK,
-			wantCtxLogin:  "newuser",
+			wantCtxLogin:  "user",
 			wantCtxUserID: "any-id-user-2",
 		},
 		{
@@ -92,41 +79,6 @@ func TestAuthMiddleware(t *testing.T) {
 					Return(nil, errors.New("oidc: token expired"))
 			},
 			wantStatus: http.StatusUnauthorized,
-		},
-		{
-			name: "создание нового пользователя (успешно)",
-			setupAuth: func(r *http.Request) {
-				r.Header.Set("Authorization", "Bearer kc-newuser-token")
-			},
-			setupMocks: func() {
-				mockAuthProvider.EXPECT().
-					ValidateToken(gomock.Any(), "kc-newuser-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "newuser"}, nil)
-				mockStorage.EXPECT().
-					GetUser(gomock.Any(), gomock.Any()).
-					Return(nil, errs.NewErrUserIDNotFound("any-id-user-2"))
-				mockStorage.EXPECT().
-					CreateUser(gomock.Any(), gomock.Any()).
-					Return(nil)
-			},
-			wantStatus:    http.StatusOK,
-			wantCtxLogin:  "newuser",
-			wantCtxUserID: "any-id-user-1",
-		},
-		{
-			name: "ошибка БД при GetUser",
-			setupAuth: func(r *http.Request) {
-				r.Header.Set("Authorization", "Bearer kc-db-error-token")
-			},
-			setupMocks: func() {
-				mockAuthProvider.EXPECT().
-					ValidateToken(gomock.Any(), "kc-db-error-token").
-					Return(&auth.UserClaims{ID: "any-id-user-err", Login: "dbuser"}, nil)
-				mockStorage.EXPECT().
-					GetUser(gomock.Any(), &models.User{ID: "any-id-user-err", Login: "dbuser"}).
-					Return(nil, errors.New("database timeout"))
-			},
-			wantStatus: http.StatusInternalServerError,
 		},
 	}
 
@@ -171,9 +123,8 @@ func TestAuthMiddleware_TokenSources(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuthProvider := authMocks.NewMockAuthProvider(ctrl)
-	mockStorage := storageMocks.NewMockStorage(ctrl)
 
-	middleware := AuthMiddleware(mockStorage, mockAuthProvider)
+	middleware := LoginIDToContextMiddleware(mockAuthProvider)
 
 	tests := []struct {
 		name       string
@@ -214,10 +165,6 @@ func TestAuthMiddleware_TokenSources(t *testing.T) {
 					calledToken = token
 					return &auth.UserClaims{ID: "any-id-user-1", Login: "test"}, nil
 				})
-
-			mockStorage.EXPECT().
-				GetUser(gomock.Any(), gomock.Any()).
-				Return(&models.User{ID: "any-id-user-1", Login: "test"}, nil)
 
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)

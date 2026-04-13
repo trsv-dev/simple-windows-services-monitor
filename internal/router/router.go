@@ -25,7 +25,7 @@ func Router(h *di_containers.HandlersContainer) chi.Router {
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.AuthMiddleware(h.Storage, h.AppHandler.AuthProvider))
+		r.Use(middleware.LoginIDToContextMiddleware(h.AppHandler.AuthProvider))
 		r.Use(middleware.RequireAuthMiddleware)
 
 		// Эндпоинт для установки сессионной куки для работы SSE (Server Sent Events) на фронтенде

@@ -66,7 +66,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    grant all privileges on database swsm to swsm;
    alter database swsm owner to swsm;
 
-3. Разверните docker-контейнер с Keycloak. Для локальной разработки можно использовать Keycloak в dev-режиме.  
+3. Разверните docker-контейнер с Keycloak Phase Two. Для локальной разработки можно использовать Keycloak Phase Two в dev-режиме.  
     Внешний порт выбирайте на своё усмотрение, по умолчанию на сайте Keycloak указан порт 8080:
 
      **Примечание**:  
@@ -74,7 +74,13 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
      Привязка к 127.0.0.1 ограничивает доступ только с локальной машины.
     
    ```bash
-   docker run -p 127.0.0.1:8081:8080 --name keycloak -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.5.6 start-dev
+   docker run --name keycloak_phasetwo --rm -p 8081:8080 \
+     --add-host=host.docker.internal:host-gateway \
+     -e KEYCLOAK_ADMIN=admin \
+     -e KEYCLOAK_ADMIN_PASSWORD=admin \
+     quay.io/phasetwo/phasetwo-keycloak:26.5.0 \
+     start-dev -- \
+     --spi-events-listener-ext-event-http-enabled=true
    ```
 
     После успешного развертывания контейнера потребуется создать постоянного пользователя с админскими правами,
@@ -87,7 +93,10 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
      постоянного пользователя с админскими правами: "Users" -> "Add user" -> Заполнить как минимум Username, 
      Email и поставить переключатель Email verified. Далее в созданном аккаунте перейти в "Role mapping" ->
      "Assign role" -> "Realm roles" -> "realm-admin" -> "Assign".
-
+   
+   - Зайдите в "Realm settings" -> "Themes" -> "Admin theme" и выберите тему "phasetwo.v2", без этой манипуляции ни в одном из 
+     созданных realm'ов не появятся в дальнейшем нужные пункты меню ("Attributes")
+   
    - Создайте realm, т.е "область" для проекта, где будут расположены его настройки и пользователи:
      "Manage realms" -> "Create realm" -> Укажите "Realm name" (swsm) -> "Create". 
      Создастся realm с именем "swsm". Перейдите в "Realm settings", укажите "Realm name" (swsm), "Display name" (swsm),
@@ -95,13 +104,21 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
      "Remember me", "Login with email", "Verify email". На вкладке "Email" введите настройки своего почтового сервера или транспорта.
      На вкладке "Localization" при желании включите переключатель "Internationalization", добавьте необходимую 
      локализацию в "Supported locales" и выберите "Default locale".
+   
+   - **ВАЖНО!** В созданном realm (swsm) зайдите "Realm settings" -> "Themes" -> "Admin theme" и выберите тему "phasetwo.v2", перезагрузите страницу, на текущей странице
+     станет доступна вкладка "Attributes", зайдите в ее, в поле "Key" выставите __providerConfig.ext-event-http.0_, 
+     в поле "Value" выставите _{"targetUri":"http://host.docker.internal:8080/keycloak-events","retry":true,"backoffInitialInterval":500}_
 
-    - Создайте клиента, через который SWSM будет подключаться к Keycloak. Для этого перейдите в "Clients" -> "Create client"
-      "Client type" оставьте без изменений (OpenID Connect), укажите "Client ID" (swsm), "Name" (swsm), "Description" (swsm) -> "Next" ->
-      поставьте галочки "Authentication flow" и "Direct access grants" -> "Next" -> Введите "Root URL" (http://127.0.0.1:3000/),
-      "Valid redirect URIs" (http://127.0.0.1:3000/*) и "Web origins" (http://127.0.0.1:3000). В данном случае порт 3000 - это порт фронтэнда.
-      Нажмите кнопку "Save". Во вкладке "Client scopes" войдите в "swsm-dedicated" -> "Mappers" -> "Configure a new mapper" -> "Audience". 
-      Введите "Name" и выберите в "Included Client Audience" название вашего realm-а.
+   - **ВАЖНО!** Во вкладке "Events" -> "Event listeners" добавьте "ext-event-http" и нажмите "Save". В "User events settings" включите "Save events" и выберите как минимум "Register", "Register error", 
+     "Delete account", "Delete account error".
+     В "Admin events settings" включите "Save events" и "Include representation".
+
+   - Создайте клиента, через который SWSM будет подключаться к Keycloak. Для этого перейдите в "Clients" -> "Create client"
+     "Client type" оставьте без изменений (OpenID Connect), укажите "Client ID" (swsm), "Name" (swsm), "Description" (swsm) -> "Next" ->
+     поставьте галочки "Authentication flow" и "Direct access grants" -> "Next" -> Введите "Root URL" (http://127.0.0.1:3000/),
+     "Valid redirect URIs" (http://127.0.0.1:3000/*) и "Web origins" (http://127.0.0.1:3000). В данном случае порт 3000 - это порт фронтэнда.
+     Нажмите кнопку "Save". Во вкладке "Client scopes" войдите в "swsm-dedicated" -> "Mappers" -> "Configure a new mapper" -> "Audience". 
+     Введите "Name" и выберите в "Included Client Audience" название вашего realm-а.
 
 4. Создайте в корне файл `.env.development` и заполните своими данными (пример дан в env_example):
     <details>
@@ -420,7 +437,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     
       auth:
         container_name: auth
-        image: quay.io/keycloak/keycloak:26.5.6
+        image: quay.io/phasetwo/phasetwo-keycloak:26.5.0
         restart: unless-stopped
         ports:
           - "8081:8080"
@@ -498,40 +515,51 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
       Email и поставить переключатель Email verified. Далее в созданном аккаунте перейти в "Role mapping" ->
       "Assign role" -> "Realm roles" -> "realm-admin" -> "Assign".
 
-    - Создайте realm, т.е "область" для проекта, где будут расположены его настройки и пользователи:
-      "Manage realms" -> "Create realm" -> Укажите "Realm name" (swsm) -> "Create".
-      Создастся realm с именем "swsm". Перейдите в "Realm settings", укажите "Realm name" (swsm), "Display name" (swsm),
-      "HTML Display name" (swsm), на вкладке "Login" включите переключатели "User registration", "Forgot password",
-      "Remember me", "Login with email", "Verify email". На вкладке "Email" введите настройки своего почтового сервера или транспорта.
-      На вкладке "Localization" при желании включите переключатель "Internationalization", добавьте необходимую
-      локализацию в "Supported locales" и выберите "Default locale".
+   - Зайдите в "Realm settings" -> "Themes" -> "Admin theme" и выберите тему "phasetwo.v2", без этой манипуляции ни в одном из
+     созданных realm'ов не появятся в дальнейшем нужные пункты меню ("Attributes")
 
-    - Создайте клиента, через который SWSM будет подключаться к Keycloak. Для этого перейдите в "Clients" -> "Create client"
-      "Client type" оставьте без изменений (OpenID Connect), укажите "Client ID" (swsm), "Name" (swsm), "Description" (swsm) -> "Next" ->
-      поставьте галочки "Authentication flow" и "Direct access grants" -> "Next" -> Введите "Root URL" (https://swsm.example.com),
-      "Valid redirect URIs" (https://swsm.example.ru/ и https://swsm.example.ru/*) и "Web origins" (https://swsm.example.com).
-      Нажмите кнопку "Save". Во вкладке "Client scopes" войдите в "swsm-dedicated" -> "Mappers" -> "Configure a new mapper" -> "Audience".
-      Введите "Name" и выберите в "Included Client Audience" название вашего realm-а.
+   - Создайте realm, т.е "область" для проекта, где будут расположены его настройки и пользователи:
+     "Manage realms" -> "Create realm" -> Укажите "Realm name" (swsm) -> "Create".
+     Создастся realm с именем "swsm". Перейдите в "Realm settings", укажите "Realm name" (swsm), "Display name" (swsm),
+     "HTML Display name" (swsm), на вкладке "Login" включите переключатели "User registration", "Forgot password",
+     "Remember me", "Login with email", "Verify email". На вкладке "Email" введите настройки своего почтового сервера или транспорта.
+     На вкладке "Localization" при желании включите переключатель "Internationalization", добавьте необходимую
+     локализацию в "Supported locales" и выберите "Default locale".
+
+   - **ВАЖНО!** В созданном realm (swsm) зайдите "Realm settings" -> "Themes" -> "Admin theme" и выберите тему "phasetwo.v2", перезагрузите страницу, на текущей странице
+     станет доступна вкладка "Attributes", зайдите в ее, в поле "Key" выставите __providerConfig.ext-event-http.0_,
+     в поле "Value" выставите _{"targetUri":"https://swsm.example.ru/keycloak-events","retry":true,"backoffInitialInterval":500}_
+
+   - **ВАЖНО!** Во вкладке "Events" -> "Event listeners" добавьте "ext-event-http" и нажмите "Save". В "User events settings" включите "Save events" и выберите как минимум "Register", "Register error",
+     "Delete account", "Delete account error".
+     В "Admin events settings" включите "Save events" и "Include representation".    
+
+   - Создайте клиента, через который SWSM будет подключаться к Keycloak. Для этого перейдите в "Clients" -> "Create client"
+     "Client type" оставьте без изменений (OpenID Connect), укажите "Client ID" (swsm), "Name" (swsm), "Description" (swsm) -> "Next" ->
+     поставьте галочки "Authentication flow" и "Direct access grants" -> "Next" -> Введите "Root URL" (https://swsm.example.com),
+     "Valid redirect URIs" (https://swsm.example.ru/ и https://swsm.example.ru/*) и "Web origins" (https://swsm.example.com).
+     Нажмите кнопку "Save". Во вкладке "Client scopes" войдите в "swsm-dedicated" -> "Mappers" -> "Configure a new mapper" -> "Audience".
+     Введите "Name" и выберите в "Included Client Audience" название вашего realm-а.
    
-    - В дальнейшем настройки Keycloak можно будет экспортировать и добавить их импорт в настройки контейнера с Keycloak, чтобы 
-      в будущем разворачивать проект и не тратить время на настройки. Я намеренно не стал этого делать, т.к.
-      при экспорте настроек экспортируются и приватный RSA-ключ, HMAC-секрет, приватный RSA-ключ для шифрования, AES-секрет и т.д.
-      Делать шаблон для автогенерации из какой-либо одной конфигурации было бы небезопасно и безответственно.
+   - В дальнейшем настройки Keycloak можно будет экспортировать и добавить их импорт в настройки контейнера с Keycloak, чтобы 
+     в будущем разворачивать проект и не тратить время на настройки. Я намеренно не стал этого делать, т.к.
+     при экспорте настроек экспортируются и приватный RSA-ключ, HMAC-секрет, приватный RSA-ключ для шифрования, AES-секрет и т.д.
+     Делать шаблон для автогенерации из какой-либо одной конфигурации было бы небезопасно и безответственно.
       
-      Экспорт конфигурации можно сделать из консоли контейнера:
-      ```bash
+     Экспорт конфигурации можно сделать из консоли контейнера:
+     ```bash
       cd opt/keycloak
       bin/kc.sh export --dir temp/exports/swsm --realm swsm --users realm_file
-      ```
-      Более подробно про экспорт и импорт можно почитать в официальной документации Keycloak (https://www.keycloak.org/server/importExport)  
-      Контейнер с заранее подготовленной конфигурацией для импорта при запуске будет выглядеть так:
-      <details>
-         <summary>Показать пример</summary>
+     ```
+     Более подробно про экспорт и импорт можно почитать в официальной документации Keycloak (https://www.keycloak.org/server/importExport)  
+     Контейнер с заранее подготовленной конфигурацией для импорта при запуске будет выглядеть так:
+     <details>
+        <summary>Показать пример</summary>
 
          ```yaml
          auth:
            container_name: auth
-           image: quay.io/keycloak/keycloak:26.5.6
+           image: quay.io/phasetwo/phasetwo-keycloak:26.5.0
            restart: unless-stopped
            ports:
              - "8081:8080"

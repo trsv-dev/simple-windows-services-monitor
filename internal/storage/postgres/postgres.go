@@ -537,9 +537,9 @@ func (pg *PgStorage) CreateUser(ctx context.Context, user *models.User) error {
 	var pgErr *pgconn.PgError
 	if err != nil {
 		switch {
-		// если ошибка говорит о дубликате логина - выходим из функции и возвращаем ошибку
+		// если ошибка говорит о дубликате пользователя - выходим из функции и возвращаем ошибку
 		case errors.As(err, &pgErr) && pgErr.Code == "23505":
-			err = errs.NewErrLoginIsTaken(user.Login, err)
+			err = errs.NewErrUserAlreadyExists(user.ID, err)
 			logger.Log.Error("Пользователь существует", logger.String("err", err.Error()))
 			return err
 		default:

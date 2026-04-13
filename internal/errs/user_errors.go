@@ -2,24 +2,24 @@ package errs
 
 import "fmt"
 
-// ErrLoginIsTaken Кастомная ошибка, сообщающая, что логин уже был занят.
-type ErrLoginIsTaken struct {
-	Login string
-	Err   error
+// ErrUserAlreadyExists Кастомная ошибка, сообщающая, что пользователь уже существует.
+type ErrUserAlreadyExists struct {
+	ID  string
+	Err error
 }
 
-func (lt *ErrLoginIsTaken) Error() string {
-	return fmt.Sprintf("Пользователь с логином `%s` уже существует. Ошибка: %v", lt.Login, lt.Err)
+func (e *ErrUserAlreadyExists) Error() string {
+	return fmt.Sprintf("Пользователь `%s` уже существует. Ошибка: %v", e.ID, e.Err)
 }
 
-func (lt *ErrLoginIsTaken) Unwrap() error {
-	return lt.Err
+func (e *ErrUserAlreadyExists) Unwrap() error {
+	return e.Err
 }
 
-func NewErrLoginIsTaken(login string, err error) *ErrLoginIsTaken {
-	return &ErrLoginIsTaken{
-		Login: login,
-		Err:   err,
+func NewErrUserAlreadyExists(id string, err error) *ErrUserAlreadyExists {
+	return &ErrUserAlreadyExists{
+		ID:  id,
+		Err: err,
 	}
 }
 
