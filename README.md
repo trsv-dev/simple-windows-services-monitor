@@ -455,7 +455,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
           KC_DB_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
           KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
           KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-        command: ["start", "--optimized"]
+        command: ["start", "--optimized", "--spi-events-listener-ext-event-http-enabled=true"]
         depends_on:
           auth_db:
             condition: service_healthy
@@ -577,7 +577,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
              KC_DB_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
              KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
              KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-           command: ["start", "--import-realm"] # Добавляем "--import-realm"
+           command: ["start", "--optimized", "--spi-events-listener-ext-event-http-enabled=true", "--import-realm"] # Добавляем "--import-realm"
            depends_on:
              auth_db:
                condition: service_healthy

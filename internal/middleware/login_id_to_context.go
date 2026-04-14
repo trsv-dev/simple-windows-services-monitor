@@ -44,7 +44,7 @@ func LoginIDToContextMiddleware(authProvider auth.AuthProvider) func(http.Handle
 			claims, err := authProvider.ValidateToken(r.Context(), token)
 			if err != nil {
 				// если не удалось извлечь логин - ошибка сервера
-				logger.Log.Error("Ошибка идентификации пользователя", logger.String("err", err.Error()))
+				logger.Log.Debug("Ошибка идентификации пользователя", logger.String("err", err.Error()))
 				response.ErrorJSON(w, http.StatusUnauthorized, "Пользователь не аутентифицирован")
 				return
 			}

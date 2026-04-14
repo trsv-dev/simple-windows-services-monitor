@@ -182,6 +182,27 @@ document.addEventListener('DOMContentLoaded', async function() {
         keycloak.updateToken(30).then(refreshed => {
             if (refreshed) {
                 syncSessionCookie(); // обновляем куку с новым токеном
+                // Пересоздаём SSE-соединения, если не в мобильном режиме
+                if (!isMobileDevice()) {
+                    // Серверы
+                    if (serverEventsSource) {
+                        serverEventsSource.close();
+                        serverEventsSource = null;
+                    }
+                    subscribeServerEvents();
+                    // Службы
+                    if (currentServerId) {
+                        if (serviceEventsSource) {
+                            serviceEventsSource.close();
+                            serviceEventsSource = null;
+                        }
+                        subscribeServiceEvents(currentServerId);
+                    }
+                } else {
+                    // На мобильных – перезапускаем polling
+                    if (currentServerId) startServicePolling(currentServerId);
+                    startServerPolling();
+                }
             }
         }).catch(() => {
             console.warn('Failed to refresh token');
@@ -189,6 +210,17 @@ document.addEventListener('DOMContentLoaded', async function() {
             keycloak.login();
         });
     };
+    // keycloak.onTokenExpired = () => {
+    //     keycloak.updateToken(30).then(refreshed => {
+    //         if (refreshed) {
+    //             syncSessionCookie(); // обновляем куку с новым токеном
+    //         }
+    //     }).catch(() => {
+    //         console.warn('Failed to refresh token');
+    //         showToast('Сессия истекла', 'Пожалуйста, войдите снова', 'warning');
+    //         keycloak.login();
+    //     });
+    // };
 
     try {
         const authenticated = await keycloak.init({
@@ -270,6 +302,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 loadServersList();
             }
         } else {
+            currentUser = null;
+            localStorage.removeItem('swsm_user');
             showLoginPage();
         }
     } catch (error) {
@@ -317,6 +351,13 @@ function canPerformAction(actionName) {
 
     REQUEST_RATE_LIMIT.set(actionName, now);
     return true;
+}
+
+function isTokenExpired() {
+    if (!keycloak || !keycloak.tokenParsed) return true;
+    const now = Math.floor(Date.now() / 1000);
+    const exp = keycloak.tokenParsed.exp;
+    return exp <= now;
 }
 
 function isMobileDevice() {
@@ -593,6 +634,10 @@ async function apiRequest(endpoint, options = {}) {
                     if (!window._sessionExpiredNotified) {
                         window._sessionExpiredNotified = true;
                         cleanupOnLogout();
+
+                        currentUser = null;
+                        localStorage.removeItem('swsm_user');
+
                         showToast('Сессия истекла', 'Пожалуйста, авторизуйтесь снова.', 'warning');
                         showLoginPage();
                     }
@@ -648,6 +693,13 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================
 
 function subscribeServiceEvents(serverId) {
+    // Если токен истёк – используем polling
+    if (isTokenExpired()) {
+        console.warn('[SSE] Token expired, using polling for services');
+        startServicePolling(serverId);
+        return;
+    }
+
     // Использование полинга для мобильных устройств
     if (isMobileDevice()) {
         startServicePolling(serverId);
@@ -740,6 +792,14 @@ function subscribeServiceEvents(serverId) {
 }
 
 function subscribeServerEvents() {
+    if (!currentUser || !keycloak?.authenticated) return;
+
+    if (isTokenExpired()) {
+        console.warn('[SSE] Token expired, using polling for servers');
+        startServerPolling();
+        return;
+    }
+
     if (isMobileDevice()) {
         startServerPolling();
         return;
@@ -2295,35 +2355,34 @@ let lastResumeTime = 0;
 
 function handlePageResume() {
     const now = Date.now();
-    if (now - lastResumeTime < 300) return; // Уменьшено с 1000 до 300мс
+    if (now - lastResumeTime < 300) return;
     lastResumeTime = now;
 
-    if (!currentUser || !currentServerId || document.hidden) {
+    // Если пользователь не залогинен или сессия потеряна — ничего не делаем
+    if (!currentUser || !keycloak?.authenticated || document.hidden) {
         return;
     }
 
-    switchConnectionsMode();
+    // Всегда переподключаемся к серверам (даже если currentServerId === null)
+    subscribeServerEvents();
 
-    // Для мобильных устройств - немедленно обновляем данные
-    if (isMobileDevice()) {
-        // Немедленный запрос актуальных данных
-        loadServicesList(currentServerId, true).catch(err => {
-            console.warn('Ошибка при обновлении данных:', err);
-        });
+    // Для служб проверяем, выбран ли сервер
+    if (currentServerId) {
+        switchConnectionsMode();
 
-        // Запускаем поллинг (включая немедленный запрос)
-        if (!servicePollingInterval) {
-            startServicePolling(currentServerId);
-        }
-    } else {
-        // Для десктопа - обычная логика
-        if (!serviceEventsSource || serviceEventsSource.readyState === EventSource.CLOSED) {
-            subscribeServiceEvents(currentServerId);
+        if (isMobileDevice()) {
+            loadServicesList(currentServerId, true).catch(err => {
+                console.warn('Ошибка при обновлении данных:', err);
+            });
+            if (!servicePollingInterval) {
+                startServicePolling(currentServerId);
+            }
+        } else {
+            if (!serviceEventsSource || serviceEventsSource.readyState === EventSource.CLOSED) {
+                subscribeServiceEvents(currentServerId);
+            }
         }
     }
-
-    // Всегда переподключаемся к серверам
-    subscribeServerEvents();
 }
 
 // ============================================
@@ -2344,6 +2403,10 @@ function showLoginPage() {
     // Очистка состояния
     localStorage.removeItem('swsm_current_server_id');
     currentServerId = null;
+    window._sessionExpiredNotified = false;
+
+    currentUser = null;
+    localStorage.removeItem('swsm_user');
     window._sessionExpiredNotified = false;
 
     // Остановка всех соединений
@@ -2387,6 +2450,19 @@ function showServersList() {
     sseReconnectAttempts = 0;
     serversCurrentPage = 1;
     serversTotalPages = 1;
+
+    // Закрываем SSE для служб, так как больше не нужен
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) {}
+        serviceEventsSource = null;
+        sseConnectionStatus = 'closed';
+        sseReconnectAttempts = 0;
+    }
+    if (sseReconnectTimerId) {
+        try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(sseReconnectTimerId);
+        sseReconnectTimerId = null;
+    }
 
     // Остановка полинга служб
     stopServicePolling();
