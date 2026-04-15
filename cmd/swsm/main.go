@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/config"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/di_containers"
@@ -67,7 +67,17 @@ func main() {
 	var handlersStorage storage.Storage = pgStorage
 	var workersStorage storage.WorkerStorage = pgStorage
 
-	tokenBuilder := auth.NewJWTTokenBuilder()
+	authAdapter, err := keycloak.NewKeycloakAdapter(context.Background(), keycloak.KeycloakConfig{
+		IssuerURL:       srvConfig.KeycloakBaseURL + "/realms/" + srvConfig.KeycloakRealmName,
+		ClientID:        srvConfig.KeycloakClientID,
+		SkipIssuerCheck: srvConfig.SkipIssuerCheck,
+	})
+
+	if err != nil {
+		logger.Log.Warn("Не удалось инициализировать адаптер Keycloak: %v", logger.String("err", err.Error()))
+		os.Exit(1)
+	}
+
 	var broadcaster broadcast.Broadcaster
 
 	if srvConfig.WebInterface {
@@ -77,7 +87,7 @@ func main() {
 		// Если планируется использовать только API без фронтенда - broadcaster можно убрать из зависимостей AppHandler.
 		// Инициализировав broadcaster в main далее он используется в ServiceBroadcastWorker.
 		broadcaster = broadcast.NewR3labsSSEAdapter(
-			broadcast.MakeJWTTopicResolver(srvConfig.JWTSecretKey, tokenBuilder),
+			broadcast.MakeTopicResolver(authAdapter),
 		)
 	} else {
 		broadcaster = broadcast.NewNoopAdapter(func(r *http.Request) (string, error) { return "noop", nil })
@@ -98,8 +108,9 @@ func main() {
 	netChecker := netutils.NewNetworkChecker()
 
 	// создаём handlersContainer — контейнер зависимостей для всех хендлеров,
-	// передаём в него хранилище, JWT ключ, SSE адаптер и инструмент проверки серверов по сети
-	handlersContainer := di_containers.NewHandlersContainer(handlersStorage, statusCache, srvConfig, broadcaster, tokenBuilder, netChecker)
+	// передаём в него хранилище, кеш статусов, конфиг сервера, провайдер аутентификации,
+	// SSE адаптер и инструмент проверки серверов по сети
+	handlersContainer := di_containers.NewHandlersContainer(handlersStorage, statusCache, srvConfig, broadcaster, authAdapter, netChecker)
 
 	// запуск HTTP-сервера,
 	// передаём готовый handlersContainer, содержащий все зависимости

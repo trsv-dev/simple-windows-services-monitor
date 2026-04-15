@@ -55,7 +55,7 @@ func (h *ControlHandler) ServiceStop(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -211,7 +211,7 @@ func (h *ControlHandler) ServiceStart(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -367,7 +367,7 @@ func (h *ControlHandler) ServiceRestart(w http.ResponseWriter, r *http.Request) 
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")

@@ -27,18 +27,18 @@ func NewErrDuplicatedServer(serverAddr string, err error) *ErrDuplicatedServer {
 type ErrServerNotFound struct {
 	Err      error
 	ServerID int64
-	UserID   int64
+	UserID   string
 }
 
 func (no *ErrServerNotFound) Error() string {
-	return fmt.Sprintf("Сервер id=%d не найден среди серверов пользователя id=%d. Ошибка: %s", no.ServerID, no.UserID, no.Err)
+	return fmt.Sprintf("Сервер id=%d не найден среди серверов пользователя id=%s. Ошибка: %s", no.ServerID, no.UserID, no.Err)
 }
 
 func (no *ErrServerNotFound) Unwrap() error {
 	return no.Err
 }
 
-func NewErrServerNotFound(serverID int64, userID int64, err error) *ErrServerNotFound {
+func NewErrServerNotFound(serverID int64, userID string, err error) *ErrServerNotFound {
 	if err == nil {
 		err = fmt.Errorf("сервер не найден")
 	}

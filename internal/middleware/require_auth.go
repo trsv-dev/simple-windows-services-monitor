@@ -8,12 +8,12 @@ import (
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 )
 
-// RequireAuthMiddleware проверяет наличие логина в контексте.
+// RequireAuthMiddleware проверяет наличие ID пользователя в контексте.
 func RequireAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		login, ok := r.Context().Value(contextkeys.Login).(string)
-		if !ok || login == "" {
-			logger.Log.Error("Не удалось получить логин из контекста")
+		userID, ok := r.Context().Value(contextkeys.UserID).(string)
+		if !ok || userID == "" {
+			logger.Log.Error("Не удалось получить ID пользователя из контекста")
 			response.ErrorJSON(w, http.StatusInternalServerError, "Ошибка сервера")
 			return
 		}

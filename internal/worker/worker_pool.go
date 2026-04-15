@@ -11,12 +11,14 @@ import (
 
 //go:generate mockgen -destination=mocks/worker_pool_mock.go -package=mocks . WorkerPool
 
+// WorkerPool Интерфейс пула воркеров.
 type WorkerPool interface {
 	Start(ctx context.Context)
 	Stop()
 	Submit(serverStatus *models.ServerStatus) bool
 }
 
+// StatusWorkerPool Пул воркеров.
 type StatusWorkerPool struct {
 	tasks      chan *models.ServerStatus
 	workerFunc func(ctx context.Context, serverStatus *models.ServerStatus)
@@ -25,6 +27,7 @@ type StatusWorkerPool struct {
 	closed     atomic.Bool
 }
 
+// NewStatusWorkerPool Конструктор пула воркеров.
 func NewStatusWorkerPool(poolSize int, workerFunc func(ctx context.Context, serverStatus *models.ServerStatus)) *StatusWorkerPool {
 	return &StatusWorkerPool{
 		tasks:      make(chan *models.ServerStatus, poolSize*20),
@@ -33,6 +36,7 @@ func NewStatusWorkerPool(poolSize int, workerFunc func(ctx context.Context, serv
 	}
 }
 
+// Start Метод Start пула воркеров.
 func (wp *StatusWorkerPool) Start(ctx context.Context) {
 	for i := 0; i < wp.poolSize; i++ {
 		wp.wg.Add(1)
@@ -40,6 +44,7 @@ func (wp *StatusWorkerPool) Start(ctx context.Context) {
 	}
 }
 
+// Stop Метод Stop пула воркеров.
 func (wp *StatusWorkerPool) Stop() {
 	// устанавливаем флаг до закрытия канала
 	wp.closed.Store(true)
@@ -47,6 +52,7 @@ func (wp *StatusWorkerPool) Stop() {
 	wp.wg.Wait()
 }
 
+// Submit Метод Submit пула воркеров.
 func (wp *StatusWorkerPool) Submit(server *models.ServerStatus) bool {
 	// проверяем, не закрыл ли уже канал (не вызван ли уже Stop())
 	if wp.closed.Load() {
@@ -62,6 +68,7 @@ func (wp *StatusWorkerPool) Submit(server *models.ServerStatus) bool {
 	}
 }
 
+// Экземпляр воркера, создаваемый в пуле воркеров.
 func (wp *StatusWorkerPool) worker(ctx context.Context, id int) {
 	defer wp.wg.Done()
 

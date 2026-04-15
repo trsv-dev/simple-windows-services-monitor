@@ -124,25 +124,190 @@ const serversList = document.getElementById('serversList');
 const servicesList = document.getElementById('servicesList');
 
 // ============================================
+// KEYCLOAK CONFIGURATION
+// ============================================
+
+let keycloak = null;
+
+// Синхронизация httpOnly куки с текущим токеном
+async function syncSessionCookie(retryCount = 0, maxRetries = 3) {
+    if (!keycloak || !keycloak.token) return false;
+
+    try {
+        const response = await fetch(`${API_BASE}/user/session`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${keycloak.token}`
+            },
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        console.log('Session cookie synced');
+        return true;
+
+    } catch (err) {
+        console.warn(`Error syncing session cookie (attempt ${retryCount + 1}/${maxRetries}):`, err);
+
+        if (retryCount < maxRetries - 1) {
+            const delay = (retryCount + 1) * 1000; // 1s, 2s, 3s
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return syncSessionCookie(retryCount + 1, maxRetries);
+        }
+
+        showToast(
+            'Предупреждение',
+            'Не удалось установить сессионную cookie. Возможны проблемы с обновлениями в реальном времени.',
+            'warning'
+        );
+        return false;
+    }
+}
+
+// ============================================
 // INITIALIZATION
 // ============================================
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     initTheme();
 
-    if (currentUser) {
-        showMainApp();
+    // Инициализация Keycloak
+    keycloak = new Keycloak(KEYCLOAK_CONFIG);
 
-        // Всегда подписываемся на события серверов
-        subscribeServerEvents();
+    // при истечении токена обновляем его и синхронизируем куку
+    keycloak.onTokenExpired = () => {
+        keycloak.updateToken(30).then(refreshed => {
+            if (refreshed) {
+                syncSessionCookie(); // обновляем куку с новым токеном
+                // Пересоздаём SSE-соединения, если не в мобильном режиме
+                if (!isMobileDevice()) {
+                    // Серверы
+                    if (serverEventsSource) {
+                        serverEventsSource.close();
+                        serverEventsSource = null;
+                    }
+                    subscribeServerEvents();
+                    // Службы
+                    if (currentServerId) {
+                        if (serviceEventsSource) {
+                            serviceEventsSource.close();
+                            serviceEventsSource = null;
+                        }
+                        subscribeServiceEvents(currentServerId);
+                    }
+                } else {
+                    // На мобильных – перезапускаем polling
+                    if (currentServerId) startServicePolling(currentServerId);
+                    startServerPolling();
+                }
+            }
+        }).catch(() => {
+            console.warn('Failed to refresh token');
+            showToast('Сессия истекла', 'Пожалуйста, войдите снова', 'warning');
+            keycloak.login();
+        });
+    };
+    // keycloak.onTokenExpired = () => {
+    //     keycloak.updateToken(30).then(refreshed => {
+    //         if (refreshed) {
+    //             syncSessionCookie(); // обновляем куку с новым токеном
+    //         }
+    //     }).catch(() => {
+    //         console.warn('Failed to refresh token');
+    //         showToast('Сессия истекла', 'Пожалуйста, войдите снова', 'warning');
+    //         keycloak.login();
+    //     });
+    // };
 
-        if (currentServerId) {
-            currentServerId = parseInt(currentServerId);
-            showServerDetail(currentServerId);
+    try {
+        const authenticated = await keycloak.init({
+            onLoad: 'check-sso',
+            pkceMethod: 'S256',
+            checkLoginIframe: true,
+            checkLoginIframeInterval: 5
+        });
+
+        console.log('[Keycloak] Authenticated:', authenticated);
+        console.log('[Keycloak] Token:', keycloak.token ? 'Present' : 'Missing');
+        console.log('[Keycloak] Token expires in:', keycloak.tokenParsed?.exp);
+
+        if (authenticated) {
+            // Извлекаем информацию о пользователе из токена
+            const tokenParsed = keycloak.tokenParsed;
+            currentUser = tokenParsed?.preferred_username ||
+                tokenParsed?.email ||
+                tokenParsed?.name ||
+                'user';
+
+            localStorage.setItem('swsm_user', currentUser);
+
+            // Ссылка на профиль в Keycloak
+            const profileUrl = `${KEYCLOAK_CONFIG.url}/realms/${KEYCLOAK_CONFIG.realm}/account/`;
+
+            // Иконка пользователя (всегда видна, везде одинаковая)
+            const userProfileLink = document.getElementById('userProfileLink');
+            if (userProfileLink) {
+                userProfileLink.href = profileUrl;
+                userProfileLink.title = `Профиль: ${currentUser}`;  // Tooltip при наведении
+            }
+
+            if (tokenParsed?.sub) {
+                localStorage.setItem('swsm_user_id', tokenParsed.sub);
+            }
+
+            // Синхронизируем куку (с ретраями)
+            const cookieSynced = await syncSessionCookie();
+            if (!cookieSynced) {
+                console.warn('Session cookie sync failed – SSE might not work');
+                // Тост уже показывается внутри syncSessionCookie при провале
+            }
+
+            showMainApp();
+            subscribeServerEvents();
+
+            // Восстановление состояния при перезагрузке
+            const savedServerId = localStorage.getItem('swsm_current_server_id');
+
+            if (savedServerId && !isNaN(parseInt(savedServerId, 10))) {
+                const targetId = parseInt(savedServerId, 10);
+                console.log('[Init] Восстановление сессии для сервера ID:', targetId);
+
+                // 1. Сразу переключаем вид, чтобы не было мигания
+                if (serversListView) serversListView.classList.add('hidden');
+                if (serverDetailView) serverDetailView.classList.remove('hidden');
+
+                // 2. Загружаем список серверов (этот эндпоинт у вас точно работает)
+                try {
+                    await loadServersList();
+
+                    // 3. Ищем сохранённый сервер в обновлённом кэше
+                    const server = allServers.find(s => Number(s.id || s.server_id) === targetId);
+
+                    if (server) {
+                        // Кэш заполнен, showServerDetail возьмёт сервер из него и НЕ будет делать проблемный запрос
+                        showServerDetail(server.id);
+                    } else {
+                        console.warn('[Init] Сервер не найден в списке, сбрасываем');
+                        localStorage.removeItem('swsm_current_server_id');
+                        showServersList();
+                    }
+                } catch (err) {
+                    console.error('[Init] Ошибка восстановления:', err);
+                    showServersList();
+                }
+            } else {
+                loadServersList();
+            }
         } else {
-            loadServersList();
+            currentUser = null;
+            localStorage.removeItem('swsm_user');
+            showLoginPage();
         }
-    } else {
+    } catch (error) {
+        console.error('[Keycloak] Init error:', error);
         showLoginPage();
     }
 
@@ -188,6 +353,13 @@ function canPerformAction(actionName) {
     return true;
 }
 
+function isTokenExpired() {
+    if (!keycloak || !keycloak.tokenParsed) return true;
+    const now = Math.floor(Date.now() / 1000);
+    const exp = keycloak.tokenParsed.exp;
+    return exp <= now;
+}
+
 function isMobileDevice() {
     // Проверяем и User Agent, и ширину окна для более точного определения
     const isMobileByUA = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -204,7 +376,6 @@ function getPageSize() {
     return cachedPageSize;
 }
 
-// 111111111111111111
 function switchConnectionsMode() {
     if (!currentUser) return;
 
@@ -238,41 +409,6 @@ function switchConnectionsMode() {
         subscribeServiceEvents(currentServerId);
     }
 }
-// function switchConnectionsMode() {
-//     if (!currentUser) return;
-//
-//     // Фиксируем текущий режим (мобильный или десктопный)
-//     const isMobileView = window.innerWidth < 768;
-//     const wasMobileView = lastWindowWidth < 768;
-//
-//     // Переключаем только если режим изменился
-//     if (isMobileView !== wasMobileView) {
-//         console.log('Режим изменился с', wasMobileView ? 'мобильного' : 'десктопного', 'на', isMobileView ? 'мобильный' : 'десктопный');
-//
-//         // Закрываем все текущие соединения для служб
-//         if (serviceEventsSource) {
-//             try { serviceEventsSource.close(); } catch (e) { /* noop */ }
-//             serviceEventsSource = null;
-//         }
-//         stopServicePolling();
-//
-//         // Закрываем все текущие соединения для серверов
-//         if (serverEventsSource) {
-//             try { serverEventsSource.close(); } catch (e) { /* noop */ }
-//             serverEventsSource = null;
-//         }
-//         stopServerPolling();
-//
-//         // Перезаписываем lastWindowWidth после изменения
-//         lastWindowWidth = window.innerWidth;
-//
-//         // Переподключаемся в зависимости от текущего режима
-//         subscribeServerEvents();
-//         if (currentServerId) {
-//             subscribeServiceEvents(currentServerId);
-//         }
-//     }
-// }
 
 function getMinItemsForPagination(type) {
     const isMobile = window.innerWidth < 768;
@@ -295,9 +431,6 @@ function getServerStatusClass(status) {
     }
 }
 
-// named resize handler so we can reason about it
-// 2222222222222222222222
-
 function onWindowResize() {
     cachedPageSize = null;
 
@@ -315,20 +448,6 @@ function onWindowResize() {
 
     AppTimers.addTimeout(resizeDebounceTimer);
 }
-
-// function onWindowResize() {
-//     cachedPageSize = null;
-//
-//     // Добавляем дебаунсинг для переключения режима
-//     if (resizeDebounceTimer) {
-//         clearTimeout(resizeDebounceTimer);
-//     }
-//     resizeDebounceTimer = setTimeout(switchConnectionsMode, 300);
-// }
-
-// function onWindowResize() {
-//     cachedPageSize = null;
-// }
 
 window.addEventListener('resize', onWindowResize);
 
@@ -439,7 +558,7 @@ function updateThemeButton() {
             themeBtn.title = 'Переключиться на светлый режим';
             themeBtn.className = 'btn me-2';
         } else {
-            themeBtn.innerHTML = '🌚';
+            themeBtn.innerHTML = '🌙';
             themeBtn.title = 'Переключиться на тёмный режим';
             themeBtn.className = 'btn me-2';
         }
@@ -457,15 +576,42 @@ class SessionExpiredError extends Error {
     }
 }
 
+// ============================================
+// API REQUEST WITH KEYCLOAK AUTHENTICATION
+// ============================================
+
 async function apiRequest(endpoint, options = {}) {
+    // Если Keycloak инициализирован, обновляем токен (если скоро истечёт)
+    if (keycloak) {
+        try {
+            // пытаемся обновить токен, если он истекает в ближайшие 30 секунд
+            await keycloak.updateToken(30);
+        } catch (error) {
+            // Обновить токен не удалось – сессия завершена
+            console.error('Не удалось обновить токен Keycloak:', error);
+            showToast('Сессия истекла', 'Пожалуйста, войдите снова', 'warning');
+            keycloak.login(); // перенаправляем на страницу входа Keycloak
+            throw new Error('Token refresh failed');
+        }
+    }
+
     const url = `${API_BASE}${endpoint}`;
+
+    // Формируем заголовки: добавляем Content-Type и, если есть токен, Authorization
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+
+    if (keycloak && keycloak.token) {
+        headers['Authorization'] = `Bearer ${keycloak.token}`;
+    }
 
     const config = {
         method: options.method || 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        },
+        headers,
+        // credentials: 'include' больше не нужен, если сессия не поддерживается куками
+        // можно оставить или убрать в зависимости от бэкенда
         credentials: 'include',
         cache: options.cache || 'default',
         ...options
@@ -474,45 +620,42 @@ async function apiRequest(endpoint, options = {}) {
     try {
         const response = await fetch(url, config);
 
+        // Если сервер вернул 401, пробуем обновить токен и повторить запрос один раз
         if (response.status === 401) {
+            // Если Keycloak есть и мы ещё не пробовали обновить в этом вызове
+            if (keycloak && !options._retry) {
+                try {
+                    await keycloak.updateToken(30);
+                    // Повторяем запрос с флагом _retry, чтобы избежать бесконечного цикла
+                    return apiRequest(endpoint, { ...options, _retry: true });
+                } catch (refreshError) {
+                    // Обновить токен не удалось – сессия истекла
+                    console.warn('Не удалось обновить токен после 401');
+                    if (!window._sessionExpiredNotified) {
+                        window._sessionExpiredNotified = true;
+                        cleanupOnLogout();
 
-            // Для endpoint логина НЕ показываем "сессия истекла"
-            const isLoginEndpoint = endpoint.includes('/user/login');
+                        currentUser = null;
+                        localStorage.removeItem('swsm_user');
 
-            if (!isLoginEndpoint) {
-                if (!window._sessionExpiredNotified) {
-                    window._sessionExpiredNotified = true;
-
-                    // не удаляем слушатели форм, лишь очищаем состояние и таймеры
-                    cleanupOnLogout();
-
-                    localStorage.removeItem('swsm_user');
-                    localStorage.removeItem('swsm_current_server_id');
-                    currentUser = null;
-                    currentServerId = null;
-                    currentServerData = null;
-                    allServices = [];
-                    currentPage = 1;
-                    allServers = [];
-                    serversCurrentPage = 1;
-
-                    if (serviceEventsSource) {
-                        try {
-                            serviceEventsSource.close();
-                        } catch (e) {
-                        }
-                        serviceEventsSource = null;
+                        showToast('Сессия истекла', 'Пожалуйста, авторизуйтесь снова.', 'warning');
+                        showLoginPage();
                     }
-
-                    stopServicePolling();
-
-                    showToast('Сессия истекла', 'Ваша сессия истекла. Пожалуйста, авторизуйтесь снова.', 'warning');
-                    showLoginPage();
+                    throw new SessionExpiredError('Session expired');
                 }
-                throw new SessionExpiredError('Session expired');
             }
+
+            // Если повтор уже был или Keycloak отсутствует – обычная обработка 401
+            if (!window._sessionExpiredNotified) {
+                window._sessionExpiredNotified = true;
+                cleanupOnLogout();
+                showToast('Сессия истекла', 'Пожалуйста, авторизуйтесь снова.', 'warning');
+                showLoginPage();
+            }
+            throw new SessionExpiredError('Session expired');
         }
 
+        // Обработка успешного ответа (как раньше)
         let data;
         const contentType = response.headers.get('Content-Type');
         if (contentType && contentType.includes('application/json')) {
@@ -550,6 +693,13 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================
 
 function subscribeServiceEvents(serverId) {
+    // Если токен истёк – используем polling
+    if (isTokenExpired()) {
+        console.warn('[SSE] Token expired, using polling for services');
+        startServicePolling(serverId);
+        return;
+    }
+
     // Использование полинга для мобильных устройств
     if (isMobileDevice()) {
         startServicePolling(serverId);
@@ -642,6 +792,14 @@ function subscribeServiceEvents(serverId) {
 }
 
 function subscribeServerEvents() {
+    if (!currentUser || !keycloak?.authenticated) return;
+
+    if (isTokenExpired()) {
+        console.warn('[SSE] Token expired, using polling for servers');
+        startServerPolling();
+        return;
+    }
+
     if (isMobileDevice()) {
         startServerPolling();
         return;
@@ -996,55 +1154,6 @@ async function handleLogin(event) {
     }
 }
 
-async function handleRegister(event) {
-    event.preventDefault();
-
-    const username = document.getElementById('registerUsername').value.trim();
-    const password = document.getElementById('registerPassword').value;
-    const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
-    const registrationKey = document.getElementById('registrationKey').value.trim();
-
-    if (password !== passwordConfirm) {
-        showToast('Ошибка', 'Пароли не совпадают', 'error');
-        return;
-    }
-
-    if (username.length < 4) {
-        showToast('Ошибка', 'Логин должен содержать не менее 4 символов', 'error');
-        return;
-    }
-
-    if (password.length < 5) {
-        showToast('Ошибка', 'Пароль должен содержать не менее 5 символов', 'error');
-        return;
-    }
-
-    showLoading();
-
-    try {
-        await apiRequest('/user/register', {
-            method: 'POST',
-            body: JSON.stringify({
-                login: username,
-                password: password,
-                registration_key: registrationKey,
-            }),
-        });
-
-        const modal = bootstrap.Modal.getInstance(document.getElementById('registerModal'));
-        modal.hide();
-        document.getElementById('registerForm').reset();
-
-        showToast('Успех', 'Регистрация прошла успешно! Теперь авторизуйтесь.');
-
-    } catch (error) {
-        showToast('Ошибка', error.message, 'error');
-    } finally {
-        hideLoading();
-    }
-}
-
-// 333333333333333333333333
 function cleanupOnLogout() {
     // Закрываем SSE, останавливаем поллинг, очищаем таймеры
     if (serviceEventsSource) {
@@ -1081,37 +1190,19 @@ function cleanupOnLogout() {
     // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
 }
 
-// function cleanupOnLogout() {
-//     // Закрываем SSE, останавливаем поллинг, очищаем таймеры
-//     if (serviceEventsSource) {
-//         try { serviceEventsSource.close(); } catch (e) {}
-//         serviceEventsSource = null;
-//     }
-//
-//     if (serverSseReconnectTimerId) {
-//         try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
-//         AppTimers.timeouts.delete(serverSseReconnectTimerId);
-//         serverSseReconnectTimerId = null;
-//     }
-//
-//     if (serverEventsSource) {
-//         // ОБНУЛЯЕМ обработчики перед закрытием
-//         serverEventsSource.onopen = null;
-//         serverEventsSource.onmessage = null;
-//         serverEventsSource.onerror = null;
-//         try { serverEventsSource.close(); } catch (e) {}
-//         serverEventsSource = null;
-//     }
-//
-//     stopServicePolling();
-//     stopServerPolling();
-//     AppTimers.clearAll();
-//
-//     // не очищаем DOM-слушатели для логина/регистрации (чтобы форма работала)
-// }
-
 function handleLogout() {
     // Cleanup runtime resources
+    if (keycloak) {
+        keycloak.logout({
+            redirectUri: window.location.origin
+        });
+    } else {
+        // fallback
+        cleanupOnLogout();
+        localStorage.clear(); // осторожно, может удалить тему и пагинацию, лучше выборочно
+        window.location.reload();
+    }
+
     cleanupOnLogout();
 
     localStorage.removeItem('swsm_user');
@@ -1128,9 +1219,6 @@ function handleLogout() {
     window._sessionExpiredNotified = false;
 
     document.documentElement.removeAttribute('data-user-logged-in');
-
-    showLoginPage();
-    showToast('Информация', 'Вы вышли из системы');
 }
 
 // ============================================
@@ -1252,13 +1340,6 @@ function renderServersList(servers) {
         statusSpan.setAttribute('data-status', (server.status).toUpperCase());
         status.appendChild(statusSpan);
 
-        // const status = document.createElement('small');
-        // status.className = 'text-muted d-block';
-        // status.innerHTML = `<i class="bi bi-hdd-network me-1"></i>`;
-        // const statusSpan = document.createElement('span');
-        // statusSpan.textContent = server.status;
-        // status.appendChild(statusSpan);
-
         const user = document.createElement('small');
         user.className = 'text-muted d-block';
         user.innerHTML = `<i class="bi bi-person me-1"></i>`;
@@ -1337,31 +1418,6 @@ async function handleAddServer(event) {
         hideLoading();
     }
 }
-
-// async function loadServerDetail(serverId) {
-//     currentServerId = serverId;
-//     showLoading();
-//
-//     try {
-//         const server = await apiRequest(`/user/servers/${serverId}`);
-//         currentServerData = server;
-//         renderServerDetail(server);
-//         await loadServicesList(serverId);
-//
-//         const editBtn = document.getElementById('editServerBtn');
-//         if (editBtn) {
-//             editBtn.onclick = openEditServerModalFromDetail;
-//         }
-//
-//     } catch (error) {
-//         if (!(error instanceof SessionExpiredError)) {
-//             showToast('Ошибка', 'Не удалось загрузить информацию о сервере', 'error');
-//             showServersList();
-//         }
-//     } finally {
-//         hideLoading();
-//     }
-// }
 
 async function loadServerDetail(serverId) {
     currentServerId = serverId;
@@ -2151,9 +2207,6 @@ function setupEventListeners() {
     const loginForm = document.getElementById('loginForm');
     if (loginForm) loginForm.addEventListener('submit', handleLogin);
 
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) registerForm.addEventListener('submit', handleRegister);
-
     const addServerForm = document.getElementById('addServerForm');
     if (addServerForm) addServerForm.addEventListener('submit', handleAddServer);
 
@@ -2302,35 +2355,34 @@ let lastResumeTime = 0;
 
 function handlePageResume() {
     const now = Date.now();
-    if (now - lastResumeTime < 300) return; // Уменьшено с 1000 до 300мс
+    if (now - lastResumeTime < 300) return;
     lastResumeTime = now;
 
-    if (!currentUser || !currentServerId || document.hidden) {
+    // Если пользователь не залогинен или сессия потеряна — ничего не делаем
+    if (!currentUser || !keycloak?.authenticated || document.hidden) {
         return;
     }
 
-    switchConnectionsMode();
+    // Всегда переподключаемся к серверам (даже если currentServerId === null)
+    subscribeServerEvents();
 
-    // Для мобильных устройств - немедленно обновляем данные
-    if (isMobileDevice()) {
-        // Немедленный запрос актуальных данных
-        loadServicesList(currentServerId, true).catch(err => {
-            console.warn('Ошибка при обновлении данных:', err);
-        });
+    // Для служб проверяем, выбран ли сервер
+    if (currentServerId) {
+        switchConnectionsMode();
 
-        // Запускаем поллинг (включая немедленный запрос)
-        if (!servicePollingInterval) {
-            startServicePolling(currentServerId);
-        }
-    } else {
-        // Для десктопа - обычная логика
-        if (!serviceEventsSource || serviceEventsSource.readyState === EventSource.CLOSED) {
-            subscribeServiceEvents(currentServerId);
+        if (isMobileDevice()) {
+            loadServicesList(currentServerId, true).catch(err => {
+                console.warn('Ошибка при обновлении данных:', err);
+            });
+            if (!servicePollingInterval) {
+                startServicePolling(currentServerId);
+            }
+        } else {
+            if (!serviceEventsSource || serviceEventsSource.readyState === EventSource.CLOSED) {
+                subscribeServiceEvents(currentServerId);
+            }
         }
     }
-
-    // Всегда переподключаемся к серверам
-    subscribeServerEvents();
 }
 
 // ============================================
@@ -2340,34 +2392,44 @@ function handlePageResume() {
 function showLoginPage() {
     if (loginPage) {
         loginPage.classList.remove('hidden');
-        loginPage.style.display = '';  // Убрать inline display, использовать CSS классы
+        loginPage.style.display = ''; // показать
     }
     if (mainApp) {
         mainApp.classList.add('hidden');
-        mainApp.style.display = 'none';  // Явно скрыть
+        mainApp.style.display = 'none';
     }
-    // Удалить атрибут авторизации
     document.documentElement.removeAttribute('data-user-logged-in');
 
+    // Очистка состояния
     localStorage.removeItem('swsm_current_server_id');
     currentServerId = null;
     window._sessionExpiredNotified = false;
 
-    if (serviceEventsSource) {
-        try { serviceEventsSource.close(); } catch (e) {}
-        serviceEventsSource = null;
-    }
+    currentUser = null;
+    localStorage.removeItem('swsm_user');
+    window._sessionExpiredNotified = false;
+
+    // Остановка всех соединений
+    if (serviceEventsSource) serviceEventsSource.close();
     stopServicePolling();
+    if (serverEventsSource) serverEventsSource.close();
+    stopServerPolling();
+
+    // Установка обработчика на кнопку логина
+    const loginBtn = document.getElementById('keycloakLoginBtn');
+    if (loginBtn) {
+        loginBtn.onclick = () => keycloak.login();
+    }
 }
 
 function showMainApp() {
     if (loginPage) {
         loginPage.classList.add('hidden');
-        loginPage.style.display = 'none';  // Явно скрыть
+        loginPage.style.display = 'none';
     }
     if (mainApp) {
         mainApp.classList.remove('hidden');
-        mainApp.style.display = '';  // Убрать inline display, использовать CSS классы
+        mainApp.style.display = '';
     }
     if (currentUser && currentUserSpan) {
         currentUserSpan.textContent = currentUser;
@@ -2388,6 +2450,19 @@ function showServersList() {
     sseReconnectAttempts = 0;
     serversCurrentPage = 1;
     serversTotalPages = 1;
+
+    // Закрываем SSE для служб, так как больше не нужен
+    if (serviceEventsSource) {
+        try { serviceEventsSource.close(); } catch (e) {}
+        serviceEventsSource = null;
+        sseConnectionStatus = 'closed';
+        sseReconnectAttempts = 0;
+    }
+    if (sseReconnectTimerId) {
+        try { clearTimeout(sseReconnectTimerId); } catch (e) {}
+        AppTimers.timeouts.delete(sseReconnectTimerId);
+        sseReconnectTimerId = null;
+    }
 
     // Остановка полинга служб
     stopServicePolling();

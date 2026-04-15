@@ -4,13 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <!-- КРИТИЧЕСКИЙ CSS: блокируем рендеринг до готовности -->
+    <style>
+        body {
+            visibility: hidden;
+            opacity: 0;
+        }
+        body[data-app-ready="true"] {
+            visibility: visible;
+            opacity: 1;
+            transition: opacity 0.15s ease-in;
+        }
+    </style>
+
+    <!-- СИНХРОННАЯ ПРОВЕРКА ДО РЕНДЕРИНГА -->
     <script>
-        // Применить тему ДО рендеринга страницы
         (function() {
-            const isDarkMode = localStorage.getItem('swsm_dark_mode') === 'true';
-            if (isDarkMode) {
-                document.documentElement.setAttribute('data-bs-theme', 'dark');
-                document.body.classList.add('dark-mode');
+            try {
+                // 1. Тема
+                if (localStorage.getItem('swsm_dark_mode') === 'true') {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    document.body.classList.add('dark-mode');
+                }
+                // 2. Авторизация
+                if (localStorage.getItem('swsm_user')) {
+                    document.documentElement.setAttribute('data-user-logged-in', 'true');
+                }
+                // 3. Разблокировка после построения DOM
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.setAttribute('data-app-ready', 'true');
+                });
+            } catch (e) {
+                // В случае ошибки всё равно показываем страницу
+                document.addEventListener('DOMContentLoaded', function() {
+                    document.body.setAttribute('data-app-ready', 'true');
+                });
             }
         })();
     </script>
@@ -19,9 +47,8 @@
     <title>SWSM - Simple Windows Services Monitor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+
     <style>
-
-
         /* ============================================ */
         /* DARK MODE STYLES */
         /* ============================================ */
@@ -32,6 +59,7 @@
             --bs-border-color: #495057;
         }
 
+        /* Вернул body.dark-mode, чтобы не ломать старые стили */
         body.dark-mode .login-container .bi-gear-wide-connected {
             color: #0d6efd !important;
         }
@@ -155,6 +183,7 @@
         /* ============================================
            SERVER STATUS INDICATOR STYLES
            ============================================ */
+
         .server-status-indicator {
             display: inline-block;
             width: 12px;
@@ -165,7 +194,6 @@
             background: #9ca3af;
         }
 
-        /* === Пульсация (серый, ожидание) === */
         @keyframes pulse-gray {
             0%   { opacity: 0.4; transform: scale(1); }
             50%  { opacity: 1;   transform: scale(1.25); }
@@ -177,7 +205,6 @@
             animation: pulse-gray 1.4s infinite;
         }
 
-        /* === Нормальные статусы === */
         .server-status-ok {
             background: #22c55e;
             box-shadow: 0 0 6px #22c55e;
@@ -200,7 +227,6 @@
         /* ADD SERVICE MODAL */
         /* ============================================ */
 
-        /* CSS-переменные для цветов */
         :root {
             --modal-bg: #fff;
             --modal-border: #dee2e6;
@@ -223,7 +249,6 @@
             --list-item-hover: #3d3d3d;
         }
 
-        /* Контейнер списка служб */
         .service-list-container {
             max-height: 250px;
             overflow-y: auto;
@@ -233,26 +258,22 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Подсказки под полями */
         .service-hint {
             color: var(--modal-text-muted) !important;
         }
 
-        /* Сообщение загрузки */
         .service-list-loading,
         .service-list-empty {
             background-color: transparent !important;
             color: var(--modal-text-muted) !important;
         }
 
-        /* Спиннер загрузки */
         .service-list-loading .spinner-border {
             color: var(--modal-text-muted);
             border-color: var(--modal-text-muted);
             border-right-color: transparent;
         }
 
-        /* Элементы списка */
         .service-item {
             padding: 0.75rem 1rem;
             border-bottom: 1px solid var(--modal-border);
@@ -276,7 +297,6 @@
             color: white;
         }
 
-        /* Текст в элементах */
         .service-item-name {
             font-weight: 600;
             font-size: 0.9rem;
@@ -296,12 +316,10 @@
             color: rgba(255, 255, 255, 0.8);
         }
 
-        /* Кнопка закрытия в темной теме */
         body.dark-mode .btn-close {
             filter: invert(1) grayscale(100%) brightness(200%);
         }
 
-        /* Мобильная адаптация */
         @media (max-width: 576px) {
             .service-list-container {
                 max-height: 200px !important;
@@ -320,23 +338,15 @@
             }
         }
 
-        /* Плавное появление элементов списка */
         .service-item {
             animation: fadeIn 0.2s ease-in-out;
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-5px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Плавное изменение фона при ховере */
         .service-item {
             transition: background-color 0.15s ease-in-out, transform 0.1s ease-in-out;
         }
@@ -348,11 +358,6 @@
         /* ============================================ */
         /* OTHER STYLES */
         /* ============================================ */
-
-        /* Скрыть страницу логина только если есть залогиненный пользователь */
-        [data-user-logged-in="true"] #loginPage {
-            display: none !important;
-        }
 
         .hidden {
             display: none !important;
@@ -397,462 +402,216 @@
             overflow-wrap: anywhere;
         }
     </style>
-
-    <script>
-        // Устранения мелькания страницы логина
-        (function() {
-            const user = localStorage.getItem('swsm_user');
-            if (user) {
-                document.documentElement.setAttribute('data-user-logged-in', 'true');
-            }
-        })();
-    </script>
 </head>
 
 <body>
-    <!-- Loading Spinner -->
-    <div class="loading-spinner position-fixed top-50 start-50 translate-middle" style="z-index: 9999;">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Загрузка...</span>
-        </div>
+<!-- Loading Spinner -->
+<div class="loading-spinner position-fixed top-50 start-50 translate-middle" style="z-index: 9999;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Загрузка...</span>
     </div>
+</div>
 
-    <!-- Login Page -->
-    <div id="loginPage" class="login-container d-flex align-items-center">
-        <div class="container">
-            <div class="row justify-content-center">
-                <div class="col-md-6 col-lg-4">
-                    <div class="card shadow-lg border-0">
-                        <div class="card-body p-5">
-                            <div class="text-center mb-4">
-                                <i class="bi bi-gear-wide-connected display-4 text-primary"></i>
-                                <h2 class="fw-bold text-dark mt-3">SWSM</h2>
-                                <p class="text-muted">Simple Windows Services Monitor</p>
-                            </div>
-
-                            <!-- Login Form -->
-                            <form id="loginForm">
-                                <div class="mb-3">
-                                    <label for="loginUsername" class="form-label">Логин</label>
-                                    <input type="text" class="form-control" id="loginUsername" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="loginPassword" class="form-label">Пароль</label>
-                                    <input type="password" class="form-control" id="loginPassword" required>
-                                </div>
-                                <button type="submit" class="btn btn-primary w-100 mb-3">Войти</button>
-                            </form>
-
-                            <hr>
-
-                            <!-- Registration Link -->
-                            <div class="text-center">
-                                <p class="text-muted mb-3">Нет аккаунта?</p>
-                                <button class="btn btn-outline-primary" data-bs-toggle="modal"
-                                    data-bs-target="#registerModal">Зарегистрироваться</button>
-                            </div>
-                        </div>
+<!-- Login Page -->
+<div id="loginPage" class="login-container d-flex align-items-center hidden">
+    <div class="container d-flex flex-column">
+        <div class="row justify-content-center flex-grow-1 align-items-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-5 text-center">
+                        <i class="bi bi-gear-wide-connected display-4 text-primary"></i>
+                        <h2 class="fw-bold mt-3">SWSM</h2>
+                        <p class="text-muted mb-4">Simple Windows Services Monitor</p>
+                        <button id="keycloakLoginBtn" class="btn btn-primary w-100">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Войти или зарегистрироваться
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Main Application -->
-    <div id="mainApp" class="hidden">
-        <!-- Navigation -->
-        <nav class="navbar navbar-expand-lg navbar-dark common-bg">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="#" onclick="showServersList()">
-                    <i class="bi bi-gear-wide-connected me-2"></i>SWSM
+        <!-- Футер ВНУТРИ loginPage -->
+        <footer class="text-center py-3">
+            <div class="container">
+                <a href="https://github.com/trsv-dev/simple-windows-services-monitor"
+                   target="_blank" rel="noopener noreferrer"
+                   title="GitHub Repository" class="text-white text-decoration-none">
+                    <i class="bi bi-github"></i> trsv
                 </a>
-                <div class="navbar-nav ms-auto">
-                    <div class="d-flex align-items-center">
-                        <!-- Кнопка переключения темы -->
-                        <button id="themeToggleBtn" class="btn btn-dark me-2"
-                                onclick="toggleTheme()" type="button">
-                        </button>
-                        <span class="navbar-text me-2">
-                            <i class="bi bi-person-circle me-1"></i>
-                            <span id="currentUser"></span>
-                        </span>
-                        <button class="btn btn-outline-light btn-sm" id="logoutBtn">
-                            <i class="bi bi-box-arrow-right me-1"></i>Выход
-                        </button>
-                    </div>
+            </div>
+        </footer>
+    </div>
+</div>
+
+<!-- Main Application -->
+<div id="mainApp" class="hidden">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark common-bg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#" onclick="showServersList()">
+                <i class="bi bi-gear-wide-connected me-2"></i>SWSM
+            </a>
+            <div class="navbar-nav ms-auto">
+                <div class="d-flex align-items-center">
+                    <button id="themeToggleBtn" class="btn btn-dark me-2"
+                            onclick="toggleTheme()" type="button" title="Переключить тему">
+                        <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
+                    </button>
+
+
+<!--                    <a id="userProfileLink" href="#" target="_blank"-->
+<!--                       class="btn btn-link text-light me-2"-->
+<!--                       title="Профиль пользователя"-->
+<!--                       style="text-decoration: none">-->
+<!--                        <i class="bi bi-person-circle"></i>-->
+<!--                    </a>-->
+
+                    <a id="userProfileLink" href="#" target="_blank"
+                       class="btn btn-outline-light btn-sm me-2"
+                       title="Профиль пользователя">
+                        <i class="bi bi-person-circle"></i>
+                    </a>
+
+                    <button class="btn btn-outline-light btn-sm" id="logoutBtn">
+                        <i class="bi bi-box-arrow-right me-1"></i>Выход
+                    </button>
                 </div>
             </div>
-        </nav>
+        </div>
+    </nav>
 
-        <!-- Main Content -->
-        <div class="container-fluid py-4">
-            <!-- Servers List View -->
-            <div id="serversListView">
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h3>
-                                <i class="bi bi-server me-2"></i>Серверы
-                            </h3>
-                            <button class="btn btn-success btn-sm" data-bs-toggle="modal"
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        <!-- Servers List View -->
+        <div id="serversListView">
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3>
+                            <i class="bi bi-server me-2"></i>Серверы
+                        </h3>
+                        <button class="btn btn-success btn-sm" data-bs-toggle="modal"
                                 data-bs-target="#addServerModal">
-                                <i class="bi bi-plus-circle me-1"></i>Добавить сервер
-                            </button>
-                        </div>
+                            <i class="bi bi-plus-circle me-1"></i>Добавить сервер
+                        </button>
                     </div>
                 </div>
-                <div id="serversList" class="row g-3">
-                    <!-- Servers will be loaded here -->
-                </div>
-
-                <!-- Pagination Controls for Servers -->
-                <div class="d-flex justify-content-center align-items-center mt-4 servers-pagination-controls"
-                    style="gap: 1rem;">
-                    <button id="serversPrevPageBtn" class="btn btn-sm btn-outline-primary">← Назад</button>
-                    <span id="serversPageIndicator" class="text-muted">1 / 1</span>
-                    <button id="serversNextPageBtn" class="btn btn-sm btn-outline-primary">Далее →</button>
-                </div>
+            </div>
+            <div id="serversList" class="row g-3">
+                <!-- Servers will be loaded here -->
             </div>
 
-            <!-- Server Detail View -->
-            <div id="serverDetailView" class="hidden">
-                <!-- Breadcrumb -->
-                <nav aria-label="breadcrumb" class="mb-3">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item">
-                            <a href="#" onclick="showServersList()" class="text-decoration-none">Серверы</a>
-                        </li>
-                        <li class="breadcrumb-item active" id="serverBreadcrumb"></li>
-                    </ol>
-                </nav>
+            <div class="d-flex justify-content-center align-items-center mt-4 servers-pagination-controls"
+                 style="gap: 1rem;">
+                <button id="serversPrevPageBtn" class="btn btn-sm btn-outline-primary">← Назад</button>
+                <span id="serversPageIndicator" class="text-muted">1 / 1</span>
+                <button id="serversNextPageBtn" class="btn btn-sm btn-outline-primary">Далее →</button>
+            </div>
+        </div>
 
-                <!-- Server Info -->
-                <div class="card mb-4">
-                    <div class="card-header server-header text-white d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0">
-                            <span id="serverDetailName"></span>
-                        </h4>
-                        <div>
-                            <button class="btn btn-outline-light btn-sm me-2" id="editServerBtn"
+        <!-- Server Detail View -->
+        <div id="serverDetailView" class="hidden">
+            <nav aria-label="breadcrumb" class="mb-3">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="#" onclick="showServersList()" class="text-decoration-none">Серверы</a>
+                    </li>
+                    <li class="breadcrumb-item active" id="serverBreadcrumb"></li>
+                </ol>
+            </nav>
+
+            <div class="card mb-4">
+                <div class="card-header server-header text-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0"><span id="serverDetailName"></span></h4>
+                    <div>
+                        <button class="btn btn-outline-light btn-sm me-2" id="editServerBtn"
                                 data-bs-toggle="modal" data-bs-target="#editServerModal" title="Редактировать">
-                                <i class="bi bi-pencil me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Редактировать</span>
-                            </button>
-                            <button class="btn btn-outline-light btn-sm" id="deleteServerBtn" title="Удалить">
-                                <i class="bi bi-trash me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Удалить</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="card-body p-2">
-                        <div class="row gx-1 gy-1">
-
-                            <!-- Левая колонка -->
-                            <div class="col-12 col-md-6">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="bi bi-geo-alt-fill fs-6 text-primary me-1 flex-shrink-0"></i>
-                                    <div class="text-truncate">
-                                        <small class="text-muted me-1">Адрес:</small>
-                                        <span id="serverDetailAddress" class="fw-medium"></span>
-                                    </div>
-                                </div>
-
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="bi bi-hdd-network-fill fs-6 text-primary me-1 flex-shrink-0"></i>
-                                    <div class="text-truncate">
-                                        <small class="text-muted me-1">Статус:</small>
-                                        <span id="serverDetailStatus" class="fw-medium"></span>
-                                    </div>
-                                </div>
-
-                                <div class="d-flex align-items-center">
-                                    <i class="bi bi-person-fill fs-6 text-success me-1 flex-shrink-0"></i>
-                                    <div class="text-truncate">
-                                        <small class="text-muted me-1">Пользователь:</small>
-                                        <span id="serverDetailUsername" class="fw-medium"></span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Правая колонка -->
-                            <div class="col-12 col-md-6">
-                                <div class="d-flex align-items-center mb-1">
-                                    <i class="bi bi-calendar-check-fill fs-6 text-warning me-1 flex-shrink-0"></i>
-                                    <div class="text-truncate">
-                                        <small class="text-muted me-1">Создан:</small>
-                                        <span id="serverDetailCreated" class="fw-medium"></span>
-                                    </div>
-                                </div>
-
-                                <div class="d-flex align-items-center">
-                                    <i class="bi bi-tags-fill fs-6 text-secondary me-1 flex-shrink-0"></i>
-                                    <div class="system-id">
-                                        <small class="text-muted me-1">SystemID:</small>
-                                        <span id="serverDetailFingerprint" class="fw-medium"></span>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Services Section -->
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Службы</h5>
-                        <div class="d-flex flex-wrap gap-2">
-                            <button id="refreshFromServerBtn" class="btn btn-success btn-sm" style="display: none;"
-                                title="Обновить статусы с сервера">
-                                <i class="bi bi-arrow-repeat me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Обновить статусы с сервера</span>
-                            </button>
-                            <button class="btn btn-success btn-sm" data-bs-toggle="modal"
-                                data-bs-target="#addServiceModal" title="Добавить службу">
-                                <i class="bi bi-plus-circle me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Добавить</span>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div id="servicesList" class="row g-3">
-                            <!-- Services will be loaded here -->
-                        </div>
-
-                        <!-- Pagination Controls -->
-                        <div class="d-flex justify-content-center align-items-center mt-4" style="gap: 1rem;">
-                            <button id="prevPageBtn" class="btn btn-sm btn-outline-primary">← Назад</button>
-                            <span id="pageIndicator" class="text-muted">1 / 1</span>
-                            <button id="nextPageBtn" class="btn btn-sm btn-outline-primary">Далее →</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Registration Modal -->
-    <div class="modal fade" id="registerModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Регистрация</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="registerForm">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="registerUsername" class="form-label">Логин</label>
-                            <input type="text" class="form-control" id="registerUsername" placeholder="Минимум 4 символа" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="registerPassword" class="form-label">Пароль</label>
-                            <input type="password" class="form-control" id="registerPassword" placeholder="Минимум 5 символов" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="registerPasswordConfirm" class="form-label">Подтверждение пароля</label>
-                            <input type="password" class="form-control" id="registerPasswordConfirm"
-                                placeholder="Повторите пароль" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="registrationKey" class="form-label">Ключ регистрации (если требуется)</label>
-                            <input type="text" class="form-control" id="registrationKey"
-                                placeholder="Введите ключ регистрации">
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Server Modal -->
-    <div class="modal fade" id="addServerModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Добавить сервер</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="addServerForm">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="serverName" class="form-label">Название сервера</label>
-                            <input type="text" class="form-control" id="serverName" placeholder="Название сервера" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="serverAddress" class="form-label">Адрес сервера</label>
-                            <input type="text" class="form-control" id="serverAddress" placeholder="IP-адрес или hostname" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="serverUsername" class="form-label">Имя пользователя</label>
-                            <input type="text" class="form-control" id="serverUsername" placeholder="Имя пользователя" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="serverPassword" class="form-label">Пароль</label>
-                            <input type="password" class="form-control" id="serverPassword" placeholder="Пароль" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-success">Добавить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Server Modal -->
-    <div class="modal fade" id="editServerModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Редактировать сервер</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form id="editServerForm">
-                    <input type="hidden" id="editServerId">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="editServerName" class="form-label">Название сервера</label>
-                            <input type="text" class="form-control" id="editServerName" placeholder="Название сервера" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editServerAddress" class="form-label">Адрес сервера</label>
-                            <input type="text" class="form-control" id="editServerAddress" placeholder="IP-адрес или hostname" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editServerUsername" class="form-label">Имя пользователя</label>
-                            <input type="text" class="form-control" id="editServerUsername" placeholder="Имя пользователя" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="editServerPassword" class="form-label">Пароль (оставьте пустым, если не хотите менять)</label>
-                            <input type="password" class="form-control" id="editServerPassword" placeholder="Пароль">
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                        <button type="submit" class="btn btn-primary">Сохранить</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Service Modal -->
-    <div class="modal fade" id="addServiceModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Добавить службу</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="addServiceForm">
-                        <!-- Поиск -->
-                        <div class="mb-3">
-                            <label for="serviceSearch" class="form-label">Поиск</label>
-                            <input type="text"
-                                   id="serviceSearch"
-                                   class="form-control"
-                                   placeholder="Начните вводить название...">
-                        </div>
-
-                        <!-- Кастомный список служб -->
-                        <div class="mb-3">
-                            <label class="form-label">Имя службы</label>
-                            <div id="serviceListContainer" class="service-list-container">
-                                <!-- Контент добавляется через JavaScript -->
-                            </div>
-                            <small class="form-text service-hint">Выберите службу из списка</small>
-                        </div>
-
-                        <!-- Скрытое поле для имени службы -->
-                        <input type="hidden" id="selectedServiceName" required>
-
-                        <!-- Отображаемое имя -->
-                        <div class="mb-3">
-                            <label for="serviceDisplayName" class="form-label">Отображаемое имя</label>
-                            <input type="text"
-                                   id="serviceDisplayName"
-                                   class="form-control"
-                                   readonly>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                    <button type="button" class="btn btn-primary" id="addServiceBtn">Добавить</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Service Card Template -->
-    <template id="serviceCardTemplate">
-        <div class="col-md-6 col-lg-4">
-            <div class="card h-100 shadow-sm service-card">
-                <div class="card-body">
-                    <h6 class="card-title service-displayed-name"></h6>
-                    <p class="card-text">
-                        <small class="text-muted">
-                            <i class="bi bi-gear me-1"></i><span class="service-name"></span>
-                        </small><br>
-                        <strong>Статус:</strong> <span class="service-status">—</span><br>
-                        <strong>Изменено:</strong> <span class="service-updated">—</span>
-                    </p>
-                </div>
-                <div class="card-footer">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button class="btn btn-success service-start-btn" title="Запуск">
-                                <i class="bi bi-play-fill me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Запуск</span>
-                            </button>
-                            <button class="btn btn-danger service-stop-btn" title="Остановка">
-                                <i class="bi bi-stop-fill me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Стоп</span>
-                            </button>
-                            <button class="btn btn-warning service-restart-btn" title="Перезапуск">
-                                <i class="bi bi-arrow-clockwise me-1 me-md-1"></i>
-                                <span class="d-none d-md-inline">Рестарт</span>
-                            </button>
-                        </div>
-                        <button class="btn btn-outline-danger btn-sm service-delete-btn" title="Удалить">
+                            <i class="bi bi-pencil me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Редактировать</span>
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" id="deleteServerBtn" title="Удалить">
                             <i class="bi bi-trash me-1 me-md-1"></i>
                             <span class="d-none d-md-inline">Удалить</span>
                         </button>
                     </div>
                 </div>
-            </div>
-        </div>
-    </template>
 
-
-    <!-- Toast Container -->
-<!--        <div class="toast-container position-fixed bottom-0 end-0 p-3">-->
-    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
-        <div id="toastTemplate" class="toast" role="alert">
-            <div class="toast-header">
-                <strong class="me-auto toast-title"></strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+                <div class="card-body p-2">
+                    <div class="row gx-1 gy-1">
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-geo-alt-fill fs-6 text-primary me-1 flex-shrink-0"></i>
+                                <div class="text-truncate">
+                                    <small class="text-muted me-1">Адрес:</small>
+                                    <span id="serverDetailAddress" class="fw-medium"></span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-hdd-network-fill fs-6 text-primary me-1 flex-shrink-0"></i>
+                                <div class="text-truncate">
+                                    <small class="text-muted me-1">Статус:</small>
+                                    <span id="serverDetailStatus" class="fw-medium"></span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-person-fill fs-6 text-success me-1 flex-shrink-0"></i>
+                                <div class="text-truncate">
+                                    <small class="text-muted me-1">Пользователь:</small>
+                                    <span id="serverDetailUsername" class="fw-medium"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="bi bi-calendar-check-fill fs-6 text-warning me-1 flex-shrink-0"></i>
+                                <div class="text-truncate">
+                                    <small class="text-muted me-1">Создан:</small>
+                                    <span id="serverDetailCreated" class="fw-medium"></span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-tags-fill fs-6 text-secondary me-1 flex-shrink-0"></i>
+                                <div class="system-id">
+                                    <small class="text-muted me-1">SystemID:</small>
+                                    <span id="serverDetailFingerprint" class="fw-medium"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="toast-body toast-message"></div>
+
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Службы</h5>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button id="refreshFromServerBtn" class="btn btn-success btn-sm" style="display: none;"
+                                title="Обновить статусы с сервера">
+                            <i class="bi bi-arrow-repeat me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Обновить статусы с сервера</span>
+                        </button>
+                        <button class="btn btn-success btn-sm" data-bs-toggle="modal"
+                                data-bs-target="#addServiceModal" title="Добавить службу">
+                            <i class="bi bi-plus-circle me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Добавить</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="servicesList" class="row g-3">
+                        <!-- Services will be loaded here -->
+                    </div>
+                    <div class="d-flex justify-content-center align-items-center mt-4" style="gap: 1rem;">
+                        <button id="prevPageBtn" class="btn btn-sm btn-outline-primary">← Назад</button>
+                        <span id="pageIndicator" class="text-muted">1 / 1</span>
+                        <button id="nextPageBtn" class="btn btn-sm btn-outline-primary">Далее →</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- config.js contains API_BASE_URL -->
-    <script src="config.js"></script>
-    <script src="app.min.js"></script>
-<!--    <script src="app.js"></script>-->
-
-    <!-- Footer -->
-    <footer class="text-center py-2 border-top">
+    <!-- Футер ВНУТРИ mainApp -->
+    <footer class="text-center py-2 border-top mt-auto">
         <div class="container">
             <a href="https://github.com/trsv-dev/simple-windows-services-monitor"
                target="_blank" rel="noopener noreferrer"
@@ -861,6 +620,172 @@
             </a>
         </div>
     </footer>
-</body>
+</div>
 
+<!-- Add Server Modal -->
+<div class="modal fade" id="addServerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить сервер</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addServerForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="serverName" class="form-label">Название сервера</label>
+                        <input type="text" class="form-control" id="serverName" placeholder="Название сервера" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="serverAddress" class="form-label">Адрес сервера</label>
+                        <input type="text" class="form-control" id="serverAddress" placeholder="IP-адрес или hostname" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="serverUsername" class="form-label">Имя пользователя</label>
+                        <input type="text" class="form-control" id="serverUsername" placeholder="Имя пользователя" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="serverPassword" class="form-label">Пароль</label>
+                        <input type="password" class="form-control" id="serverPassword" placeholder="Пароль" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Server Modal -->
+<div class="modal fade" id="editServerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать сервер</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editServerForm">
+                <input type="hidden" id="editServerId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editServerName" class="form-label">Название сервера</label>
+                        <input type="text" class="form-control" id="editServerName" placeholder="Название сервера" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editServerAddress" class="form-label">Адрес сервера</label>
+                        <input type="text" class="form-control" id="editServerAddress" placeholder="IP-адрес или hostname" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editServerUsername" class="form-label">Имя пользователя</label>
+                        <input type="text" class="form-control" id="editServerUsername" placeholder="Имя пользователя" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editServerPassword" class="form-label">Пароль (оставьте пустым, если не хотите менять)</label>
+                        <input type="password" class="form-control" id="editServerPassword" placeholder="Пароль">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Service Modal -->
+<div class="modal fade" id="addServiceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить службу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addServiceForm">
+                    <div class="mb-3">
+                        <label for="serviceSearch" class="form-label">Поиск</label>
+                        <input type="text" id="serviceSearch" class="form-control" placeholder="Начните вводить название...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Имя службы</label>
+                        <div id="serviceListContainer" class="service-list-container">
+                            <!-- Контент добавляется через JavaScript -->
+                        </div>
+                        <small class="form-text service-hint">Выберите службу из списка</small>
+                    </div>
+                    <input type="hidden" id="selectedServiceName" required>
+                    <div class="mb-3">
+                        <label for="serviceDisplayName" class="form-label">Отображаемое имя</label>
+                        <input type="text" id="serviceDisplayName" class="form-control" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" id="addServiceBtn">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Service Card Template -->
+<template id="serviceCardTemplate">
+    <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm service-card">
+            <div class="card-body">
+                <h6 class="card-title service-displayed-name"></h6>
+                <p class="card-text">
+                    <small class="text-muted">
+                        <i class="bi bi-gear me-1"></i><span class="service-name"></span>
+                    </small><br>
+                    <strong>Статус:</strong> <span class="service-status">—</span><br>
+                    <strong>Изменено:</strong> <span class="service-updated">—</span>
+                </p>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-success service-start-btn" title="Запуск">
+                            <i class="bi bi-play-fill me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Запуск</span>
+                        </button>
+                        <button class="btn btn-danger service-stop-btn" title="Остановка">
+                            <i class="bi bi-stop-fill me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Стоп</span>
+                        </button>
+                        <button class="btn btn-warning service-restart-btn" title="Перезапуск">
+                            <i class="bi bi-arrow-clockwise me-1 me-md-1"></i>
+                            <span class="d-none d-md-inline">Рестарт</span>
+                        </button>
+                    </div>
+                    <button class="btn btn-outline-danger btn-sm service-delete-btn" title="Удалить">
+                        <i class="bi bi-trash me-1 me-md-1"></i>
+                        <span class="d-none d-md-inline">Удалить</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+    <div id="toastTemplate" class="toast" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto toast-title"></strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body toast-message"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/keycloak-js@24/dist/keycloak.min.js"></script>
+<script src="config.js"></script>
+<script src="app.min.js"></script>
+<!--<script src="app.js"></script>-->
+</body>
 </html>

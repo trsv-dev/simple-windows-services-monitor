@@ -101,7 +101,7 @@ func (h *ServerHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Error("Сервер не был найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не был найден")
@@ -168,7 +168,7 @@ func (h *ServerHandler) EditServer(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -206,7 +206,7 @@ func (h *ServerHandler) DelServer(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -238,7 +238,7 @@ func (h *ServerHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -262,7 +262,7 @@ func (h *ServerHandler) GetServer(w http.ResponseWriter, r *http.Request) {
 // GetServerList Получение списка серверов пользователя.
 func (h *ServerHandler) GetServerList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID := ctx.Value(contextkeys.ID).(int64)
+	userID := ctx.Value(contextkeys.UserID).(string)
 
 	servers, err := h.storage.ListServers(ctx, userID)
 	if err != nil {

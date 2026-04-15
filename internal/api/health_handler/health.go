@@ -65,7 +65,7 @@ func (h *HealthHandler) ServerStatus(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &ErrServerNotFound) {
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")

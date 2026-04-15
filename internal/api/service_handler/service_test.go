@@ -65,7 +65,7 @@ func TestListOfServicesSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -78,7 +78,7 @@ func TestListOfServicesSuccess(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -144,9 +144,9 @@ func TestListOfServicesServerNotFound(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, &errs.ErrServerNotFound{
-			UserID:   1,
+			UserID:   "any-id-user-1",
 			ServerID: 1,
 			Err:      errors.New("server not found"),
 		})
@@ -155,7 +155,7 @@ func TestListOfServicesServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -180,14 +180,14 @@ func TestListOfServicesDatabaseError(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, errors.New("database error"))
 
 	r := httptest.NewRequest(http.MethodGet, "/services/available", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -213,7 +213,7 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -228,7 +228,7 @@ func TestListOfServicesServerUnreachable(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -257,7 +257,7 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -272,7 +272,7 @@ func TestListOfServicesClientFactoryError(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -307,7 +307,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -322,7 +322,7 @@ func TestListOfServicesRunCommandError(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -361,7 +361,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -376,7 +376,7 @@ func TestListOfServicesEmptyList(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -426,7 +426,7 @@ func TestAddServiceInvalidJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -477,7 +477,7 @@ func TestAddServiceInvalidServiceData(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 			r = r.WithContext(ctx)
 
@@ -503,9 +503,9 @@ func TestAddServiceServerNotFound(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, &errs.ErrServerNotFound{
-			UserID:   1,
+			UserID:   "any-id-user-1",
 			ServerID: 1,
 			Err:      errors.New("server not found"),
 		})
@@ -520,7 +520,7 @@ func TestAddServiceServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -545,7 +545,7 @@ func TestAddServiceDatabaseError(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, errors.New("database error"))
 
 	service := models.Service{
@@ -558,7 +558,7 @@ func TestAddServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -590,7 +590,7 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -605,7 +605,7 @@ func TestAddServiceServerUnreachable(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -641,7 +641,7 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -656,7 +656,7 @@ func TestAddServiceClientFactoryError(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -697,7 +697,7 @@ func TestAddServiceRunCommandError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -712,7 +712,7 @@ func TestAddServiceRunCommandError(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -757,7 +757,7 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -772,7 +772,7 @@ func TestAddServiceNotExistsOnServer(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -817,7 +817,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -832,7 +832,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -850,7 +850,7 @@ func TestAddServiceDuplicateService(t *testing.T) {
 
 	// ошибка дублирования в БД
 	mockStorage.EXPECT().
-		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		AddService(gomock.Any(), int64(1), "any-id-user-1", gomock.Any()).
 		Return(nil, &errs.ErrDuplicatedService{
 			ServiceName: "testservice",
 			Err:         errors.New("duplicate"),
@@ -885,7 +885,7 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -900,7 +900,7 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -917,9 +917,9 @@ func TestAddServiceServerNotFoundInAddService(t *testing.T) {
 
 	// сервер не найден при добавлении службы
 	mockStorage.EXPECT().
-		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		AddService(gomock.Any(), int64(1), "any-id-user-1", gomock.Any()).
 		Return(nil, &errs.ErrServerNotFound{
-			UserID:   1,
+			UserID:   "any-id-user-1",
 			ServerID: 1,
 			Err:      errors.New("not found"),
 		})
@@ -953,7 +953,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -968,7 +968,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -985,7 +985,7 @@ func TestAddServiceDatabaseErrorInAddService(t *testing.T) {
 
 	// обычная ошибка БД
 	mockStorage.EXPECT().
-		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		AddService(gomock.Any(), int64(1), "any-id-user-1", gomock.Any()).
 		Return(nil, errors.New("database error"))
 
 	handler.AddService(w, r)
@@ -1017,7 +1017,7 @@ func TestAddServiceSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1040,7 +1040,7 @@ func TestAddServiceSuccess(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	mockChecker.EXPECT().
@@ -1056,7 +1056,7 @@ func TestAddServiceSuccess(t *testing.T) {
 		Return("SERVICE_NAME: testservice\nSTATE: 4 RUNNING", nil)
 
 	mockStorage.EXPECT().
-		AddService(gomock.Any(), int64(1), int64(1), gomock.Any()).
+		AddService(gomock.Any(), int64(1), "any-id-user-1", gomock.Any()).
 		Return(createdService, nil)
 
 	handler.AddService(w, r)
@@ -1104,7 +1104,7 @@ func TestAddServiceNameNormalization(t *testing.T) {
 			mockStorage.EXPECT().
 				GetServerWithPassword(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, &errs.ErrServerNotFound{
-					UserID:   1,
+					UserID:   "any-id-user-1",
 					ServerID: 1,
 					Err:      errors.New("not found"),
 				})
@@ -1119,7 +1119,7 @@ func TestAddServiceNameNormalization(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-			ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+			ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 			ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 			r = r.WithContext(ctx)
 
@@ -1145,14 +1145,14 @@ func TestDelServiceSuccess(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		DelService(gomock.Any(), int64(1), int64(1), int64(1)).
+		DelService(gomock.Any(), int64(1), int64(1), "any-id-user-1").
 		Return(nil)
 
 	r := httptest.NewRequest(http.MethodDelete, "/services/1", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1180,7 +1180,7 @@ func TestDelServiceNotFound(t *testing.T) {
 	mockStorage.EXPECT().
 		DelService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(&errs.ErrServiceNotFound{
-			UserID:    1,
+			UserID:    "any-id-user-1",
 			ServerID:  1,
 			ServiceID: 1,
 			Err:       errors.New("not found"),
@@ -1190,7 +1190,7 @@ func TestDelServiceNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1223,7 +1223,7 @@ func TestDelServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1255,14 +1255,14 @@ func TestGetServiceSuccess(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(1), int64(1), int64(1)).
+		GetService(gomock.Any(), int64(1), int64(1), "any-id-user-1").
 		Return(service, nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/services/1", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1296,7 +1296,7 @@ func TestGetServiceNotFound(t *testing.T) {
 	mockStorage.EXPECT().
 		GetService(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, &errs.ErrServiceNotFound{
-			UserID:    1,
+			UserID:    "any-id-user-1",
 			ServerID:  1,
 			ServiceID: 1,
 			Err:       errors.New("not found"),
@@ -1306,7 +1306,7 @@ func TestGetServiceNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1339,7 +1339,7 @@ func TestGetServiceDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, int64(1))
 	r = r.WithContext(ctx)
@@ -1369,14 +1369,14 @@ func TestGetServicesListSuccess(t *testing.T) {
 	}
 
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/services", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1407,14 +1407,14 @@ func TestGetServicesListEmpty(t *testing.T) {
 	handler := NewServiceHandler(mockStorage, mockClientFactory, mockChecker, mockStatusesWorker, mockWinRMPort)
 
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return([]*models.Service{}, nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/services", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1454,7 +1454,7 @@ func TestGetServicesListServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1485,7 +1485,7 @@ func TestGetServicesListDatabaseError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1514,14 +1514,14 @@ func TestGetServicesListWithActualTrueServerNotFound(t *testing.T) {
 
 	// первый вызов - получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// второй вызов - получение сервера с паролем (ошибка)
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, &errs.ErrServerNotFound{
-			UserID:   1,
+			UserID:   "any-id-user-1",
 			ServerID: 1,
 			Err:      errors.New("server not found"),
 		})
@@ -1530,7 +1530,7 @@ func TestGetServicesListWithActualTrueServerNotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1560,19 +1560,19 @@ func TestGetServicesListWithActualTrueDatabaseError(t *testing.T) {
 
 	// первый вызов - получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// второй вызов - ошибка БД
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(nil, errors.New("database error"))
 
 	r := httptest.NewRequest(http.MethodGet, "/services?actual=true", nil)
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1598,7 +1598,7 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1618,12 +1618,12 @@ func TestGetServicesListWithActualTrueServerUnreachable(t *testing.T) {
 
 	// получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// получение сервера
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	// сервер недоступен
@@ -1660,7 +1660,7 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1680,12 +1680,12 @@ func TestGetServicesListWithActualTrueWorkerFailed(t *testing.T) {
 
 	// получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// получение сервера
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	// сервер доступен
@@ -1727,7 +1727,7 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1752,12 +1752,12 @@ func TestGetServicesListWithActualTrueBatchUpdateFailed(t *testing.T) {
 
 	// получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// получение сервера
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	// сервер доступен
@@ -1803,7 +1803,7 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1828,12 +1828,12 @@ func TestGetServicesListWithActualTrueSuccess(t *testing.T) {
 
 	// получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// получение сервера
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(1), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(1), "any-id-user-1").
 		Return(server, nil)
 
 	// сервер доступен
@@ -1885,7 +1885,7 @@ func TestGetServicesListWithActualFalse(t *testing.T) {
 
 	// только один вызов - получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// GetServerWithPassword НЕ должен быть вызван
@@ -1897,7 +1897,7 @@ func TestGetServicesListWithActualFalse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 
@@ -1935,7 +1935,7 @@ func TestGetServicesListWithActualTrueEmptyServices(t *testing.T) {
 
 	// только один вызов - получение списка служб
 	mockStorage.EXPECT().
-		ListServices(gomock.Any(), int64(1), int64(1)).
+		ListServices(gomock.Any(), int64(1), "any-id-user-1").
 		Return(services, nil)
 
 	// GetServerWithPassword НЕ должен быть вызван для пустого списка
@@ -1947,7 +1947,7 @@ func TestGetServicesListWithActualTrueEmptyServices(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
-	ctx = context.WithValue(ctx, contextkeys.ID, int64(1))
+	ctx = context.WithValue(ctx, contextkeys.UserID, "any-id-user-1")
 	ctx = context.WithValue(ctx, contextkeys.ServerID, int64(1))
 	r = r.WithContext(ctx)
 

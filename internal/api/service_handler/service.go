@@ -61,7 +61,7 @@ func (h *ServiceHandler) ListOfServices(w http.ResponseWriter, r *http.Request) 
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -158,7 +158,7 @@ func (h *ServiceHandler) AddService(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")
@@ -263,7 +263,7 @@ func (h *ServiceHandler) DelService(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServiceNotFound):
 			logger.Log.Error("Служба не найдена",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServiceNotFound.UserID),
+				logger.String("userID", ErrServiceNotFound.UserID),
 				logger.Int64("serverID", ErrServiceNotFound.ServerID),
 				logger.String("err", ErrServiceNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Служба не найдена")
@@ -293,7 +293,7 @@ func (h *ServiceHandler) GetService(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &ErrServiceNotFound):
 			logger.Log.Warn("Служба не найдена",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServiceNotFound.UserID),
+				logger.String("userID", ErrServiceNotFound.UserID),
 				logger.Int64("serverID", ErrServiceNotFound.ServerID),
 				logger.Int64("serviceID", ErrServiceNotFound.ServiceID),
 				logger.String("err", ErrServiceNotFound.Err.Error()))
@@ -371,7 +371,7 @@ func (h *ServiceHandler) GetServicesList(w http.ResponseWriter, r *http.Request)
 		case errors.As(err, &ErrServerNotFound):
 			logger.Log.Warn("Сервер не найден",
 				logger.String("login", creds.Login),
-				logger.Int64("userID", ErrServerNotFound.UserID),
+				logger.String("userID", ErrServerNotFound.UserID),
 				logger.Int64("serverID", ErrServerNotFound.ServerID),
 				logger.String("err", ErrServerNotFound.Err.Error()))
 			response.ErrorJSON(w, http.StatusNotFound, "Сервер не найден")

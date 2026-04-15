@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,8 +32,8 @@ func TestFetchAndPublishSuccess(t *testing.T) {
 	mockBroadcaster := broadcastMocks.NewMockBroadcaster(ctrl)
 
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
-		{ID: 2, Login: "user2"},
+		{ID: "any-id-1", Login: "user1"},
+		{ID: "any-id-2", Login: "user2"},
 	}
 
 	statuses1 := []*models.ServiceStatus{
@@ -49,22 +51,22 @@ func TestFetchAndPublishSuccess(t *testing.T) {
 
 	// GetUserServiceStatuses для первого пользователя
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(1)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-1").
 		Return(statuses1, nil)
 
 	// GetUserServiceStatuses для второго пользователя
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(2)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-2").
 		Return(statuses2, nil)
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1:services", gomock.Any()).
+		Publish("user-any-id-1:services", gomock.Any()).
 		Return(nil)
 
 	// Publish для второго пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-2:services", gomock.Any()).
+		Publish("user-any-id-2:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -104,8 +106,8 @@ func TestFetchAndPublishGetUserServiceStatusesError(t *testing.T) {
 	mockBroadcaster := broadcastMocks.NewMockBroadcaster(ctrl)
 
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
-		{ID: 2, Login: "user2"},
+		{ID: "any-id-1", Login: "user1"},
+		{ID: "any-id-2", Login: "user2"},
 	}
 
 	statuses1 := []*models.ServiceStatus{
@@ -119,17 +121,17 @@ func TestFetchAndPublishGetUserServiceStatusesError(t *testing.T) {
 
 	// GetUserServiceStatuses для первого пользователя успешен
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(1)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-1").
 		Return(statuses1, nil)
 
 	// GetUserServiceStatuses для второго пользователя возвращает ошибку (но она игнорируется с continue)
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(2)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-2").
 		Return(nil, errors.New("user 2 error"))
 
 	// Publish для первого пользователя
 	mockBroadcaster.EXPECT().
-		Publish("user-1:services", gomock.Any()).
+		Publish("user-any-id-1:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -149,7 +151,7 @@ func TestFetchAndPublishPublishError(t *testing.T) {
 	mockBroadcaster := broadcastMocks.NewMockBroadcaster(ctrl)
 
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
+		{ID: "any-id-1", Login: "user1"},
 	}
 
 	statuses := []*models.ServiceStatus{
@@ -163,12 +165,12 @@ func TestFetchAndPublishPublishError(t *testing.T) {
 
 	// GetUserServiceStatuses успешен
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(1)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-1").
 		Return(statuses, nil)
 
 	// Publish возвращает ошибку
 	mockBroadcaster.EXPECT().
-		Publish("user-1:services", gomock.Any()).
+		Publish("user-any-id-1:services", gomock.Any()).
 		Return(errors.New("publish error"))
 
 	ctx := context.Background()
@@ -231,7 +233,7 @@ func TestFetchAndPublishTopicFormat(t *testing.T) {
 	mockBroadcaster := broadcastMocks.NewMockBroadcaster(ctrl)
 
 	users := []*models.User{
-		{ID: 123, Login: "user123"},
+		{ID: "any-id-123", Login: "user123"},
 	}
 
 	statuses := []*models.ServiceStatus{
@@ -243,12 +245,12 @@ func TestFetchAndPublishTopicFormat(t *testing.T) {
 		Return(users, nil)
 
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(123)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-123").
 		Return(statuses, nil)
 
-	// проверяем что топик имеет правильный формат: "user-{id}"
+	// проверяем что топик имеет правильный формат: "user-{any-id}"
 	mockBroadcaster.EXPECT().
-		Publish("user-123:services", gomock.Any()).
+		Publish("user-any-id-123:services", gomock.Any()).
 		Return(nil)
 
 	ctx := context.Background()
@@ -268,7 +270,7 @@ func TestFetchAndPublishJsonEncoding(t *testing.T) {
 
 	now := time.Now()
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
+		{ID: "any-id-1", Login: "user1"},
 	}
 
 	statuses := []*models.ServiceStatus{
@@ -280,12 +282,12 @@ func TestFetchAndPublishJsonEncoding(t *testing.T) {
 		Return(users, nil)
 
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(1)).
+		GetUserServiceStatuses(gomock.Any(), "any-id-1").
 		Return(statuses, nil)
 
 	// проверяем что данные корректно закодированы
 	mockBroadcaster.EXPECT().
-		Publish("user-1:services", gomock.Any()).
+		Publish("user-any-id-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)
@@ -383,9 +385,9 @@ func TestBroadcastServiceStatusesMultipleUsers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
-		{ID: 2, Login: "user2"},
-		{ID: 3, Login: "user3"},
+		{ID: "any-id-1", Login: "user1"},
+		{ID: "any-id-2", Login: "user2"},
+		{ID: "any-id-3", Login: "user3"},
 	}
 
 	mockStorage.EXPECT().
@@ -398,7 +400,7 @@ func TestBroadcastServiceStatusesMultipleUsers(t *testing.T) {
 	// ожидаем публикацию для каждого пользователя
 	for i := 1; i <= 3; i++ {
 		mockStorage.EXPECT().
-			GetUserServiceStatuses(gomock.Any(), int64(i)).
+			GetUserServiceStatuses(gomock.Any(), fmt.Sprintf("any-id-%s", strconv.Itoa(i))).
 			Return([]*models.ServiceStatus{
 				{ID: int64(i), ServerID: int64(i), Status: "running", UpdatedAt: time.Now()},
 			}, nil)
@@ -421,7 +423,7 @@ func TestFetchAndPublishMultipleStatusesPerUser(t *testing.T) {
 
 	now := time.Now()
 	users := []*models.User{
-		{ID: 1, Login: "user1"},
+		{ID: "any-id-1", Login: "user1"},
 	}
 
 	statuses := []*models.ServiceStatus{
@@ -435,11 +437,11 @@ func TestFetchAndPublishMultipleStatusesPerUser(t *testing.T) {
 		Return(users, nil)
 
 	mockStorage.EXPECT().
-		GetUserServiceStatuses(gomock.Any(), int64(1)).
+		GetUserServiceStatuses(gomock.Any(), string("any-id-1")).
 		Return(statuses, nil)
 
 	mockBroadcaster.EXPECT().
-		Publish("user-1:services", gomock.Any()).
+		Publish("user-any-id-1:services", gomock.Any()).
 		DoAndReturn(func(topic string, data []byte) error {
 			var decoded []*models.ServiceStatus
 			err := json.Unmarshal(data, &decoded)

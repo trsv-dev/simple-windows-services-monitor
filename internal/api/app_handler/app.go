@@ -8,11 +8,10 @@ import (
 // AppHandler Структура для передачи общих зависимостей.
 type AppHandler struct {
 	Broadcaster  broadcast.Broadcaster
-	TokenBuilder auth.TokenBuilder
-	JWTSecretKey string
+	AuthProvider auth.AuthProvider
 }
 
 // NewAppHandler Конструктор AppHandler.
-func NewAppHandler(JWTSecretKey string, tokenBuilder auth.TokenBuilder, broadcaster broadcast.Broadcaster) *AppHandler {
-	return &AppHandler{JWTSecretKey: JWTSecretKey, TokenBuilder: tokenBuilder, Broadcaster: broadcaster}
+func NewAppHandler(authProvider auth.AuthProvider, broadcaster broadcast.Broadcaster) *AppHandler {
+	return &AppHandler{AuthProvider: authProvider, Broadcaster: broadcaster}
 }

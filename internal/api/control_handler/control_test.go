@@ -27,10 +27,10 @@ func init() {
 }
 
 // createContextWithCreds Создаёт контекст с учётными данными пользователя.
-func createContextWithCreds(login string, userID, serverID, serviceID int64) context.Context {
+func createContextWithCreds(login, userID string, serverID, serviceID int64) context.Context {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, contextkeys.Login, login)
-	ctx = context.WithValue(ctx, contextkeys.ID, userID)
+	ctx = context.WithValue(ctx, contextkeys.UserID, userID)
 	ctx = context.WithValue(ctx, contextkeys.ServerID, serverID)
 	ctx = context.WithValue(ctx, contextkeys.ServiceID, serviceID)
 	return ctx
@@ -52,13 +52,13 @@ func TestServiceStopErrServerNotFound(t *testing.T) {
 
 	// возвращаем ErrServerNotFound
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
-		Return(nil, errs.NewErrServerNotFound(100, 1, errors.New("server not in database")))
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
+		Return(nil, errs.NewErrServerNotFound(100, "any-id-user-1", errors.New("server not in database")))
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
 	// создаём запрос с контекстом пользователя
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -86,12 +86,12 @@ func TestServiceStopGetServerGenericError(t *testing.T) {
 
 	// generic ошибка (не специфичная ErrServerNotFound)
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(nil, errors.New("database connection timeout"))
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -118,7 +118,7 @@ func TestServiceStopErrServiceNotFound(t *testing.T) {
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -129,12 +129,12 @@ func TestServiceStopErrServiceNotFound(t *testing.T) {
 
 	// возвращаем ErrServiceNotFound
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
-		Return(nil, errs.NewErrServiceNotFound(1, 100, 10, errors.New("service not found")))
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
+		Return(nil, errs.NewErrServiceNotFound("any-id-user-1", 100, 10, errors.New("service not found")))
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -161,7 +161,7 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -172,12 +172,12 @@ func TestServiceStopGetServiceGenericError(t *testing.T) {
 
 	// generic ошибка (не специфичная ErrServiceNotFound)
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(nil, errors.New("database read error"))
 
 	handler := NewControlHandler(mockStorage, mockClientFactory, mockChecker, mockWinRMPort)
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 	r := httptest.NewRequest(http.MethodPost, "/service/stop", nil).WithContext(ctx)
 	w := httptest.NewRecorder()
 
@@ -202,11 +202,11 @@ func TestServiceStopCheckWinRMFalse(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -217,7 +217,7 @@ func TestServiceStopCheckWinRMFalse(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -256,11 +256,11 @@ func TestServiceStopCreateClientError(t *testing.T) {
 	mockClientFactory := serviceControlMocks.NewMockClientFactory(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -271,7 +271,7 @@ func TestServiceStopCreateClientError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -315,11 +315,11 @@ func TestServiceStopQueryStatusError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -330,7 +330,7 @@ func TestServiceStopQueryStatusError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -379,11 +379,11 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -394,7 +394,7 @@ func TestServiceStopRunningSuccess(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -459,11 +459,11 @@ func TestServiceStopAlreadyStopped(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -474,7 +474,7 @@ func TestServiceStopAlreadyStopped(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -528,11 +528,11 @@ func TestServiceStopRunCommandError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -543,7 +543,7 @@ func TestServiceStopRunCommandError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -599,11 +599,11 @@ func TestServiceStopParseServiceError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -614,7 +614,7 @@ func TestServiceStopParseServiceError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -671,11 +671,11 @@ func TestServiceStopWaitForStatusError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -686,7 +686,7 @@ func TestServiceStopWaitForStatusError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -750,11 +750,11 @@ func TestServiceStartRunningSuccess(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -765,7 +765,7 @@ func TestServiceStartRunningSuccess(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -830,11 +830,11 @@ func TestServiceStartAlreadyRunning(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -845,7 +845,7 @@ func TestServiceStartAlreadyRunning(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -899,11 +899,11 @@ func TestServiceStartRunCommandError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -914,7 +914,7 @@ func TestServiceStartRunCommandError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -970,11 +970,11 @@ func TestServiceStartParseServiceError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -985,7 +985,7 @@ func TestServiceStartParseServiceError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1041,11 +1041,11 @@ func TestServiceStartWaitForStatusError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1056,7 +1056,7 @@ func TestServiceStartWaitForStatusError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1120,11 +1120,11 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1135,7 +1135,7 @@ func TestServiceRestartRunningSuccess(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1212,11 +1212,11 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1227,7 +1227,7 @@ func TestServiceRestartStoppedSuccess(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1292,11 +1292,11 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1307,7 +1307,7 @@ func TestServiceRestartRunCommandStopError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1363,11 +1363,11 @@ func TestServiceRestartParseServiceErrorStop(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1378,7 +1378,7 @@ func TestServiceRestartParseServiceErrorStop(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1434,11 +1434,11 @@ func TestServiceRestartWaitForStopError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1449,7 +1449,7 @@ func TestServiceRestartWaitForStopError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1509,11 +1509,11 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1524,7 +1524,7 @@ func TestServiceRestartRunCommandStartError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1593,11 +1593,11 @@ func TestServiceRestartParseServiceErrorStart(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1608,7 +1608,7 @@ func TestServiceRestartParseServiceErrorStart(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",
@@ -1664,11 +1664,11 @@ func TestServiceRestartWaitForStartError(t *testing.T) {
 	mockClient := serviceControlMocks.NewMockClient(ctrl)
 	mockWinRMPort := "5985"
 
-	ctx := createContextWithCreds("user", 1, 100, 10)
+	ctx := createContextWithCreds("user", "any-id-user-1", 100, 10)
 
 	// получаем сервер успешно
 	mockStorage.EXPECT().
-		GetServerWithPassword(gomock.Any(), int64(100), int64(1)).
+		GetServerWithPassword(gomock.Any(), int64(100), "any-id-user-1").
 		Return(&models.Server{
 			ID:       100,
 			Name:     "TestServer",
@@ -1679,7 +1679,7 @@ func TestServiceRestartWaitForStartError(t *testing.T) {
 
 	// получаем службу успешно
 	mockStorage.EXPECT().
-		GetService(gomock.Any(), int64(100), int64(10), int64(1)).
+		GetService(gomock.Any(), int64(100), int64(10), "any-id-user-1").
 		Return(&models.Service{
 			ID:            10,
 			ServiceName:   "TestService",

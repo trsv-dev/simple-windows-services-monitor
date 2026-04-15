@@ -27,7 +27,7 @@ func (s Status) String() string {
 // ServerStatus Модель статуса сервера.
 type ServerStatus struct {
 	ServerID int64  `json:"server_id"`
-	UserID   int64  `json:"user_id"`
+	UserID   string `json:"user_id"`
 	Address  string `json:"address"`
 	Status   Status `json:"status"`
 }

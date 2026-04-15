@@ -17,15 +17,19 @@ func Router(h *di_containers.HandlersContainer) chi.Router {
 
 	// публичные маршруты
 	router.Get("/health", h.HealthHandler.GetHealth)
-	router.Post("/api/user/register", h.RegistrationHandler.UserRegistration)
-	router.Post("/api/user/login", h.AuthorizationHandler.UserAuthorization)
+
+	// обработка событий из Keycloak
+	router.Post("/keycloak-events", h.WebhooksHandler.HandleEvent)
 
 	// маршруты, требующие авторизацию
 	router.Route("/api/user", func(r chi.Router) {
 
 		// middleware для всех приватных маршрутов
-		r.Use(middleware.UserLoginUserIdToContextMiddleware(h.AppHandler.JWTSecretKey, h.AppHandler.TokenBuilder))
+		r.Use(middleware.LoginIDToContextMiddleware(h.AppHandler.AuthProvider))
 		r.Use(middleware.RequireAuthMiddleware)
+
+		// Эндпоинт для установки сессионной куки для работы SSE (Server Sent Events) на фронтенде
+		r.Post("/session", h.SessionHandler.SetSessionCookie)
 
 		// SSE: подписка на события служб
 		// h.Broadcaster.HTTPHandler() — это http.Handler для всех топиков

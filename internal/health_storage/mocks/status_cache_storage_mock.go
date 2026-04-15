@@ -62,7 +62,7 @@ func (mr *MockStatusCacheStorageMockRecorder) Get(arg0 interface{}) *gomock.Call
 }
 
 // GetAllServerStatusesByUser mocks base method.
-func (m *MockStatusCacheStorage) GetAllServerStatusesByUser(arg0 int64) []models.ServerStatus {
+func (m *MockStatusCacheStorage) GetAllServerStatusesByUser(arg0 string) []models.ServerStatus {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAllServerStatusesByUser", arg0)
 	ret0, _ := ret[0].([]models.ServerStatus)

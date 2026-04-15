@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,16 +26,16 @@ func TestRequireAuthMiddleware(t *testing.T) {
 		checkResponse  func(t *testing.T, w *httptest.ResponseRecorder)
 	}{
 		{
-			name: "успешная аутентификация с логином",
+			name: "успешная аутентификация с id",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, "testuser")
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, "any-id-user-1")
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusOK,
 			wantNextCalled: true,
 		},
 		{
-			name: "логин отсутствует в контексте",
+			name: "id отсутствует в контексте",
 			setupContext: func(r *http.Request) *http.Request {
 				return r // контекст без логина
 			},
@@ -45,9 +46,9 @@ func TestRequireAuthMiddleware(t *testing.T) {
 			},
 		},
 		{
-			name: "логин пустая строка",
+			name: "id пустая строка",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, "")
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, "")
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusInternalServerError,
@@ -57,9 +58,9 @@ func TestRequireAuthMiddleware(t *testing.T) {
 			},
 		},
 		{
-			name: "логин неправильного типа (int вместо string)",
+			name: "id неправильного типа (int вместо string)",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, 123)
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, 123)
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusInternalServerError,
@@ -71,7 +72,7 @@ func TestRequireAuthMiddleware(t *testing.T) {
 		{
 			name: "логин неправильного типа (nil)",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, nil)
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, nil)
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusInternalServerError,
@@ -81,31 +82,28 @@ func TestRequireAuthMiddleware(t *testing.T) {
 			},
 		},
 		{
-			name: "логин с пробелами (валидная строка)",
+			name: "id с пробелами (валидная строка)",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, "  user  ")
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, "  user  ")
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusOK,
 			wantNextCalled: true,
 		},
 		{
-			name: "логин очень длинный",
+			name: "id очень длинный",
 			setupContext: func(r *http.Request) *http.Request {
-				longLogin := string(make([]byte, 1000))
-				for range longLogin {
-					longLogin = "a"
-				}
-				ctx := context.WithValue(r.Context(), contextkeys.Login, longLogin)
+				longUserID := strings.Repeat("9", 1000)
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, longUserID)
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusOK,
 			wantNextCalled: true,
 		},
 		{
-			name: "логин с спецсимволами",
+			name: "id с спецсимволами",
 			setupContext: func(r *http.Request) *http.Request {
-				ctx := context.WithValue(r.Context(), contextkeys.Login, "user@example.com")
+				ctx := context.WithValue(r.Context(), contextkeys.UserID, "user@example.com")
 				return r.WithContext(ctx)
 			},
 			wantStatus:     http.StatusOK,
@@ -123,9 +121,9 @@ func TestRequireAuthMiddleware(t *testing.T) {
 				nextCalled = true
 
 				// проверяем что логин доступен в контексте
-				if login, ok := r.Context().Value(contextkeys.Login).(string); ok && login != "" {
+				if id, ok := r.Context().Value(contextkeys.UserID).(string); ok && id != "" {
 					// логин есть, проверяем что он совпадает
-					assert.NotEmpty(t, login)
+					assert.NotEmpty(t, id)
 				}
 
 				w.WriteHeader(http.StatusOK)
@@ -161,9 +159,9 @@ func TestRequireAuthMiddleware(t *testing.T) {
 func TestRequireAuthMiddlewareChain(t *testing.T) {
 	// создаём конечный handler
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		login := r.Context().Value(contextkeys.Login).(string)
+		id := r.Context().Value(contextkeys.UserID).(string)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, " + login))
+		w.Write([]byte("Hello, " + id))
 	})
 
 	// создаём цепочку middleware
@@ -171,28 +169,28 @@ func TestRequireAuthMiddlewareChain(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		login      string
+		id         string
 		wantStatus int
 		wantBody   string
 	}{
 		{
 			name:       "успешный запрос",
-			login:      "john",
+			id:         "any-id-user-1",
 			wantStatus: http.StatusOK,
-			wantBody:   "Hello, john",
+			wantBody:   "Hello, any-id-user-1",
 		},
 		{
 			name:       "другой пользователь",
-			login:      "alice",
+			id:         "any-id-user-2",
 			wantStatus: http.StatusOK,
-			wantBody:   "Hello, alice",
+			wantBody:   "Hello, any-id-user-2",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/test", nil)
-			ctx := context.WithValue(r.Context(), contextkeys.Login, tt.login)
+			ctx := context.WithValue(r.Context(), contextkeys.UserID, tt.id)
 			r = r.WithContext(ctx)
 			w := httptest.NewRecorder()
 
@@ -218,7 +216,7 @@ func TestRequireAuthMiddlewareMultipleCalls(t *testing.T) {
 	// делаем 3 успешных запроса
 	for i := 0; i < 3; i++ {
 		r := httptest.NewRequest(http.MethodGet, "/test", nil)
-		ctx := context.WithValue(r.Context(), contextkeys.Login, "user")
+		ctx := context.WithValue(r.Context(), contextkeys.UserID, "any-id-user-1")
 		r = r.WithContext(ctx)
 		w := httptest.NewRecorder()
 
@@ -234,34 +232,34 @@ func TestRequireAuthMiddlewareMultipleCalls(t *testing.T) {
 // TestRequireAuthMiddlewareContextIsolation Проверяет изоляцию контекста между запросами.
 func TestRequireAuthMiddlewareContextIsolation(t *testing.T) {
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		login := r.Context().Value(contextkeys.Login).(string)
+		id := r.Context().Value(contextkeys.UserID).(string)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(login))
+		w.Write([]byte(id))
 	})
 
 	handler := RequireAuthMiddleware(nextHandler)
 
-	// запрос 1 с пользователем "alice"
+	// запрос 1 с пользователем id="any-id-user-1"
 	r1 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	ctx1 := context.WithValue(r1.Context(), contextkeys.Login, "alice")
+	ctx1 := context.WithValue(r1.Context(), contextkeys.UserID, "any-id-user-1")
 	r1 = r1.WithContext(ctx1)
 	w1 := httptest.NewRecorder()
 
 	handler.ServeHTTP(w1, r1)
 
 	assert.Equal(t, http.StatusOK, w1.Code)
-	assert.Equal(t, "alice", w1.Body.String())
+	assert.Equal(t, "any-id-user-1", w1.Body.String())
 
-	// запрос 2 с пользователем "bob"
+	// запрос 2 с пользователем id="any-id-user-2"
 	r2 := httptest.NewRequest(http.MethodGet, "/test", nil)
-	ctx2 := context.WithValue(r2.Context(), contextkeys.Login, "bob")
+	ctx2 := context.WithValue(r2.Context(), contextkeys.UserID, "any-id-user-2")
 	r2 = r2.WithContext(ctx2)
 	w2 := httptest.NewRecorder()
 
 	handler.ServeHTTP(w2, r2)
 
 	assert.Equal(t, http.StatusOK, w2.Code)
-	assert.Equal(t, "bob", w2.Body.String())
+	assert.Equal(t, "any-id-user-2", w2.Body.String())
 
 	// проверяем что контексты изолированы
 	assert.NotEqual(t, w1.Body.String(), w2.Body.String())
@@ -288,7 +286,7 @@ func TestRequireAuthMiddlewareDifferentMethods(t *testing.T) {
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
 			r := httptest.NewRequest(method, "/test", nil)
-			ctx := context.WithValue(r.Context(), contextkeys.Login, "user")
+			ctx := context.WithValue(r.Context(), contextkeys.UserID, "any-id-user-1")
 			r = r.WithContext(ctx)
 			w := httptest.NewRecorder()
 

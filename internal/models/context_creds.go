@@ -9,7 +9,7 @@ import (
 // ContextCredentials Получение login, userID, serverID, serviceID из r.Context()
 type ContextCredentials struct {
 	Login     string
-	UserID    int64
+	UserID    string
 	ServerID  int64
 	ServiceID int64
 }
@@ -25,9 +25,9 @@ func GetContextCreds(ctx context.Context) *ContextCredentials {
 		}
 	}
 
-	// UserID (int64)
-	if v := ctx.Value(contextkeys.ID); v != nil {
-		if userID, ok := v.(int64); ok {
+	// UserID (string)
+	if v := ctx.Value(contextkeys.UserID); v != nil {
+		if userID, ok := v.(string); ok {
 			creds.UserID = userID
 		}
 	}
