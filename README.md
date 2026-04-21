@@ -179,7 +179,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
     # Пример: http://localhost:8081
     # Также можно по имени контейнера, например: http://keycloak:8081
     # или URL, где расположен ваш Keycloak, например: https://auth.example.com
-    KEYCLOAK_ISSUER_URL=https://auth.example.com
+    KEYCLOAK_ISSUER_URL=http://localhost:8081
     
     # НЕ ИСПОЛЬЗОВАТЬ В ПРОДАКШЕНЕ! Отключает проверку issuer.
     # Требуется для локальной разработки в контейнерах.
@@ -418,8 +418,9 @@ WantedBy=multi-user.target
     # Базовый URL Keycloak сервера, включая realm.
     # Формат: http(s)://<host>:<port>
     # Пример: http://localhost:8081
-    # Или по имени контейнера, например: http://keycloak:8081
-    KEYCLOAK_ISSUER_URL=http://127.0.0.1:8081
+    # Также можно по имени контейнера, например: http://keycloak:8081
+    # или URL, где расположен ваш Keycloak, например: https://auth.example.com
+    KEYCLOAK_ISSUER_URL=https://auth.example.com
     
     # НЕ ИСПОЛЬЗОВАТЬ В ПРОДАКШЕНЕ! Отключает проверку issuer.
     # Требуется для локальной разработки в контейнерах.
@@ -430,7 +431,7 @@ WantedBy=multi-user.target
     KEYCLOAK_CLIENT_ID=swsm
     
     # Ник администратора realm'а
-    KEYCLOAK_ADMIN_USERNAME=trsv
+    KEYCLOAK_ADMIN_USERNAME=admin
     # Пароль администратора realm'а
     KEYCLOAK_ADMIN_PASSWORD=enter_your_keycloak_admin_password
     ```
@@ -612,6 +613,7 @@ WantedBy=multi-user.target
           - "10000:8080"
         volumes:
           - backend_logs:/app/logs
+        # даёт контейнеру право создавать raw-сокеты, без которых ICMP (ping) работать не может.
         cap_add:
           - NET_RAW
         healthcheck:
