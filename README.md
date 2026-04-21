@@ -28,7 +28,19 @@
 - Go 1.24+
 - PostgreSQL 16+
 - Keycloak 26+
+- FRP (Fast Reverse Proxy) 0.67.0+
 - Windows Server с включённым WinRM
+
+---
+
+## Оглавление
+
+- [Документация по API](#документация-по-API)
+- [Настройка WinRM на удалённом сервере](#настройка-WinRM-на-удалённом-сервере)
+- [Установка и запуск для разработки](#установка-и-запуск-для-разработки)
+- [Подготовка к запуску на продакшене](#подготовка-к-запуску-на-продакшене)
+- [Запуск на продакшене в docker-контейнерах](#запуск-на-продакшене-в-docker-контейнерах)
+- [Создание пользователя на сервере Windows](#создание-пользователя-на-сервере-Windows)
 
 ---
 
@@ -80,7 +92,9 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
      -e KEYCLOAK_ADMIN_PASSWORD=admin \
      quay.io/phasetwo/phasetwo-keycloak:26.5.0 \
      start-dev -- \
-     --spi-events-listener-ext-event-http-enabled=true
+     --spi-events-listener-ext-event-http-enabled=true \
+     --spi-email-template-provider=freemarker-plus-mustache \
+     --spi-email-template-freemarker-plus-mustache-enabled=true
    ```
 
     После успешного развертывания контейнера потребуется создать постоянного пользователя с админскими правами,
@@ -202,6 +216,148 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
    панель администрирования Keycloak: http://127.0.0.1:8081
 ---
 
+## Подготовка к запуску на продакшене
+
+Так как SWSM работает в доверенном контуре, то ip адрес у VPS, на котором он развернут будет "серым".
+Для полноценного доступа к SWSM нам потребуется VPS с "белым" ip адресом, на котором будет запущен [Fast Reverse Proxy (FRP)](https://github.com/fatedier/frp).
+
+FRP позволяет пробрасывать проекты, которые находятся внутри сети (на локальном сервере организации) и делать их доступными через Интернет.
+
+1. **На VPS с "белым" ip**:
+    - Запущен `frps` FRP Server.
+2. **На VPS с "серым" ip в доверенном контуре**:
+    - На локальном сервере запущен `frpc` (FRP Client).
+    - Пробрасывает нужные порты для SWSM на VPS.
+
+**Схема работы:**
+```plain
+[Браузер] → [FRP Server на VPS с "белым" ip] ⇄ [FRP Client на VPS с "серым" ip] → [SWSM]
+```
+
+**Краткое описание компонентов**:
+- **FRP** (Fast Reverse Proxy) — инструмент для создания туннелей
+- **frps** - серверная часть, работает на VPS с "белым" ip
+- **frpc** - клиентская часть, работает в доверенном контуре, VPS с "серым" ip
+
+**Подготовка сервера (VPS с "белым" ip)**
+
+Установите FRP:
+```bash
+# Скачивание FRP и установка
+wget https://github.com/fatedier/frp/releases/download/v0.67.0/frp_0.67.0_linux_amd64.tar.gz
+tar -xzf frp_0.67.0_linux_amd64.tar.gz
+sudo cp frp_0.67.0_linux_amd64/frps /usr/local/bin/
+```
+
+Создайте `/etc/frp/frps.toml`:
+```toml
+bindPort = 7000
+
+# Токен для связи клиента FRP и сервера FRP
+auth.method = "token"
+auth.token = "P234sdfR2eH7jwKD1OiC46"
+
+# Админка
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "O1jdsfghsdgVQgbjpyWXZKIG"
+
+log.level = "info"
+log.maxDays = 3
+```
+
+**Подготовка клиента (VPS с "серым" ip)**
+
+На клиенте все сервисы работают через Docker. Создадим конфигурацию и запустим FRP клиент в контейнере.
+
+1. Создайте папку для конфигураций в корне домашней папки (например, `/home/user/frpc) и в ней файл `frpc.toml`:
+```toml
+serverAddr = "XXX.XXX.XXX.XXX"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "P234sdfR2eH7jwKD1OiC46"
+
+[[proxies]]
+name = "nginx-http"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 80
+remotePort = 80
+
+[[proxies]]
+name = "nginx-https"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 443
+remotePort = 443
+
+[log]
+level = "info"
+maxDays = 3
+```
+
+Создайте `docker-compose.yml` в той же папке:
+```yaml
+services:
+  frpc:
+    image: snowdreamtech/frpc:latest
+    container_name: frpc
+    restart: unless-stopped
+    # используем сеть хоста
+    network_mode: host
+    volumes:
+      - ./frpc.toml:/etc/frp/frpc.toml:ro
+```
+
+**Запуск FRP сервера**
+```bash
+sudo systemctl enable frps
+sudo systemctl start frps
+```
+
+**Запуск FRP клиента через Docker Compose**
+```bash
+cd /home/user/frpc
+sudo docker compose up -d
+```
+
+**Проверка статуса сервисов**
+```bash
+sudo systemctl status frps  # на сервере
+sudo docker ps | grep frpc  # на клиенте
+```
+
+**Проверка доступности:**
+
+```bash
+curl -I https://your_domain.com
+```
+
+**Автозапуск:**
+
+На сервере (**/etc/systemd/system/frps.service**):
+
+```
+[Unit]
+Description=FRP Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frps -c /etc/frp/frps.toml
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+```
+На клиенте автозапуск обеспечивается через **restart: unless-stopped** в **docker-compose.yml**.
+
+**Админка** будет доступна по адресу http://your_domain.com:7500, логин - admin, пароль - O1jdsfghsdgVQgbjpyWXZKIG
+
 ## Запуск на продакшене в docker-контейнерах
 
 1. Клонируйте репозиторий:
@@ -283,11 +439,8 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
 
 3. Будем исходить из того, что у вас уже есть домен, например, example.com.
    Создаём два поддомена - auth.example.com (для Keycloak) и swsm.example.com (для SWSM).
-   Необходимо получить SSL-сертификат (Let's Encrypt) на swsm.example.com и присоединить к этому сертификату auth.example.com:
-    ```shell
-    certbot certonly --nginx --cert-name swsm.example.com --expand -d swsm.example.com -d auth.example.com
-    ```
-4. Отредактируйте nginx.conf со своими значениями ip-адресов и доменов:
+
+4. Ниже показан пример файла конфигурации веб-сервера Nginx с уже полученными ssl-сертификатами (let's encrypt). Отредактируйте nginx.conf со своими значениями ip-адресов и доменов:
     <details>
     <summary>Пример nginx.conf</summary>
 
@@ -320,6 +473,20 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
             proxy_read_timeout 3600s;
         }
     
+        # Keycloak events
+        location /keycloak-events {
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Content-Type $http_content_type;
+
+            proxy_pass http://127.0.0.1:10000;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_read_timeout 30s;
+        }
+   
         listen 443 ssl; # managed by Certbot
         ssl_certificate /etc/letsencrypt/live/swsm.example.com/fullchain.pem; # managed by Certbot
         ssl_certificate_key /etc/letsencrypt/live/swsm.example.com/privkey.pem; # managed by Certbot
@@ -338,7 +505,6 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header X-Forwarded-Port 443;
         }
     
         location / {
@@ -348,7 +514,6 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header X-Forwarded-Port 443;
     
             proxy_buffer_size 128k;
             proxy_buffers 4 256k;
@@ -356,10 +521,31 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
             proxy_read_timeout 300s;
         }
     
-        # Добавлено вручную, т.к. сертификат auth.example.com присоединен (append) к swsm.example.com
-        listen 443 ssl;
-        ssl_certificate /etc/letsencrypt/live/swsm.example.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/swsm.example.com/privkey.pem;
+        listen 443 ssl; # managed by Certbot
+        ssl_certificate /etc/letsencrypt/live/auth.example.comfullchain.pem; # managed by Certbot
+        ssl_certificate_key /etc/letsencrypt/live/auth.example.com/privkey.pem; # managed by Certbot
+        include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+    }
+   
+    server {
+       if ($host = swsm.example.com) {
+           return 301 https://$host$request_uri;
+       } # managed by Certbot
+
+       listen 80;
+       server_name your.vds.ip.address swsm.example.com;
+       return 404; # managed by Certbot
+    }
+
+    server {
+       if ($host = auth.example.ru) {
+           return 301 https://$host$request_uri;
+       } # managed by Certbot
+
+       server_name your.vds.ip.address auth.example.ru;
+       listen 80;
+       return 404; # managed by Certbot
     }
     ```
     </details>
@@ -455,7 +641,9 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
           KC_DB_PASSWORD: ${KEYCLOAK_POSTGRES_PASSWORD}
           KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
           KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-        command: ["start", "--optimized", "--spi-events-listener-ext-event-http-enabled=true"]
+        command: ["start", "--spi-events-listener-ext-event-http-enabled=true", 
+                  "--spi-email-template-provider=freemarker-plus-mustache", 
+                  "--spi-email-template-freemarker-plus-mustache-enabled=true"]
         depends_on:
           auth_db:
             condition: service_healthy
