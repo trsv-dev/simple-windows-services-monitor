@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 )
 
@@ -29,7 +29,7 @@ func Test_SetSessionCookie_Success(t *testing.T) {
 	mockAuth.
 		EXPECT().
 		ValidateToken(gomock.Any(), token).
-		Return(&auth.UserClaims{
+		Return(&models.UserClaims{
 			ID:    "any-id-user-1",
 			Login: "testuser",
 		}, nil)
@@ -183,7 +183,7 @@ func Test_SetSessionCookie_InvalidToken_EmptyID(t *testing.T) {
 	mockAuth.
 		EXPECT().
 		ValidateToken(gomock.Any(), token).
-		Return(&auth.UserClaims{
+		Return(&models.UserClaims{
 			ID:    "",
 			Login: "some-login",
 		}, nil)

@@ -12,7 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	broadcasterMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/broadcast/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
@@ -481,7 +481,7 @@ func TestMakeTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-valid-token-123").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
 			},
 			wantTopic: "user-any-id-user-1:services",
 			wantErr:   false,
@@ -496,7 +496,7 @@ func TestMakeTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-valid-token-999").
-					Return(&auth.UserClaims{ID: "any-id-user-999", Login: "biguser"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-999", Login: "biguser"}, nil)
 			},
 			wantTopic: "user-any-id-user-999:servers",
 			wantErr:   false,
@@ -539,7 +539,7 @@ func TestMakeTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-empty-sub-token").
-					Return(&auth.UserClaims{ID: "", Login: "anonymous"}, nil)
+					Return(&models.UserClaims{ID: "", Login: "anonymous"}, nil)
 			},
 			wantTopic:   "",
 			wantErr:     true,
@@ -555,7 +555,7 @@ func TestMakeTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-no-stream-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:   "",
 			wantErr:     true,
@@ -571,7 +571,7 @@ func TestMakeTopicResolver(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-unknown-stream-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:   "",
 			wantErr:     true,
@@ -932,7 +932,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic: "user-any-id-user-1:services",
 			wantErr:   false,
@@ -943,7 +943,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "admin"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-2", Login: "admin"}, nil)
 			},
 			wantTopic: "user-any-id-user-2:servers",
 			wantErr:   false,
@@ -954,7 +954,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -966,7 +966,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -978,7 +978,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -990,7 +990,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic:      "",
 			wantErr:        true,
@@ -1002,7 +1002,7 @@ func TestTopicResolver_StreamValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantTopic: "user-any-id-user-1:servers", // URL.Query().Get() → первый "servers"
 			wantErr:   false,
@@ -1054,7 +1054,7 @@ func TestTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "user"}, nil)
 			},
 			wantErr: false,
 		},
@@ -1064,7 +1064,7 @@ func TestTopicResolver_IDValidation(t *testing.T) {
 			setupMock: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "jwt-token").
-					Return(&auth.UserClaims{ID: "", Login: "anonymous"}, nil)
+					Return(&models.UserClaims{ID: "", Login: "anonymous"}, nil)
 			},
 			wantErr:        true,
 			checkErrString: "неверный id пользователя",

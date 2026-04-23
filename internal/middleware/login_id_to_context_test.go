@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 	authMocks "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/mocks"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/contextkeys"
 )
@@ -40,7 +40,7 @@ func TestAuthMiddleware(t *testing.T) {
 			setupMocks: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-valid-token").
-					Return(&auth.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-1", Login: "testuser"}, nil)
 			},
 			wantStatus:    http.StatusOK,
 			wantCtxLogin:  "testuser",
@@ -54,7 +54,7 @@ func TestAuthMiddleware(t *testing.T) {
 			setupMocks: func() {
 				mockAuthProvider.EXPECT().
 					ValidateToken(gomock.Any(), "kc-user-token").
-					Return(&auth.UserClaims{ID: "any-id-user-2", Login: "user"}, nil)
+					Return(&models.UserClaims{ID: "any-id-user-2", Login: "user"}, nil)
 			},
 			wantStatus:    http.StatusOK,
 			wantCtxLogin:  "user",
@@ -161,9 +161,9 @@ func TestAuthMiddleware_TokenSources(t *testing.T) {
 			calledToken := ""
 			mockAuthProvider.EXPECT().
 				ValidateToken(gomock.Any(), tt.wantToken).
-				DoAndReturn(func(ctx context.Context, token string) (*auth.UserClaims, error) {
+				DoAndReturn(func(ctx context.Context, token string) (*models.UserClaims, error) {
 					calledToken = token
-					return &auth.UserClaims{ID: "any-id-user-1", Login: "test"}, nil
+					return &models.UserClaims{ID: "any-id-user-1", Login: "test"}, nil
 				})
 
 			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

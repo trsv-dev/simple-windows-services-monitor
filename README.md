@@ -86,7 +86,7 @@ winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="1024"}'
      Привязка к 127.0.0.1 ограничивает доступ только с локальной машины.
     
    ```bash
-   docker run --name keycloak_phasetwo --rm -p 8081:8080 \
+   docker run --name keycloak_events --rm -p 8081:8080 \
      --add-host=host.docker.internal:host-gateway \
      -e KEYCLOAK_ADMIN=admin \
      -e KEYCLOAK_ADMIN_PASSWORD=admin \
