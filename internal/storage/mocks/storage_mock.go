@@ -223,21 +223,6 @@ func (mr *MockStorageMockRecorder) GetService(arg0, arg1, arg2, arg3 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockStorage)(nil).GetService), arg0, arg1, arg2, arg3)
 }
 
-// GetUser mocks base method.
-func (m *MockStorage) GetUser(arg0 context.Context, arg1 *models.User) (*models.User, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetUser", arg0, arg1)
-	ret0, _ := ret[0].(*models.User)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetUser indicates an expected call of GetUser.
-func (mr *MockStorageMockRecorder) GetUser(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUser", reflect.TypeOf((*MockStorage)(nil).GetUser), arg0, arg1)
-}
-
 // GetUserServiceStatuses mocks base method.
 func (m *MockStorage) GetUserServiceStatuses(arg0 context.Context, arg1 string) ([]*models.ServiceStatus, error) {
 	m.ctrl.T.Helper()
@@ -310,4 +295,19 @@ func (m *MockStorage) Ping(arg0 context.Context) error {
 func (mr *MockStorageMockRecorder) Ping(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ping", reflect.TypeOf((*MockStorage)(nil).Ping), arg0)
+}
+
+// UserExists mocks base method.
+func (m *MockStorage) UserExists(arg0 context.Context, arg1 string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserExists", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UserExists indicates an expected call of UserExists.
+func (mr *MockStorageMockRecorder) UserExists(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserExists", reflect.TypeOf((*MockStorage)(nil).UserExists), arg0, arg1)
 }

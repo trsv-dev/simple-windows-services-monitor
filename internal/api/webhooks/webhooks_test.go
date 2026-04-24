@@ -135,9 +135,9 @@ func Test_HandleEvent_UserEvent_Register_UserAlreadyExists(t *testing.T) {
 
 	wh.HandleEvent(rr, req)
 
-	// Ожидаем 409 Conflict
-	if rr.Code != http.StatusConflict {
-		t.Fatalf("ожидался статус %d, получен %d, тело ответа: %s", http.StatusConflict, rr.Code, rr.Body.String())
+	// Ожидаем 204 NoContent
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("ожидался статус %d, получен %d, тело ответа: %s", http.StatusNoContent, rr.Code, rr.Body.String())
 	}
 }
 
@@ -344,9 +344,9 @@ func Test_HandleEvent_AdminEvent_Create_UserAlreadyExists(t *testing.T) {
 
 	wh.HandleEvent(rr, req)
 
-	// ожидаем 409 Conflict
-	if rr.Code != http.StatusConflict {
-		t.Fatalf("ожидался статус %d, получен %d, тело ответа: %s", http.StatusConflict, rr.Code, rr.Body.String())
+	// ожидаем 204 NoContent
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("ожидался статус %d, получен %d, тело ответа: %s", http.StatusNoContent, rr.Code, rr.Body.String())
 	}
 }
 

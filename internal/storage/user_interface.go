@@ -10,7 +10,7 @@ import (
 type UserStorage interface {
 	CreateUser(ctx context.Context, user *models.User) error
 	DeleteUser(ctx context.Context, userID string) error
-	GetUser(ctx context.Context, user *models.User) (*models.User, error)
+	UserExists(ctx context.Context, userID string) (bool, error)
 	ListUsers(ctx context.Context) ([]*models.User, error)
 	GetUserServiceStatuses(ctx context.Context, userID string) ([]*models.ServiceStatus, error)
 }

@@ -93,7 +93,8 @@ func (wh *Webhook) handleUserEvent(w http.ResponseWriter, r *http.Request, body 
 			if errors.As(err, &userExistsErr) {
 				logger.Log.Info("Пользователь уже существует",
 					logger.String("id", userExistsErr.ID), logger.String("err", userExistsErr.Err.Error()))
-				response.ErrorJSON(w, http.StatusConflict, "Пользователь уже существует")
+				// считаем событие обработанным
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 
@@ -204,7 +205,8 @@ func (wh *Webhook) handleAdminEvent(w http.ResponseWriter, r *http.Request, body
 			if errors.As(err, &userExistsErr) {
 				logger.Log.Info("Пользователь уже существует",
 					logger.String("id", userExistsErr.ID), logger.String("err", userExistsErr.Err.Error()))
-				response.ErrorJSON(w, http.StatusConflict, "Пользователь уже существует")
+				// считаем событие обработанным
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 

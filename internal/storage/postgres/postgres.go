@@ -579,23 +579,45 @@ func (pg *PgStorage) DeleteUser(ctx context.Context, userID string) error {
 	return nil
 }
 
-// GetUser Возвращает пользователя если он зарегистрирован.
-func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.User, error) {
-	var userFromDB models.User
+//// GetUser Возвращает пользователя если он зарегистрирован.
+//func (pg *PgStorage) GetUser(ctx context.Context, user *models.User) (*models.User, error) {
+//	var userFromDB models.User
+//
+//	query := `SELECT id, login FROM users WHERE id = $1`
+//	err := pg.DB.QueryRowContext(ctx, query, user.ID).Scan(&userFromDB.ID, &userFromDB.Login)
+//
+//	if err != nil {
+//		switch {
+//		case errors.Is(err, sql.ErrNoRows):
+//			return nil, errs.NewErrUserIDNotFound(user.ID)
+//		default:
+//			return nil, err
+//		}
+//	}
+//
+//	return &userFromDB, nil
+//}
 
-	query := `SELECT id, login FROM users WHERE id = $1`
-	err := pg.DB.QueryRowContext(ctx, query, user.ID).Scan(&userFromDB.ID, &userFromDB.Login)
+// UserExists Возвращает (true, nil) если пользователь найден,
+// (false, nil) если не найден, (false, error) при ошибке БД.
+func (pg *PgStorage) UserExists(ctx context.Context, userID string) (bool, error) {
+	// переменная-заглушка, нам важно только наличие строки
+	var dummy bool
+
+	query := `SELECT true FROM users WHERE id = $1 LIMIT 1`
+	err := pg.DB.QueryRowContext(ctx, query, userID).Scan(&dummy)
 
 	if err != nil {
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return nil, errs.NewErrUserIDNotFound(user.ID)
-		default:
-			return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			// пользователь не найден
+			return false, nil
 		}
+		// любая другая ошибка БД (сеть, БД, права)
+		return false, err
 	}
 
-	return &userFromDB, nil
+	// пользователь найден
+	return true, nil
 }
 
 // ListUsers Получение списка всех пользователей.
