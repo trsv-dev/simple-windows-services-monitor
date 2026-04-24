@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/api/response"
+	models2 "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/errs"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/logger"
 	"github.com/trsv-dev/simple-windows-services-monitor/internal/models"
@@ -62,7 +63,7 @@ func (wh *Webhook) HandleEvent(w http.ResponseWriter, r *http.Request) {
 
 // Обработчик событий UserEvent.
 func (wh *Webhook) handleUserEvent(w http.ResponseWriter, r *http.Request, body []byte) {
-	var event models.KeycloakUserEvent
+	var event models2.KeycloakUserEvent
 	if err := json.Unmarshal(body, &event); err != nil {
 		logger.Log.Warn("Не удалось распарсить User Event", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusBadRequest, "Ошибка чтения запроса")
@@ -92,7 +93,8 @@ func (wh *Webhook) handleUserEvent(w http.ResponseWriter, r *http.Request, body 
 			if errors.As(err, &userExistsErr) {
 				logger.Log.Info("Пользователь уже существует",
 					logger.String("id", userExistsErr.ID), logger.String("err", userExistsErr.Err.Error()))
-				response.ErrorJSON(w, http.StatusConflict, "Пользователь уже существует")
+				// считаем событие обработанным
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 
@@ -154,7 +156,7 @@ func (wh *Webhook) handleUserEvent(w http.ResponseWriter, r *http.Request, body 
 
 // Обработчик событий AdminEvent.
 func (wh *Webhook) handleAdminEvent(w http.ResponseWriter, r *http.Request, body []byte) {
-	var event models.KeycloakAdminEvent
+	var event models2.KeycloakAdminEvent
 	if err := json.Unmarshal(body, &event); err != nil {
 		logger.Log.Warn("Не удалось распарсить Admin Event", logger.String("err", err.Error()))
 		response.ErrorJSON(w, http.StatusBadRequest, "Ошибка чтения запроса")
@@ -185,7 +187,7 @@ func (wh *Webhook) handleAdminEvent(w http.ResponseWriter, r *http.Request, body
 
 	// создание пользователя (через админку Keycloak)
 	case event.OperationType == "CREATE" && event.ResourceType == "USER":
-		var userRep models.UserRepresentation
+		var userRep models2.UserRepresentation
 
 		// парсим строку с данными о пользователе (user representation) в структуру
 		// для дальнейшего получения данных о пользователе
@@ -203,7 +205,8 @@ func (wh *Webhook) handleAdminEvent(w http.ResponseWriter, r *http.Request, body
 			if errors.As(err, &userExistsErr) {
 				logger.Log.Info("Пользователь уже существует",
 					logger.String("id", userExistsErr.ID), logger.String("err", userExistsErr.Err.Error()))
-				response.ErrorJSON(w, http.StatusConflict, "Пользователь уже существует")
+				// считаем событие обработанным
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 

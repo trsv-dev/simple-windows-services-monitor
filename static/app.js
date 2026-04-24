@@ -142,6 +142,45 @@ async function syncSessionCookie(retryCount = 0, maxRetries = 3) {
             credentials: 'include'
         });
 
+        // КРИТИЧНО: 403 здесь означает рассинхрон БД. Ретраи ЗАПРЕЩЕНЫ.
+        if (response.status === 403) {
+            let errorData = {};
+            const contentType = response.headers.get('Content-Type');
+            if (contentType && contentType.includes('application/json')) {
+                try { errorData = await response.json(); } catch (e) {}
+            }
+
+            if (errorData.message === 'Пользователь не найден' || errorData.error === 'Пользователь не найден') {
+                console.warn('[Auth] Пользователь не найден в БД проекта - рассинхрон с Keycloak');
+
+                // 1. МГНОВЕННО переключаем UI до любых других операций
+                if (mainApp) { mainApp.style.display = 'none'; mainApp.classList.add('hidden'); }
+                if (loginPage) { loginPage.style.display = ''; loginPage.classList.remove('hidden'); }
+                document.documentElement.removeAttribute('data-user-logged-in');
+
+                // 2. Останавливаем фоновые процессы и чистим состояние
+                cleanupOnLogout();
+                localStorage.removeItem('swsm_user');
+                localStorage.removeItem('swsm_current_server_id');
+                currentUser = null;
+                currentServerId = null;
+                window._sessionExpiredNotified = true;
+
+                sessionStorage.setItem('swsm_auth_error', 'db_not_found');
+
+                // 3. Откладываем редирект на 2мс, чтобы браузер успел отрисовать экран входа
+                setTimeout(() => {
+                    if (keycloak?.authenticated) {
+                        keycloak.logout({ redirectUri: window.location.origin }).catch(() => keycloak.login());
+                    } else {
+                        keycloak?.login();
+                    }
+                }, 2);
+
+                throw new Error('User not found in project DB - re-authentication required');
+            }
+        }
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -150,10 +189,11 @@ async function syncSessionCookie(retryCount = 0, maxRetries = 3) {
         return true;
 
     } catch (err) {
+        // Сетевые ошибки или другие статусы (5xx, таймауты) – оставляем ретраи
         console.warn(`Error syncing session cookie (attempt ${retryCount + 1}/${maxRetries}):`, err);
 
         if (retryCount < maxRetries - 1) {
-            const delay = (retryCount + 1) * 1000; // 1s, 2s, 3s
+            const delay = (retryCount + 1) * 1000;
             await new Promise(resolve => setTimeout(resolve, delay));
             return syncSessionCookie(retryCount + 1, maxRetries);
         }
@@ -210,17 +250,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             keycloak.login();
         });
     };
-    // keycloak.onTokenExpired = () => {
-    //     keycloak.updateToken(30).then(refreshed => {
-    //         if (refreshed) {
-    //             syncSessionCookie(); // обновляем куку с новым токеном
-    //         }
-    //     }).catch(() => {
-    //         console.warn('Failed to refresh token');
-    //         showToast('Сессия истекла', 'Пожалуйста, войдите снова', 'warning');
-    //         keycloak.login();
-    //     });
-    // };
 
     try {
         const authenticated = await keycloak.init({
@@ -265,6 +294,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 // Тост уже показывается внутри syncSessionCookie при провале
             }
 
+            sessionStorage.removeItem('swsm_auth_error');
             showMainApp();
             subscribeServerEvents();
 
@@ -655,6 +685,43 @@ async function apiRequest(endpoint, options = {}) {
             throw new SessionExpiredError('Session expired');
         }
 
+        if (response.status === 403) {
+            let errorData = {};
+            const contentType = response.headers.get('Content-Type');
+            if (contentType && contentType.includes('application/json')) {
+                try { errorData = await response.json(); } catch (e) {}
+            }
+
+            if (errorData.message === 'Пользователь не найден' || errorData.error === 'Пользователь не найден') {
+                console.warn('[Auth] Пользователь не найден в БД проекта - рассинхрон с Keycloak');
+
+                // 1. МГНОВЕННО переключаем UI до любых других операций
+                if (mainApp) { mainApp.style.display = 'none'; mainApp.classList.add('hidden'); }
+                if (loginPage) { loginPage.style.display = ''; loginPage.classList.remove('hidden'); }
+                document.documentElement.removeAttribute('data-user-logged-in');
+
+                // 2. Останавливаем фоновые процессы и чистим состояние
+                cleanupOnLogout();
+                localStorage.removeItem('swsm_user');
+                localStorage.removeItem('swsm_current_server_id');
+                currentUser = null;
+                currentServerId = null;
+                window._sessionExpiredNotified = true;
+
+                sessionStorage.setItem('swsm_auth_error', 'db_not_found');
+
+                // 3. Откладываем редирект на 2мс, чтобы браузер успел отрисовать экран входа
+                setTimeout(() => {
+                    if (keycloak?.authenticated) {
+                        keycloak.logout({ redirectUri: window.location.origin }).catch(() => keycloak.login());
+                    } else {
+                        keycloak?.login();
+                    }
+                }, 2);
+
+                throw new Error('User not found in project DB - re-authentication required');
+            }
+        }
         // Обработка успешного ответа (как раньше)
         let data;
         const contentType = response.headers.get('Content-Type');
@@ -973,7 +1040,8 @@ function updateServicesStatus(statuses) {
     });
 
     // Обновление в DOM
-    document.querySelectorAll('.service-card').forEach(card => {
+    // document.querySelectorAll('.service-card').forEach(card => {
+    servicesList.querySelectorAll('.service-card').forEach(card => {
         const serviceId = parseInt(card.getAttribute('data-service-id'));
         const status = statusMap.get(serviceId);
 
@@ -1101,58 +1169,6 @@ function updateServerStatusIndicator(el, status) {
 // ============================================
 // AUTHENTICATION HANDLERS
 // ============================================
-
-async function handleLogin(event) {
-    event.preventDefault();
-
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-
-    showLoading();
-
-    try {
-        const response = await apiRequest('/user/login', {
-            method: 'POST',
-            body: JSON.stringify({
-                login: username,
-                password: password
-            })
-        });
-
-        currentUser = response.login || response.Login;
-        localStorage.setItem('swsm_user', currentUser);
-
-        document.documentElement.setAttribute('data-user-logged-in', 'true');
-
-        // Полностью очищаем состояние при новом логине
-        localStorage.removeItem('swsm_current_server_id');
-        localStorage.removeItem(LS_SERVICES_PAGE_KEY);
-        localStorage.removeItem(LS_SERVERS_PAGE_KEY);
-        currentServerId = null;
-        currentServerData = null;
-        allServices = [];
-        currentPage = 1;
-        serversCurrentPage = 1;
-
-        window._sessionExpiredNotified = false;
-
-        showToast('Успех', 'Авторизация прошла успешно!');
-        showMainApp();
-
-        // Загружаем список серверов (не детали сервера)
-        setTimeout(() => {
-            showServersList();
-            subscribeServerEvents();
-        }, 100);
-
-    } catch (error) {
-        if (!(error instanceof SessionExpiredError)) {
-            showToast('Ошибка', error.message, 'error');
-        }
-    } finally {
-        hideLoading();
-    }
-}
 
 function cleanupOnLogout() {
     // Закрываем SSE, останавливаем поллинг, очищаем таймеры
@@ -1422,6 +1438,12 @@ async function handleAddServer(event) {
 async function loadServerDetail(serverId) {
     currentServerId = serverId;
     showLoading();
+
+    allServices = [];
+    currentPage = 1;
+    totalPages = 1;
+    servicesList.innerHTML = '<div class="col-12 text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Загрузка служб...</div>';
+
     try {
         const server = await apiRequest(`/user/servers/${serverId}`);
         currentServerData = server;
@@ -1719,7 +1741,6 @@ async function loadServicesList(serverId, silent = false) {
 
 function renderServicesList(services) {
     servicesList.innerHTML = '';
-
     const refreshBtn = document.getElementById('refreshFromServerBtn');
 
     if (!services || services.length === 0) {
@@ -1730,46 +1751,32 @@ function renderServicesList(services) {
                     Список служб пуст
                 </div>
             </div>`;
-
         if (refreshBtn) refreshBtn.style.display = 'none';
         return;
     }
 
-    services.forEach(service => {
-        const template = document.getElementById('serviceCardTemplate');
-        const serviceCard = template.content.cloneNode(true);
+    const template = document.getElementById('serviceCardTemplate');
+    const fragment = document.createDocumentFragment();
 
-        serviceCard.querySelector('.service-displayed-name').textContent = service.displayed_name;
-        serviceCard.querySelector('.service-name').textContent = service.service_name;
-        serviceCard.querySelector('.service-status').textContent = service.status || '—';
-        serviceCard.querySelector('.service-updated').textContent = service.updated_at ?
+    services.forEach(service => {
+        const clone = template.content.cloneNode(true);
+        const card = clone.querySelector('.service-card');
+
+        // Кэшируем данные прямо в DOM для быстрого доступа
+        card.dataset.serviceId = service.id;
+        card.dataset.serviceName = service.displayed_name;
+
+        clone.querySelector('.service-displayed-name').textContent = service.displayed_name;
+        clone.querySelector('.service-name').textContent = service.service_name;
+        clone.querySelector('.service-status').textContent = service.status || '—';
+        clone.querySelector('.service-updated').textContent = service.updated_at ?
             new Date(service.updated_at).toLocaleString('ru-RU') : '—';
 
-        const card = serviceCard.querySelector('.service-card');
-        card.setAttribute('data-service-id', service.id);
-
-        const startBtn = serviceCard.querySelector('.service-start-btn');
-        const stopBtn = serviceCard.querySelector('.service-stop-btn');
-        const restartBtn = serviceCard.querySelector('.service-restart-btn');
-        const deleteBtn = serviceCard.querySelector('.service-delete-btn');
-
-        // Простые присваивания, БЕЗ стрелочных функций
-        startBtn.onclick = function() {
-            controlService(service.id, 'start', service.displayed_name);
-        };
-        stopBtn.onclick = function() {
-            controlService(service.id, 'stop', service.displayed_name);
-        };
-        restartBtn.onclick = function() {
-            controlService(service.id, 'restart', service.displayed_name);
-        };
-        deleteBtn.onclick = function() {
-            handleDeleteService(service.id, service.displayed_name);
-        };
-
-        servicesList.appendChild(serviceCard);
+        fragment.appendChild(clone);
     });
 
+    // Одна вставка в DOM → один reflow/repaint
+    servicesList.appendChild(fragment);
     if (refreshBtn) refreshBtn.style.display = 'inline-block';
 }
 
@@ -1900,7 +1907,12 @@ async function handleRefreshFromServer() {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include'
-        });
+        })
+
+        if (response.status === 401 || response.status === 403) {
+            await apiRequest('/user/servers'); // триггернет централизованную обработку 401/403
+            return;
+        }
 
         const isUpdated = response.headers.get('X-Is-Updated');
         const data = await response.json();
@@ -2204,9 +2216,6 @@ function renderServersCurrentPage() {
 // ============================================
 
 function setupEventListeners() {
-    const loginForm = document.getElementById('loginForm');
-    if (loginForm) loginForm.addEventListener('submit', handleLogin);
-
     const addServerForm = document.getElementById('addServerForm');
     if (addServerForm) addServerForm.addEventListener('submit', handleAddServer);
 
@@ -2292,6 +2301,29 @@ function setupEventListeners() {
                 serversCurrentPage++;
                 localStorage.setItem(LS_SERVERS_PAGE_KEY, String(serversCurrentPage));
                 renderServersCurrentPage();
+            }
+        });
+    }
+
+    if (servicesList) {
+        servicesList.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+
+            const card = btn.closest('.service-card');
+            if (!card) return;
+
+            const serviceId = card.dataset.serviceId;
+            const serviceName = card.dataset.serviceName;
+
+            if (btn.classList.contains('service-start-btn')) {
+                controlService(serviceId, 'start', serviceName);
+            } else if (btn.classList.contains('service-stop-btn')) {
+                controlService(serviceId, 'stop', serviceName);
+            } else if (btn.classList.contains('service-restart-btn')) {
+                controlService(serviceId, 'restart', serviceName);
+            } else if (btn.classList.contains('service-delete-btn')) {
+                handleDeleteService(serviceId, serviceName);
             }
         });
     }
@@ -2392,30 +2424,34 @@ function handlePageResume() {
 function showLoginPage() {
     if (loginPage) {
         loginPage.classList.remove('hidden');
-        loginPage.style.display = ''; // показать
+        loginPage.style.display = '';
     }
     if (mainApp) {
-        mainApp.classList.add('hidden');
         mainApp.style.display = 'none';
+        mainApp.classList.add('hidden');
     }
     document.documentElement.removeAttribute('data-user-logged-in');
 
-    // Очистка состояния
     localStorage.removeItem('swsm_current_server_id');
     currentServerId = null;
     window._sessionExpiredNotified = false;
-
     currentUser = null;
     localStorage.removeItem('swsm_user');
-    window._sessionExpiredNotified = false;
 
-    // Остановка всех соединений
     if (serviceEventsSource) serviceEventsSource.close();
     stopServicePolling();
     if (serverEventsSource) serverEventsSource.close();
     stopServerPolling();
 
-    // Установка обработчика на кнопку логина
+    // Показываем сообщение, если пользователь вернулся после рассинхрона БД
+    const authError = sessionStorage.getItem('swsm_auth_error');
+    if (authError === 'db_not_found') {
+        showLoginAlert('Аккаунт не найден. Пожалуйста, зарегистрируйтесь заново или войдите под другой учётной записью.');
+        sessionStorage.removeItem('swsm_auth_error'); // показываем строго один раз
+    } else {
+        hideLoginAlert();
+    }
+
     const loginBtn = document.getElementById('keycloakLoginBtn');
     if (loginBtn) {
         loginBtn.onclick = () => keycloak.login();
@@ -2423,6 +2459,7 @@ function showLoginPage() {
 }
 
 function showMainApp() {
+    sessionStorage.removeItem('swsm_auth_error');
     if (loginPage) {
         loginPage.classList.add('hidden');
         loginPage.style.display = 'none';
@@ -2500,6 +2537,20 @@ function showServerDetail(serverId) {
         currentServerData = cached;
         renderServerDetail(cached);
 
+        // МГНОВЕННО очищаем старые службы ДО async-запроса
+        allServices = [];
+        currentPage = 1;
+        totalPages = 1;
+        servicesList.innerHTML = '<div class="col-12 text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Загрузка служб...</div>';
+
+        // Скрываем пагинацию на время загрузки, чтобы не мелькали старые цифры
+        const pInd = document.getElementById('pageIndicator');
+        const pPrev = document.getElementById('prevPageBtn');
+        const pNext = document.getElementById('nextPageBtn');
+        if (pInd) pInd.style.display = 'none';
+        if (pPrev) pPrev.style.display = 'none';
+        if (pNext) pNext.style.display = 'none';
+
         // загружаем список служб без спиннера (silent = true)
         loadServicesList(serverId, true).catch(err => {
             console.warn('Ошибка загрузки служб при открытии деталки (silent):', err);
@@ -2533,6 +2584,25 @@ function showServerDetail(serverId) {
     subscribeServiceEvents(serverId);
 }
 
+function showLoginAlert(message) {
+    let alertEl = document.getElementById('loginAlert');
+    if (!alertEl) {
+        alertEl = document.createElement('div');
+        alertEl.id = 'loginAlert';
+        alertEl.className = 'alert alert-warning text-center mb-3';
+        alertEl.setAttribute('role', 'alert');
+        const btn = document.getElementById('keycloakLoginBtn');
+        if (btn) btn.parentNode.insertBefore(alertEl, btn);
+    }
+    alertEl.textContent = message;
+    alertEl.style.display = '';
+}
+
+function hideLoginAlert() {
+    const alertEl = document.getElementById('loginAlert');
+    if (alertEl) alertEl.style.display = 'none';
+}
+
 function showLoading() {
     if (loadingSpinner) loadingSpinner.style.display = 'block';
 }
@@ -2540,20 +2610,6 @@ function showLoading() {
 function hideLoading() {
     if (loadingSpinner) loadingSpinner.style.display = 'none';
 }
-
-// ============================================
-// Before unload - make sure timers are cleared
-// ============================================
-
-window.addEventListener('beforeunload', () => {
-    AppTimers.clearAll();
-    if (serviceEventsSource) {
-        try { serviceEventsSource.close(); } catch (e) {}
-        serviceEventsSource = null;
-    }
-
-    cleanupOnLogout();
-});
 
 // ============================================
 // Cleanup on page unload
@@ -2585,6 +2641,8 @@ window.addEventListener('beforeunload', () => {
         try { clearTimeout(serverSseReconnectTimerId); } catch (e) {}
         serverSseReconnectTimerId = null;
     }
+
+    cleanupOnLogout();
 });
 
 // ============================================

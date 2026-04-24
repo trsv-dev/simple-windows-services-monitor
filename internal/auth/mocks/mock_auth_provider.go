@@ -9,7 +9,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	auth "github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	models "github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 )
 
 // MockAuthProvider is a mock of AuthProvider interface.
@@ -36,10 +36,10 @@ func (m *MockAuthProvider) EXPECT() *MockAuthProviderMockRecorder {
 }
 
 // ValidateToken mocks base method.
-func (m *MockAuthProvider) ValidateToken(arg0 context.Context, arg1 string) (*auth.UserClaims, error) {
+func (m *MockAuthProvider) ValidateToken(arg0 context.Context, arg1 string) (*models.UserClaims, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ValidateToken", arg0, arg1)
-	ret0, _ := ret[0].(*auth.UserClaims)
+	ret0, _ := ret[0].(*models.UserClaims)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

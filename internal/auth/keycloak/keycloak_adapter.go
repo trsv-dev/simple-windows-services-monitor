@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth"
+	"github.com/trsv-dev/simple-windows-services-monitor/internal/auth/keycloak/models"
 )
 
 // KeycloakAdapter Реализует auth.AuthProvider через OIDC/Keycloak.
@@ -46,7 +46,7 @@ func NewKeycloakAdapter(ctx context.Context, config KeycloakConfig) (*KeycloakAd
 }
 
 // ValidateToken Реализует интерфейс auth.AuthProvider.
-func (k *KeycloakAdapter) ValidateToken(ctx context.Context, rawToken string) (*auth.UserClaims, error) {
+func (k *KeycloakAdapter) ValidateToken(ctx context.Context, rawToken string) (*models.UserClaims, error) {
 
 	//верификация токена (подпись, exp, iss, aud)
 	idToken, err := k.verifier.Verify(ctx, rawToken)
@@ -55,13 +55,23 @@ func (k *KeycloakAdapter) ValidateToken(ctx context.Context, rawToken string) (*
 	}
 
 	// парсим нужные клеймы
-	var claims struct {
-		Sub               string `json:"sub"`
-		PreferredUsername string `json:"preferred_username"`
-	}
+	var claims models.Claims
 
 	if err = idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга claims: %w", err)
+	}
+
+	return parseUserClaims(claims)
+}
+
+// Вспомогательная функция. Извлекает нужные поля из claims и возвращает UserClaims с ID и Login.
+func parseUserClaims(claims models.Claims) (*models.UserClaims, error) {
+	if claims.Sub == "" {
+		return nil, fmt.Errorf("отсутствует обязательный клейм 'sub'")
+	}
+
+	if claims.PreferredUsername == "" {
+		return nil, fmt.Errorf("отсутствует обязательный клейм 'preferred_username'")
 	}
 
 	// claims.Sub - это users.id (строка из Keycloak)
@@ -69,8 +79,5 @@ func (k *KeycloakAdapter) ValidateToken(ctx context.Context, rawToken string) (*
 	login := claims.PreferredUsername
 	id := claims.Sub
 
-	return &auth.UserClaims{
-		ID:    id,
-		Login: login,
-	}, nil
+	return &models.UserClaims{ID: id, Login: login}, nil
 }

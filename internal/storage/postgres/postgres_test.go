@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -1222,57 +1223,129 @@ func TestCreateUser(t *testing.T) {
 	}
 }
 
-// TestGetUser Проверяет получение пользователя по логину и паролю.
-func TestGetUser(t *testing.T) {
-	getUserQuery := `SELECT id, login FROM users WHERE id = $1`
+//// TestGetUser Проверяет получение пользователя по логину и паролю.
+//func TestGetUser(t *testing.T) {
+//	getUserQuery := `SELECT id, login FROM users WHERE id = $1`
+//
+//	tests := []struct {
+//		name           string                                  // название теста
+//		user           *models.User                            // входные данные
+//		mockSetup      func(mock sqlmock.Sqlmock)              // настройка мока
+//		expectError    bool                                    // ожидается ли ошибка
+//		errorAssertion func(t *testing.T, err error)           // дополнительная проверка ошибки
+//		validate       func(t *testing.T, result *models.User) // валидация результата
+//	}{
+//		{
+//			name: "успешная авторизация пользователя",
+//			user: &models.User{
+//				ID:    "any-id-user-1",
+//				Login: "testuser",
+//			},
+//			mockSetup: func(mock sqlmock.Sqlmock) {
+//				rows := sqlmock.NewRows([]string{"id", "login"}).
+//					AddRow("any-id-user-1", "testuser")
+//				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
+//					WithArgs("any-id-user-1").
+//					WillReturnRows(rows)
+//			},
+//			expectError: false,
+//			validate: func(t *testing.T, result *models.User) {
+//				assert.NotNil(t, result)
+//				assert.Equal(t, "any-id-user-1", result.ID)
+//				assert.Equal(t, "testuser", result.Login)
+//			},
+//		},
+//		{
+//			name: "ошибка - пользователь не найден",
+//			user: &models.User{
+//				ID:    "non-existent-user-id",
+//				Login: "nonexistent",
+//			},
+//			mockSetup: func(mock sqlmock.Sqlmock) {
+//				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
+//					WithArgs("non-existent-user-id").
+//					WillReturnError(sql.ErrNoRows)
+//			},
+//			expectError: true,
+//			errorAssertion: func(t *testing.T, err error) {
+//				var userNotFoundErr *errs.ErrUserIDNotFound
+//				assert.True(t, errors.As(err, &userNotFoundErr), "ошибка должна быть типа ErrUserIDNotFound")
+//			},
+//			validate: func(t *testing.T, result *models.User) {
+//				assert.Nil(t, result)
+//			},
+//		},
+//	}
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			db, mock, err := sqlmock.New()
+//			require.NoError(t, err)
+//			defer db.Close()
+//
+//			tt.mockSetup(mock)
+//
+//			pg := &PgStorage{DB: db}
+//
+//			result, err := pg.GetUser(context.Background(), tt.user)
+//
+//			if tt.expectError {
+//				assert.Error(t, err)
+//				if tt.errorAssertion != nil {
+//					tt.errorAssertion(t, err)
+//				}
+//			} else {
+//				assert.NoError(t, err)
+//			}
+//
+//			tt.validate(t, result)
+//			assert.NoError(t, mock.ExpectationsWereMet())
+//		})
+//	}
+//}
 
+// TestUserExists Проверяет, существует ли пользователь с данным ID в БД.
+func TestPgStorage_UserExists(t *testing.T) {
 	tests := []struct {
-		name           string                                  // название теста
-		user           *models.User                            // входные данные
-		mockSetup      func(mock sqlmock.Sqlmock)              // настройка мока
-		expectError    bool                                    // ожидается ли ошибка
-		errorAssertion func(t *testing.T, err error)           // дополнительная проверка ошибки
-		validate       func(t *testing.T, result *models.User) // валидация результата
+		name         string
+		userID       string
+		mockSetup    func(sqlmock.Sqlmock)
+		expectExists bool
+		expectError  bool
 	}{
 		{
-			name: "успешная авторизация пользователя",
-			user: &models.User{
-				ID:    "any-id-user-1",
-				Login: "testuser",
-			},
+			name:   "пользователь существует",
+			userID: "any-user-id",
 			mockSetup: func(mock sqlmock.Sqlmock) {
-				rows := sqlmock.NewRows([]string{"id", "login"}).
-					AddRow("any-id-user-1", "testuser")
-				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
-					WithArgs("any-id-user-1").
+				rows := sqlmock.NewRows([]string{"?column?"}).AddRow(true)
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT true FROM users WHERE id = $1 LIMIT 1`)).
+					WithArgs("any-user-id").
 					WillReturnRows(rows)
 			},
-			expectError: false,
-			validate: func(t *testing.T, result *models.User) {
-				assert.NotNil(t, result)
-				assert.Equal(t, "any-id-user-1", result.ID)
-				assert.Equal(t, "testuser", result.Login)
-			},
+			expectExists: true,
+			expectError:  false,
 		},
 		{
-			name: "ошибка - пользователь не найден",
-			user: &models.User{
-				ID:    "non-existent-user-id",
-				Login: "nonexistent",
-			},
+			name:   "пользователь не найден",
+			userID: "any-user-id",
 			mockSetup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery(regexp.QuoteMeta(getUserQuery)).
-					WithArgs("non-existent-user-id").
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT true FROM users WHERE id = $1 LIMIT 1`)).
+					WithArgs("any-user-id").
 					WillReturnError(sql.ErrNoRows)
 			},
-			expectError: true,
-			errorAssertion: func(t *testing.T, err error) {
-				var userNotFoundErr *errs.ErrUserIDNotFound
-				assert.True(t, errors.As(err, &userNotFoundErr), "ошибка должна быть типа ErrUserIDNotFound")
+			expectExists: false,
+			expectError:  false, //nil, а не ошибка!
+		},
+		{
+			name:   "ошибка БД",
+			userID: "any-user-id",
+			mockSetup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT true FROM users WHERE id = $1 LIMIT 1`)).
+					WithArgs("any-user-id").
+					WillReturnError(fmt.Errorf("connection timeout"))
 			},
-			validate: func(t *testing.T, result *models.User) {
-				assert.Nil(t, result)
-			},
+			expectExists: false,
+			expectError:  true,
 		},
 	}
 
@@ -1283,21 +1356,16 @@ func TestGetUser(t *testing.T) {
 			defer db.Close()
 
 			tt.mockSetup(mock)
-
 			pg := &PgStorage{DB: db}
 
-			result, err := pg.GetUser(context.Background(), tt.user)
+			exists, err := pg.UserExists(context.Background(), tt.userID)
 
 			if tt.expectError {
 				assert.Error(t, err)
-				if tt.errorAssertion != nil {
-					tt.errorAssertion(t, err)
-				}
 			} else {
 				assert.NoError(t, err)
 			}
-
-			tt.validate(t, result)
+			assert.Equal(t, tt.expectExists, exists)
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
